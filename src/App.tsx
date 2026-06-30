@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
+import Features from './components/Features';
 
 export default function App() {
   // 테마 상태 관리 (다크 / 라이트 모드)
@@ -22,7 +23,7 @@ export default function App() {
       }`}>
 
       {viewMode === 'landing' ? (
-        <div className="w-full flex flex-col items-center">
+        <div className="w-full flex flex-col items-center justify-center">
           <Header
             themeMode={themeMode}
             setThemeMode={setThemeMode}
@@ -30,6 +31,8 @@ export default function App() {
           />
 
           <Hero themeMode={themeMode} />
+
+          <Features themeMode={themeMode} />
         </div>
       ) : (
         <div className="w-full min-h-screen flex flex-col items-center justify-center p-8">

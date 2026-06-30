@@ -31,6 +31,8 @@
 ---
 
 ## 4. 참조 설계 문서 목록
+- [작가 페인 포인트 분석 및 대안 규격서](file:///c:/project/noteandname/Documents/writer_pain_points_and_solutions.md)
 - [기술 스택 및 API 연동 상세 규격서](file:///c:/project/noteandname/Documents/tech_stack_spec.md)
 - [데이터베이스 및 백엔드 서비스 설계서](file:///c:/project/noteandname/Documents/database_and_api_design.md)
 - [UI/UX 디자인 가이드라인 및 규격서](file:///c:/project/noteandname/Documents/design_specification.md)
+

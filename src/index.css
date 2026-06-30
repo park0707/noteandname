@@ -54,8 +54,6 @@ body {
     background-color: var(--bg-canvas);
     color: var(--text-primary);
     font-family: var(--font-body);
-    overflow: hidden;
-    height: 100vh;
     -webkit-font-smoothing: antialiased;
 }
 
@@ -1028,6 +1026,18 @@ kbd {
 }
 
 .scroll-fade.fade-in-active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* 기능 카드 스크롤 페이드인 */
+.feature-item {
+    opacity: 0;
+    transform: translateY(32px);
+    transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.feature-item.feature-visible {
     opacity: 1;
     transform: translateY(0);
 }

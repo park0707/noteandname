@@ -7,6 +7,7 @@
 ## 📂 프로젝트 설계 명세 문서
 아래의 링크를 클릭하시면 각 개발 설계 단계의 구체적인 명세서를 열람할 수 있습니다.
 
+- [작가 페인 포인트 분석 및 대안 규격서](file:///c:/project/noteandname/Documents/writer_pain_points_and_solutions.md)
 - [프로젝트 개요 및 기획서](file:///c:/project/noteandname/Documents/project_overview.md)
 - [기술 스택 및 API 연동 상세 규격서](file:///c:/project/noteandname/Documents/tech_stack_spec.md)
 - [데이터베이스 및 백엔드 서비스 설계서](file:///c:/project/noteandname/Documents/database_and_api_design.md)

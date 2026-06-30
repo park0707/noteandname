@@ -22,7 +22,7 @@ export default function Header({ themeMode, setThemeMode, setViewMode }: HeaderP
         <div className="flex items-center gap-4 md:gap-4">
           <button
             onClick={() => setThemeMode(themeMode === 'dark' ? 'light' : 'dark')}
-            className={`p-2 rounded-lg cursor-pointer text-2xl transition-all ${themeMode === 'dark' ? 'hover:bg-white/5 text-yellow-400' : 'hover:bg-black/5 text-slate-700'
+            className={`rounded-lg cursor-pointer text-2xl transition-all ${themeMode === 'dark' ? 'hover:bg-white/5 text-yellow-400' : 'hover:bg-black/5 text-slate-700'
               }`}
             title="다크/라이트 모드 전환"
           >
@@ -44,12 +44,7 @@ export default function Header({ themeMode, setThemeMode, setViewMode }: HeaderP
             회원가입
           </button>
 
-          <button className={`flex flex-col gap-2 cursor-pointer transition-colors ${themeMode === 'dark' ? 'text-[#A1A1AA] hover:text-white' : 'text-[#555] hover:text-black'
-            }`}>
-            <span className="w-8 h-[3px] bg-current"></span>
-            <span className="w-8 h-[3px] bg-current"></span>
-            <span className="w-8 h-[3px] bg-current"></span>
-          </button>
+
         </div>
       </div>
     </header>
