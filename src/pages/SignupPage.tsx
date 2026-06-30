@@ -16,6 +16,7 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [loading, setLoading] = useState(false);
+  const [socialLoading, setSocialLoading] = useState<'google' | 'kakao' | null>(null);
 
   const handleSignup = async (e: FormEvent) => {
     e.preventDefault();
@@ -39,11 +40,22 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
         ? '이미 사용 중인 이메일입니다.'
         : '회원가입 중 오류가 발생했습니다. 다시 시도해 주세요.');
     } else if (data.session) {
-      navigate('/app');
+      navigate('/');
     } else {
       setSuccessMsg('가입이 완료되었습니다! 이메일을 확인하여 인증을 완료해 주세요.');
     }
     setLoading(false);
+  };
+
+  const handleSocialLogin = async (provider: 'google' | 'kakao') => {
+    setSocialLoading(provider);
+    await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+    setSocialLoading(null);
   };
 
   return (
@@ -74,7 +86,7 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
           {successMsg ? (
             <div className="p-4 rounded-xl bg-[#5E6AD2]/10 border border-[#5E6AD2]/20 text-sm text-[#5E6AD2] leading-relaxed">
               {successMsg}
-              <div className="pt-2 mt-4">
+              <div className="mt-4">
                 <Link to="/login" className="font-semibold underline">
                   로그인 화면으로 이동
                 </Link>
@@ -84,7 +96,7 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
             <>
               <form onSubmit={handleSignup} className="flex flex-col gap-4">
                 {/* 이메일 */}
-                <div className="pt-2 flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1.5">
                   <label className={`text-xs font-medium ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
                     이메일
                   </label>
@@ -160,7 +172,6 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
                   ) : '회원가입'}
                 </button>
               </form>
-
               {/* 구분선 */}
               <div className="py-2 flex items-center gap-3 my-6">
                 <div className={`flex-1 h-px ${isDark ? 'bg-white/[0.06]' : 'bg-black/[0.06]'}`} />
@@ -168,25 +179,52 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
                 <div className={`flex-1 h-px ${isDark ? 'bg-white/[0.06]' : 'bg-black/[0.06]'}`} />
               </div>
 
-              {/* 소셜 로그인 플레이스홀더 */}
+              {/* 소셜 로그인 */}
               <div className="flex flex-col gap-3">
-                <button disabled className={`w-full py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-3
-                  border transition-all duration-150 opacity-40 cursor-not-allowed
-                  ${isDark ? 'bg-[#121316] border-white/[0.08] text-[#EDEDEF]' : 'bg-white border-black/[0.08] text-[#121316]'}`}>
-                  <span className="text-base">🔵</span>
-                  구글로 시작하기 <span className="text-xs opacity-60">(준비 중)</span>
+                <button
+                  onClick={() => handleSocialLogin('google')}
+                  disabled={socialLoading !== null}
+                  className={`w-full py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-3
+                    border transition-all duration-150 hover:opacity-80 active:scale-[0.98]
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    ${isDark ? 'bg-[#121316] border-white/[0.08] text-[#EDEDEF]' : 'bg-white border-black/[0.08] text-[#121316]'}`}
+                >
+                  {socialLoading === 'google' ? (
+                    <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                  ) : (
+                    <svg className="w-5 h-5" viewBox="0 0 48 48">
+                      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+                    </svg>
+                  )}
+                  구글로 시작하기
                 </button>
-                <button disabled className={`w-full py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-3
-                  border transition-all duration-150 opacity-40 cursor-not-allowed
-                  ${isDark ? 'bg-[#121316] border-white/[0.08] text-[#EDEDEF]' : 'bg-white border-black/[0.08] text-[#121316]'}`}>
-                  <span className="text-base">🟡</span>
-                  카카오로 시작하기 <span className="text-xs opacity-60">(준비 중)</span>
+
+                <button
+                  onClick={() => handleSocialLogin('kakao')}
+                  disabled={socialLoading !== null}
+                  className="w-full py-3 rounded-xl text-sm font-medium flex items-center justify-center gap-3
+                    bg-[#FEE500] border border-[#FEE500]
+                    transition-all duration-150 hover:bg-[#F6DC00] active:scale-[0.98]
+                    disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ color: '#191919' }}
+                >
+                  {socialLoading === 'kakao' ? (
+                    <div className="w-4 h-4 rounded-full border-2 border-[#191919]/40 border-t-[#191919] animate-spin" />
+                  ) : (
+                    <svg className="w-5 h-5" viewBox="0 0 512 512">
+                      <path fill="#191919" d="M256 32C132.3 32 32 112.3 32 212c0 63.1 39.5 118.6 99.4 152.2-3.8 14.2-24.5 91.2-24.5 91.2s-.2 1.7.9 2.3c1.1.7 2.4.2 2.4.2 31.5-4.4 91.9-60.3 91.9-60.3C219.4 401.8 237.4 404 256 404c123.7 0 224-80.3 224-180S379.7 32 256 32z" />
+                    </svg>
+                  )}
+                  카카오로 시작하기
                 </button>
               </div>
             </>
           )}
 
-          <p className={`pt-2 text-center text-xs mt-8 ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
+          <p className={`text-center text-xs mt-8 pt-2 ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
             이미 계정이 있으신가요?{' '}
             <Link to="/login" className="text-[#5E6AD2] font-semibold hover:text-[#7480E2] transition-colors">
               로그인
