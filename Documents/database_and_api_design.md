@@ -142,6 +142,66 @@ CREATE TABLE document_embeddings (
 -- HNSW 인덱싱 생성
 CREATE INDEX IF NOT EXISTS document_embeddings_hnsw_idx 
 ON document_embeddings USING hnsw (embedding vector_cosine_ops);
+
+-- 6. 세계관 지도 편집기 테이블
+CREATE TABLE maps (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    parent_map_id UUID REFERENCES maps(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE map_elements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    map_id UUID NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
+    type VARCHAR(50) NOT NULL CHECK (type IN ('POLYGON', 'PIN', 'ROUTE', 'TEXT')),
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(100),
+    properties JSONB NOT NULL DEFAULT '{}',
+    coordinates JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE map_element_links (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    element_id UUID NOT NULL REFERENCES map_elements(id) ON DELETE CASCADE,
+    link_type VARCHAR(50) NOT NULL CHECK (link_type IN ('CHAPTER', 'CHARACTER', 'FORESHADOWING')),
+    linked_id UUID NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE map_history_snapshots (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    map_id UUID NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
+    snapshot_name VARCHAR(255) NOT NULL,
+    in_universe_date VARCHAR(255),
+    notes TEXT,
+    chapter_id UUID REFERENCES chapters(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE map_history_states (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    snapshot_id UUID NOT NULL REFERENCES map_history_snapshots(id) ON DELETE CASCADE,
+    element_id UUID NOT NULL REFERENCES map_elements(id) ON DELETE CASCADE,
+    properties_override JSONB,
+    is_visible BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE character_positions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    character_id UUID NOT NULL REFERENCES characters(id) ON DELETE CASCADE,
+    map_id UUID NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
+    chapter_id UUID REFERENCES chapters(id) ON DELETE SET NULL,
+    coordinates JSONB NOT NULL, -- [x, y]
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 ```
 
 ---
@@ -157,10 +217,19 @@ ALTER TABLE character_relationships ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chapters ENABLE ROW LEVEL SECURITY;
 ALTER TABLE timeline_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE foreshadowing_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE maps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE map_elements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE map_element_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE map_history_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE map_history_states ENABLE ROW LEVEL SECURITY;
+ALTER TABLE character_positions ENABLE ROW LEVEL SECURITY;
 
 -- RLS 정책 설정 예시 (본인 소유 데이터만 가동)
 CREATE POLICY "Users can manage their own profile" ON profiles FOR ALL USING (auth.uid() = id);
 CREATE POLICY "Users can manage their own projects" ON projects FOR ALL USING (auth.uid() = profile_id);
+CREATE POLICY "Users can manage maps in their projects" ON maps FOR ALL USING (EXISTS (SELECT 1 FROM projects WHERE projects.id = maps.project_id AND projects.profile_id = auth.uid()));
+CREATE POLICY "Users can manage map elements in their maps" ON map_elements FOR ALL USING (EXISTS (SELECT 1 FROM maps JOIN projects ON maps.project_id = projects.id WHERE maps.id = map_elements.map_id AND projects.profile_id = auth.uid()));
+CREATE POLICY "Users can manage character positions" ON character_positions FOR ALL USING (EXISTS (SELECT 1 FROM maps JOIN projects ON maps.project_id = projects.id WHERE maps.id = character_positions.map_id AND projects.profile_id = auth.uid()));
 ```
 
 ---

@@ -9,10 +9,10 @@ const FEATURES = [
     number: '01',
     icon: '✨',
     title: 'AI 작명 엔진',
-    subtitle: '장르와 세계관에 어울리는 이름을 0.5초 만에',
+    subtitle: '장르와 세계관에 어울리는 이름을 손 쉽게 생성',
     description:
-      '매번 이름을 고민하느라 집필 흐름이 끊기셨나요? AI 작명 엔진이 탄생석·어원·음절 패턴을 바탕으로 장르(판타지, 무협, 현대 등)와 성별, 세력에 맞는 이름을 즉시 제안합니다. 복사 버튼 하나로 커서 위치에 바로 삽입되어, 집필 흐름을 단 한 순간도 끊지 않습니다.',
-    tags: ['GPT-4o-mini', '0.5초 생성', '장르 필터', '원클릭 삽입'],
+      '엑스트라, 지명 등 작품에 필수적인 요소지만 성의를 들어가며 작명을 하기에느 번거로운 경험을 하신적이 있나요? 노벨플로우의 AI 작명 엔진은 작가님들이 원하는 태그 조합과 상세 설명을 통해 어울리는 이름을 빠르게 생성해드립니다. 또한 각 캐릭터나 아이템 장소 등의 개인적인 히스토리 관리와 이름의 저장 및 관리 기능을 지원합니다.',
+    tags: ['태그 조합', '상세 설명', '저장 및 관리', '히스토리 관리'],
     accent: '#5E6AD2',
   },
   {
@@ -21,7 +21,7 @@ const FEATURES = [
     title: '자모 유사도 필터',
     subtitle: '어감 중복을 기술로 원천 차단',
     description:
-      '\'칼릭스\'와 \'카엘\'처럼 발음이 헷갈리는 이름이 작품 속에 공존하면 독자는 쉽게 혼란에 빠집니다. 한글 유니코드를 초성·중성·종성으로 분해한 뒤 Levenshtein Distance 알고리즘으로 기존 등장인물과 자모 유사도를 실시간 계산하여, 75% 이상 겹치는 이름은 자동으로 제외하고 경고를 표시합니다.',
+      '\'카일\'과 \'카엘\'처럼 발음이 헷갈리는 이름이 작품 속에 공존하면 독자는 쉽게 혼란에 빠집니다. 한글 유니코드를 초성·중성·종성으로 분해한 뒤 Levenshtein Distance 알고리즘으로 기존 등장인물과 자모 유사도를 실시간 계산하여, 75% 이상 겹치는 이름은 자동으로 제외하고 경고를 표시합니다.',
     tags: ['한글 자모 분해', 'Levenshtein', '75% 임계 필터', '중복 경고'],
     accent: '#E2487A',
   },
@@ -65,6 +65,16 @@ const FEATURES = [
     tags: ['회차별 스냅샷', '성격 변화 로그', '스탯 추적', '캐릭터 아크 관리'],
     accent: '#9B59B6',
   },
+  {
+    number: '07',
+    icon: '🗺️',
+    title: '세계관 지도 편집기',
+    subtitle: '단순한 그림이 아닌 서사 관리와 시각화를 하나로',
+    description:
+      '작가님이 마우스로 직접 영역(폴리곤), 핀(포인트), 경로선을 캔버스 위에 그려 지도를 편집하고, 그 위에 등장인물의 동선, 세력 변화, 복선 등을 연결하여 관리할 수 있습니다. 빵 부스러기 네비게이션을 통한 무제한 계층형 드릴다운 기능과 작품 전개에 따른 지도 히스토리 스냅샷 타임라인을 제공합니다.',
+    tags: ['폴리곤 드로잉', '계층형 드릴다운', '타임라인 스냅샷', '동선 추적'],
+    accent: '#1ABC9C',
+  },
 ];
 
 export default function Features({ themeMode }: FeaturesProps) {
@@ -92,23 +102,23 @@ export default function Features({ themeMode }: FeaturesProps) {
   const isDark = themeMode === 'dark';
 
   return (
-    <section className={`w-full py-32 ${isDark ? 'bg-[#08090A]' : 'bg-[#F4F4F6]'}`}>
+    <section className={`w-full ${isDark ? 'bg-[#08090A]' : 'bg-[#F4F4F6]'}`}>
       {/* 섹션 헤더 */}
-      <div className="w-full max-w-5xl mx-auto px-12 md:px-24 mb-24 text-center">
-        <p className={`text-sm font-semibold tracking-widest uppercase mb-4 ${isDark ? 'text-[#5E6AD2]' : 'text-[#5E6AD2]'}`}>
+      <div className="w-full mx-auto px-12 md:px-24 mb-24 text-center">
+        <p className={`text-sm font-semibold tracking-widest uppercase mb-4 pb-2 ${isDark ? 'text-[#5E6AD2]' : 'text-[#5E6AD2]'}`}>
           Core Features
         </p>
-        <h2 className={`font-heading font-bold text-3xl md:text-4xl tracking-tight ${isDark ? 'text-white' : 'text-[#121316]'}`}>
+        <h2 className={`font-heading font-bold text-3xl md:text-4xl tracking-tight pb-2 ${isDark ? 'text-white' : 'text-[#121316]'}`}>
           작가의 불편함을 설계로 해결합니다
         </h2>
-        <p className={`mt-4 text-base max-w-xl mx-auto leading-relaxed ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
+        <p className={`mt-4 text-base mx-auto leading-relaxed pb-2 ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
           연재 마감의 압박 속에서도 설정 붕괴 없이 탄탄한 서사를 이어갈 수 있도록,
-          노벨플로우가 6가지 핵심 도구를 제공합니다.
+          노벨플로우가 7가지 핵심 도구를 제공합니다.
         </p>
       </div>
 
       {/* 기능 카드 목록 */}
-      <div className="w-full max-w-5xl mx-auto px-12 md:px-24 flex flex-col gap-6">
+      <div className="w-ful mx-auto px-12 md:px-24 flex flex-col gap-6">
         {FEATURES.map((feat, idx) => (
           <div
             key={feat.number}
@@ -161,9 +171,8 @@ export default function Features({ themeMode }: FeaturesProps) {
                     {feat.tags.map((tag) => (
                       <span
                         key={tag}
-                        className={`text-xs px-3 py-1 rounded-full font-medium ${
-                          isDark ? 'bg-white/[0.05] text-[#A1A1AA]' : 'bg-black/[0.05] text-[#55555A]'
-                        }`}
+                        className={`text-xs px-3 py-1 rounded-full font-medium ${isDark ? 'bg-white/[0.05] text-[#A1A1AA]' : 'bg-black/[0.05] text-[#55555A]'
+                          }`}
                       >
                         {tag}
                       </span>

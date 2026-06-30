@@ -11,6 +11,9 @@
   - **Tauri (Rust + React / TypeScript)**: Always-on-Top 백그라운드 위젯에 가장 적합한 경량 데스크톱 엔진.
   - **React & Tailwind CSS (v4)**: 컴포넌트 기반 UI/UX 구축 및 스타일링 최적화.
   - **Supabase Client SDK**: 백엔드 REST API 컨트롤러 코딩 없이 직접 쿼리 수행.
+  - **Leaflet.js & Leaflet-Geoman (react-leaflet)**: 가상 좌표계(`CRS.Simple`) 기반 지도 캔버스 구동 및 꼭짓점 기반 폴리곤/경로선 그리기 및 마우스 드로잉 편집 인터랙션.
+  - **leaflet-image & html2canvas**: Leaflet 레이어를 병합하여 브라우저 상에서 고해상도 PNG 이미지로 캡처/내보내기 수행.
+  - **Zustand**: 계층형 지도 트리 구조(Nested Map Tree) 및 히스토리 스냅샷 타임라인 상태 관리.
 - **백엔드 및 서버리스 (BaaS)**:
   - **Supabase Database (PostgreSQL / pgvector)**: 인물 데이터, 세계관 설정 저장 및 RAG 벡터 데이터 통합 관리.
   - **Supabase Realtime**: 데스크톱 위젯과 웹 에디터 간의 데이터 실시간 양방향 싱크.
