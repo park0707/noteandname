@@ -22,7 +22,7 @@ function LandingPage({ themeMode, setThemeMode }: {
       <Header
         themeMode={themeMode}
         setThemeMode={setThemeMode}
-        setViewMode={() => {}}
+        setViewMode={() => { }}
       />
       <Hero themeMode={themeMode} />
       <Features themeMode={themeMode} />
@@ -41,7 +41,7 @@ function PublicInfoPage({ themeMode, setThemeMode }: {
       <Header
         themeMode={themeMode}
         setThemeMode={setThemeMode}
-        setViewMode={() => {}}
+        setViewMode={() => { }}
       />
       <main className="flex-1 px-6 py-8">
         <InfoPage
@@ -49,7 +49,6 @@ function PublicInfoPage({ themeMode, setThemeMode }: {
           onClose={() => window.location.href = '/'}
         />
       </main>
-      <Footer themeMode={themeMode} />
     </div>
   );
 }
@@ -58,9 +57,8 @@ export default function App() {
   const [themeMode, setThemeMode] = useState<'dark' | 'light'>('dark');
 
   return (
-    <div className={`w-full min-h-screen font-sans selection:bg-[#5E6AD2]/30 selection:text-white transition-colors duration-300 ${
-      themeMode === 'dark' ? 'bg-[#08090A] text-[#EDEDEF]' : 'bg-[#F4F4F6] text-[#121316]'
-    }`}>
+    <div className={`w-full min-h-screen font-sans selection:bg-[#5E6AD2]/30 selection:text-white transition-colors duration-300 ${themeMode === 'dark' ? 'bg-[#08090A] text-[#EDEDEF]' : 'bg-[#F4F4F6] text-[#121316]'
+      }`}>
       <AuthProvider>
         <BrowserRouter>
           <Routes>

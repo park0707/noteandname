@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft } from 'lucide-react';
-import Footer from '../components/Footer';
 
 interface AuthPageProps {
   themeMode: 'dark' | 'light';
@@ -39,6 +38,11 @@ export default function LoginPage({ themeMode }: AuthPageProps) {
       // 세션 확인 즉시 이동 (onAuthStateChange와 무관하게 확실히 처리)
       navigate('/app');
     }
+  };
+
+  const handleGuestLogin = () => {
+    localStorage.setItem('novelflow_guest', 'true');
+    window.location.href = '/app';
   };
 
   const handleSocialLogin = async (provider: 'google' | 'kakao') => {
@@ -123,7 +127,6 @@ export default function LoginPage({ themeMode }: AuthPageProps) {
               </p>
             )}
 
-            {/* 로그인 버튼 */}
             <button
               type="submit"
               disabled={loading}
@@ -136,6 +139,18 @@ export default function LoginPage({ themeMode }: AuthPageProps) {
               ) : '로그인'}
             </button>
           </form>
+
+          <button
+            type="button"
+            onClick={handleGuestLogin}
+            className={`w-full py-3 rounded-xl text-sm font-semibold border mt-3 transition-colors ${
+              isDark
+                ? 'border-white/[0.08] text-[#A1A1AA] hover:text-white hover:bg-white/[0.04]'
+                : 'border-black/[0.08] text-[#55555A] hover:text-[#121316] hover:bg-black/[0.04]'
+            }`}
+          >
+            체험 계정으로 시작하기 (Guest)
+          </button>
 
           {/* 구분선 */}
           <div className="flex items-center gap-3 my-6 py-2">
@@ -195,8 +210,6 @@ export default function LoginPage({ themeMode }: AuthPageProps) {
           </p>
         </div>
       </div>
-
-      <Footer themeMode={themeMode} />
     </div>
   );
 }

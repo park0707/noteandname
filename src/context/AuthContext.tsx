@@ -17,16 +17,38 @@ const AuthContext = createContext<AuthContextValue>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<Session | null>(() => {
+    if (localStorage.getItem('novelflow_guest') === 'true') {
+      return {
+        access_token: 'mock-token',
+        token_type: 'bearer',
+        expires_in: 3600,
+        user: {
+          id: 'guest-user-id',
+          email: 'guest@novelflow.io',
+          aud: 'authenticated',
+          role: 'authenticated',
+          created_at: new Date().toISOString(),
+          app_metadata: {},
+          user_metadata: {},
+        } as any,
+      } as Session;
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // onAuthStateChange가 초기 세션 포함 모든 변경을 처리하는 Supabase 권장 패턴
-    // INITIAL_SESSION 이벤트가 현재 세션 상태를 즉시 전달함
+    // 만약 게스트 모드면 Supabase 호출하지 않고 로딩 해제
+    if (localStorage.getItem('novelflow_guest') === 'true') {
+      setLoading(false);
+      return;
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session);
-        setLoading(false); // 초기 로드 포함 모든 이벤트 후 loading 해제
+        setLoading(false);
       }
     );
 
@@ -34,6 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    localStorage.removeItem('novelflow_guest');
+    setSession(null);
     await supabase.auth.signOut();
   };
 
