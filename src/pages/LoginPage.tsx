@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft } from 'lucide-react';
+import Footer from '../components/Footer';
 
 interface AuthPageProps {
   themeMode: 'dark' | 'light';
@@ -194,6 +195,8 @@ export default function LoginPage({ themeMode }: AuthPageProps) {
           </p>
         </div>
       </div>
+
+      <Footer themeMode={themeMode} />
     </div>
   );
 }

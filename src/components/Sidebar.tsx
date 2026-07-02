@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import InfoModal from './InfoModal';
 import MyPageModal from './MyPageModal';
 import {
   LayoutDashboard,
@@ -14,31 +13,49 @@ import {
   Info,
   PanelLeftClose,
   PanelLeftOpen,
-  MoreVertical
+  MoreVertical,
+  ChevronLeft,
+  Compass
 } from 'lucide-react';
+
+interface Project {
+  id: string;
+  name: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
 
 interface SidebarProps {
   themeMode: 'dark' | 'light';
   activeFeature: string;
   onFeatureSelect: (feature: string) => void;
+  selectedProject: Project | null;
+  onBackToProjects: () => void;
 }
 
-const NAV_ITEMS = [
-  { id: 'dashboard', icon: LayoutDashboard, label: '대시보드' },
-  { id: 'naming', icon: Sparkles, label: 'AI 작명 엔진', badge: '준비 중' },
-  { id: 'jamo', icon: Scale, label: '자모 유사도 필터', badge: '준비 중' },
-  { id: 'relations', icon: Network, label: '인물 관계도', badge: '준비 중' },
-  { id: 'timeline', icon: GitCommit, label: '복선 타임라인', badge: '준비 중' },
-  { id: 'history', icon: BookOpen, label: '캐릭터 히스토리', badge: '준비 중' },
-  { id: 'notion', icon: Link2, label: '노션 동기화', badge: '준비 중' },
-];
-
-export default function Sidebar({ themeMode, activeFeature, onFeatureSelect }: SidebarProps) {
+export default function Sidebar({
+  themeMode,
+  activeFeature,
+  onFeatureSelect,
+  selectedProject,
+  onBackToProjects
+}: SidebarProps) {
   const { user } = useAuth();
   const isDark = themeMode === 'dark';
   const [collapsed, setCollapsed] = useState(false);
-  const [showInfo, setShowInfo] = useState(false);
   const [showMyPage, setShowMyPage] = useState(false);
+
+  const navItems = [
+    { id: 'dashboard', icon: LayoutDashboard, label: selectedProject ? '프로젝트 홈' : '대시보드' },
+    { id: 'naming', icon: Sparkles, label: 'AI 작명 엔진', badge: selectedProject ? undefined : '선택 필요' },
+    { id: 'jamo', icon: Scale, label: '자모 유사도 필터', badge: selectedProject ? undefined : '선택 필요' },
+    { id: 'relations', icon: Network, label: '인물 관계도', badge: selectedProject ? undefined : '선택 필요' },
+    { id: 'timeline', icon: GitCommit, label: '복선 타임라인', badge: selectedProject ? undefined : '선택 필요' },
+    { id: 'history', icon: BookOpen, label: '캐릭터 히스토리', badge: selectedProject ? undefined : '선택 필요' },
+    ...(selectedProject ? [{ id: 'worldmap', icon: Compass, label: '세계관 지도' }] : []),
+    { id: 'notion', icon: Link2, label: '노션 동기화', badge: selectedProject ? undefined : '선택 필요' },
+  ];
 
   return (
     <aside
@@ -85,13 +102,44 @@ export default function Sidebar({ themeMode, activeFeature, onFeatureSelect }: S
         </button>
       </div>
 
+      {/* 프로젝트 뒤로가기 버튼 */}
+      {selectedProject && (
+        <div className={`flex justify-center shrink-0 ${collapsed ? 'px-2' : 'px-3 py-2'}`}>
+          {collapsed ? (
+            <button
+              onClick={onBackToProjects}
+              title="프로젝트 목록으로"
+              className={`w-10 h-10 rounded-xl flex items-center justify-center border mt-2 transition-all duration-150 ${
+                isDark
+                  ? 'border-white/[0.06] bg-white/[0.02] text-[#A1A1AA] hover:bg-white/[0.05] hover:text-[#EDEDEF] hover:border-white/[0.12]'
+                  : 'border-black/[0.06] bg-black/[0.01] text-[#55555A] hover:bg-black/[0.03] hover:text-[#121316] hover:border-black/[0.12]'
+              }`}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          ) : (
+            <button
+              onClick={onBackToProjects}
+              className={`w-full px-3 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all duration-150 ${
+                isDark
+                  ? 'border-white/[0.06] bg-white/[0.02] text-[#A1A1AA] hover:bg-white/[0.05] hover:text-[#EDEDEF] hover:border-white/[0.12]'
+                  : 'border-black/[0.06] bg-black/[0.01] text-[#55555A] hover:bg-black/[0.03] hover:text-[#121316] hover:border-black/[0.12]'
+              }`}
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              프로젝트 목록
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 네비게이션 */}
       <nav className={`flex-1 py-3 flex flex-col gap-0.5 overflow-y-auto ${
         collapsed ? 'px-2 items-center' : 'px-3'
       }`}>
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const isActive = activeFeature === item.id;
-          const isDisabled = !!item.badge && item.id !== 'dashboard';
+          const isDisabled = !!item.badge && !selectedProject;
           const IconComponent = item.icon;
 
           return (
@@ -139,26 +187,20 @@ export default function Sidebar({ themeMode, activeFeature, onFeatureSelect }: S
 
         {/* 정보 버튼 */}
         <button
-          onClick={() => setShowInfo(true)}
+          onClick={() => onFeatureSelect('info')}
           title={collapsed ? '정보' : undefined}
           className={`flex items-center rounded-lg text-sm font-medium transition-all duration-150
             ${collapsed ? 'w-10 h-10 justify-center' : 'w-full gap-3 px-3 py-2'}
-            ${isDark
-              ? 'text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#EDEDEF]'
-              : 'text-[#55555A] hover:bg-black/[0.04] hover:text-[#121316]'
+            ${activeFeature === 'info'
+              ? isDark ? 'bg-[#5E6AD2]/15 text-[#7480E2]' : 'bg-[#5E6AD2]/10 text-[#5E6AD2]'
+              : isDark
+                ? 'text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#EDEDEF]'
+                : 'text-[#55555A] hover:bg-black/[0.04] hover:text-[#121316]'
             }`}
         >
           <Info className="w-4 h-4 shrink-0" />
           {!collapsed && <span>정보</span>}
         </button>
-
-        {/* 정보 모달 */}
-        {showInfo && (
-          <InfoModal
-            themeMode={themeMode}
-            onClose={() => setShowInfo(false)}
-          />
-        )}
 
         {/* 유저 정보 + 마이페이지 버튼 */}
         {collapsed ? (

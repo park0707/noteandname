@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
 import CreateProjectModal from '../components/CreateProjectModal';
+import Footer from '../components/Footer';
 import { Plus, FolderOpen, Trash2 } from 'lucide-react';
 
 interface Project {
@@ -60,13 +61,13 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
   }, [fetchProjects]);
 
   // 프로젝트 생성
-  const handleCreateProject = async (name: string, description: string, genre: string) => {
+  const handleCreateProject = async (name: string, description: string) => {
     if (!user) return;
     const { error } = await supabase.from('projects').insert({
       user_id: user.id,
       name,
       description,
-      genre,
+      genre: '기타',
     });
     if (!error) {
       setShowCreateModal(false);
@@ -90,6 +91,8 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
         themeMode={themeMode}
         activeFeature={activeFeature}
         onFeatureSelect={setActiveFeature}
+        selectedProject={null}
+        onBackToProjects={() => setActiveFeature('dashboard')}
       />
 
       {/* 메인 콘텐츠 */}
@@ -117,22 +120,24 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
         </div>
 
         {/* 프로젝트 그리드 */}
-        <div className="flex-1 overflow-y-auto px-8 py-6">
+        <div className="flex-1 overflow-y-auto px-8 py-6 flex flex-col">
           {loadingProjects ? (
             // 로딩 스켈레톤
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {[...Array(4)].map((_, i) => (
-                <div
-                  key={i}
-                  className={`rounded-2xl border p-5 h-44 animate-pulse ${
-                    isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-                  }`}
-                />
-              ))}
+            <div className="flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <div
+                    key={i}
+                    className={`rounded-2xl border p-5 h-44 animate-pulse ${
+                      isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
           ) : projects.length === 0 ? (
             // 빈 상태
-            <div className="w-full h-full flex flex-col items-center justify-center gap-4 py-20">
+            <div className="w-full flex-1 flex flex-col items-center justify-center gap-4 py-20">
               <div className={`w-16 h-16 rounded-2xl flex items-center justify-center ${
                 isDark ? 'bg-white/[0.04]' : 'bg-black/[0.04]'
               }`}>
@@ -157,79 +162,84 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
             </div>
           ) : (
             // 프로젝트 카드 그리드
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {projects.map((project) => {
-                const genreColor = GENRE_COLORS[project.genre] ?? '#A1A1AA';
-                return (
-                  <div
-                    key={project.id}
-                    className={`group relative rounded-2xl border p-5 flex flex-col gap-3 cursor-pointer
-                      transition-all duration-200 hover:shadow-lg
-                      ${isDark
-                        ? 'bg-[#0D0E11] border-white/[0.06] hover:border-white/[0.12] hover:bg-[#111215]'
-                        : 'bg-white border-black/[0.06] hover:border-black/[0.12] hover:shadow-black/5'
-                      }`}
-                  >
-                    {/* 장르 색상 바 */}
+            <div className="flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {projects.map((project) => {
+                  const genreColor = GENRE_COLORS[project.genre] ?? '#A1A1AA';
+                  return (
                     <div
-                      className="w-8 h-1 rounded-full"
-                      style={{ backgroundColor: genreColor }}
-                    />
+                      key={project.id}
+                      className={`group relative rounded-2xl border p-5 flex flex-col gap-3 cursor-pointer
+                        transition-all duration-200 hover:shadow-lg
+                        ${isDark
+                          ? 'bg-[#0D0E11] border-white/[0.06] hover:border-white/[0.12] hover:bg-[#111215]'
+                          : 'bg-white border-black/[0.06] hover:border-black/[0.12] hover:shadow-black/5'
+                        }`}
+                    >
+                      {/* 장르 색상 바 */}
+                      <div
+                        className="w-8 h-1 rounded-full"
+                        style={{ backgroundColor: genreColor }}
+                      />
 
-                    {/* 제목 */}
-                    <div className="flex-1">
-                      <h3 className={`font-heading font-bold text-base mb-1 leading-snug ${
-                        isDark ? 'text-white' : 'text-[#121316]'
-                      }`}>
-                        {project.name}
-                      </h3>
-                      {project.description && (
-                        <p className={`text-xs leading-relaxed line-clamp-2 ${
-                          isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'
+                      {/* 제목 */}
+                      <div className="flex-1">
+                        <h3 className={`font-heading font-bold text-base mb-1 leading-snug ${
+                          isDark ? 'text-white' : 'text-[#121316]'
                         }`}>
-                          {project.description}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* 메타 정보 */}
-                    <div className="flex items-center justify-between mt-auto">
-                      <div className="flex items-center gap-2">
-                        {project.genre && (
-                          <span
-                            className="text-xs px-2 py-0.5 rounded-full font-medium"
-                            style={{
-                              backgroundColor: `${genreColor}18`,
-                              color: genreColor,
-                            }}
-                          >
-                            {project.genre}
-                          </span>
+                          {project.name}
+                        </h3>
+                        {project.description && (
+                          <p className={`text-xs leading-relaxed line-clamp-2 ${
+                            isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'
+                          }`}>
+                            {project.description}
+                          </p>
                         )}
                       </div>
-                      <span className={`text-xs ${isDark ? 'text-[#3A3D50]' : 'text-[#C5C5CC]'}`}>
-                        {formatDate(project.updated_at)}
-                      </span>
-                    </div>
 
-                    {/* 삭제 버튼 (호버 시 표시) */}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.id); }}
-                      className={`absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center
-                        opacity-0 group-hover:opacity-100 transition-all duration-150
-                        ${isDark
-                          ? 'bg-[#1A1C20] text-[#A1A1AA] hover:bg-red-900/30 hover:text-red-400'
-                          : 'bg-[#F0F0F3] text-[#A1A1AA] hover:bg-red-50 hover:text-red-500'
-                        }`}
-                      title="삭제"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
+                      {/* 메타 정보 */}
+                      <div className="flex items-center justify-between mt-auto">
+                        <div className="flex items-center gap-2">
+                          {project.genre && (
+                            <span
+                              className="text-xs px-2 py-0.5 rounded-full font-medium"
+                              style={{
+                                backgroundColor: `${genreColor}18`,
+                                color: genreColor,
+                              }}
+                            >
+                              {project.genre}
+                            </span>
+                          )}
+                        </div>
+                        <span className={`text-xs ${isDark ? 'text-[#3A3D50]' : 'text-[#C5C5CC]'}`}>
+                          {formatDate(project.updated_at)}
+                        </span>
+                      </div>
+
+                      {/* 삭제 버튼 (호버 시 표시) */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.id); }}
+                        className={`absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center
+                          opacity-0 group-hover:opacity-100 transition-all duration-150
+                          ${isDark
+                            ? 'bg-[#1A1C20] text-[#A1A1AA] hover:bg-red-900/30 hover:text-red-400'
+                            : 'bg-[#F0F0F3] text-[#A1A1AA] hover:bg-red-50 hover:text-red-500'
+                          }`}
+                        title="삭제"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
+
+          {/* 대시보드 하단 푸터 */}
+          <Footer themeMode={themeMode} />
         </div>
       </main>
 

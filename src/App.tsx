@@ -9,14 +9,16 @@ import Features from './components/Features';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
 import WorkspacePage from './pages/WorkspacePage';
+import Footer from './components/Footer';
+import InfoPage from './pages/InfoPage';
 
-// 랜딩 페이지 레이아웃 (Header + Hero + Features)
+// 랜딩 페이지 레이아웃 (Header + Hero + Features + Footer)
 function LandingPage({ themeMode, setThemeMode }: {
   themeMode: 'dark' | 'light';
   setThemeMode: (m: 'dark' | 'light') => void;
 }) {
   return (
-    <div className="w-full flex flex-col items-center">
+    <div className="w-full flex flex-col items-center min-h-screen">
       <Header
         themeMode={themeMode}
         setThemeMode={setThemeMode}
@@ -24,6 +26,30 @@ function LandingPage({ themeMode, setThemeMode }: {
       />
       <Hero themeMode={themeMode} />
       <Features themeMode={themeMode} />
+      <Footer themeMode={themeMode} />
+    </div>
+  );
+}
+
+// 비회원 및 비로그인 상태에서도 접근 가능한 공개 약관 페이지 레이아웃
+function PublicInfoPage({ themeMode, setThemeMode }: {
+  themeMode: 'dark' | 'light';
+  setThemeMode: (m: 'dark' | 'light') => void;
+}) {
+  return (
+    <div className="w-full flex flex-col min-h-screen">
+      <Header
+        themeMode={themeMode}
+        setThemeMode={setThemeMode}
+        setViewMode={() => {}}
+      />
+      <main className="flex-1 px-6 py-8">
+        <InfoPage
+          themeMode={themeMode}
+          onClose={() => window.location.href = '/'}
+        />
+      </main>
+      <Footer themeMode={themeMode} />
     </div>
   );
 }
@@ -54,6 +80,12 @@ export default function App() {
             <Route
               path="/signup"
               element={<SignupPage themeMode={themeMode} />}
+            />
+
+            {/* 공개용 서비스 정보 */}
+            <Route
+              path="/info"
+              element={<PublicInfoPage themeMode={themeMode} setThemeMode={setThemeMode} />}
             />
 
             {/* 워크스페이스 (로그인 필요) */}

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { ArrowLeft } from 'lucide-react';
+import Footer from '../components/Footer';
 
 interface AuthPageProps {
   themeMode: 'dark' | 'light';
@@ -78,20 +79,15 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
       <div className="flex-1 flex items-center justify-center px-8 py-12">
         <div className="w-full max-w-sm">
           <h1 className={`font-heading font-bold text-2xl mb-2 ${isDark ? 'text-white' : 'text-[#121316]'}`}>
-            계정 만들기
+            새로운 창작 계정 만들기
           </h1>
           <p className={`text-sm mb-8 pb-2 ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
-            무료로 시작하고, 집필의 새로운 흐름을 경험하세요.
+            가입 즉시 나만의 소설 데이터베이스를 가질 수 있습니다.
           </p>
 
           {successMsg ? (
-            <div className="p-4 rounded-xl bg-[#5E6AD2]/10 border border-[#5E6AD2]/20 text-sm text-[#5E6AD2] leading-relaxed">
+            <div className="text-sm p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 leading-relaxed">
               {successMsg}
-              <div className="mt-4">
-                <Link to="/login" className="font-semibold underline">
-                  로그인 화면으로 이동
-                </Link>
-              </div>
             </div>
           ) : (
             <>
@@ -99,7 +95,7 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
                 {/* 이메일 */}
                 <div className="flex flex-col gap-1.5">
                   <label className={`text-xs font-medium ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
-                    이메일
+                    이메일 주소
                   </label>
                   <input
                     type="email"
@@ -124,7 +120,7 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
                     type="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    placeholder="•••••••• (6자 이상)"
+                    placeholder="최소 6자 이상"
                     required
                     className={`w-full px-4 py-3 rounded-xl text-sm outline-none transition-all duration-200 border
                       ${isDark
@@ -143,7 +139,7 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
                     type="password"
                     value={confirmPassword}
                     onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="••••••••"
+                    placeholder="동일하게 한 번 더 입력"
                     required
                     className={`w-full px-4 py-3 rounded-xl text-sm outline-none transition-all duration-200 border
                       ${isDark
@@ -174,13 +170,13 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
                 </button>
               </form>
               {/* 구분선 */}
-              <div className="py-2 flex items-center gap-3 my-6">
+              <div className="flex items-center gap-3 my-6 py-2">
                 <div className={`flex-1 h-px ${isDark ? 'bg-white/[0.06]' : 'bg-black/[0.06]'}`} />
                 <span className={`text-xs ${isDark ? 'text-[#3A3D50]' : 'text-[#C5C5CC]'}`}>또는</span>
                 <div className={`flex-1 h-px ${isDark ? 'bg-white/[0.06]' : 'bg-black/[0.06]'}`} />
               </div>
 
-              {/* 소셜 로그인 */}
+              {/* 소셜 가입 */}
               <div className="flex flex-col gap-3">
                 <button
                   onClick={() => handleSocialLogin('google')}
@@ -233,6 +229,8 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
           </p>
         </div>
       </div>
+
+      <Footer themeMode={themeMode} />
     </div>
   );
 }

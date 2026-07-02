@@ -4,16 +4,13 @@ import { X } from 'lucide-react';
 interface CreateProjectModalProps {
   themeMode: 'dark' | 'light';
   onClose: () => void;
-  onSubmit: (name: string, description: string, genre: string) => Promise<void>;
+  onSubmit: (name: string, description: string) => Promise<void>;
 }
-
-const GENRES = ['판타지', '무협', '현대', '로맨스', 'SF', '스릴러', '기타'];
 
 export default function CreateProjectModal({ themeMode, onClose, onSubmit }: CreateProjectModalProps) {
   const isDark = themeMode === 'dark';
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [genre, setGenre] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -29,7 +26,7 @@ export default function CreateProjectModal({ themeMode, onClose, onSubmit }: Cre
     if (!name.trim()) { setError('프로젝트 이름을 입력해 주세요.'); return; }
     setError('');
     setLoading(true);
-    await onSubmit(name.trim(), description.trim(), genre);
+    await onSubmit(name.trim(), description.trim());
     setLoading(false);
   };
 
@@ -86,30 +83,6 @@ export default function CreateProjectModal({ themeMode, onClose, onSubmit }: Cre
             />
           </div>
 
-          {/* 장르 선택 */}
-          <div className="flex flex-col gap-1.5">
-            <label className={`text-xs font-medium ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
-              장르
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {GENRES.map(g => (
-                <button
-                  key={g}
-                  type="button"
-                  onClick={() => setGenre(genre === g ? '' : g)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all duration-150 ${
-                    genre === g
-                      ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white'
-                      : isDark
-                        ? 'bg-transparent border-white/[0.08] text-[#A1A1AA] hover:border-white/20'
-                        : 'bg-transparent border-black/[0.08] text-[#55555A] hover:border-black/20'
-                  }`}
-                >
-                  {g}
-                </button>
-              ))}
-            </div>
-          </div>
 
           {/* 한 줄 소개 */}
           <div className="flex flex-col gap-1.5">

@@ -1,148 +1,122 @@
-import { useState, useEffect } from 'react';
-import { Info, X, FileText, ShieldCheck, Cpu, Copyright } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { FileText, ShieldCheck, Cpu, Copyright, X } from 'lucide-react';
 
-interface InfoModalProps {
+interface InfoPageProps {
   themeMode: 'dark' | 'light';
   onClose: () => void;
-  initialTab?: TabId;
 }
 
 type TabId = 'terms' | 'privacy' | 'ai' | 'copyright';
-
-interface TabItem {
-  id: TabId;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}
-
-const TABS: TabItem[] = [
-  { id: 'terms', label: '이용약관', icon: FileText },
-  { id: 'privacy', label: '개인정보처리방침', icon: ShieldCheck },
-  { id: 'ai', label: 'AI 서비스 안내', icon: Cpu },
-  { id: 'copyright', label: '저작권 정책', icon: Copyright },
-];
 
 const EFFECTIVE_DATE = '2025년 7월 1일';
 const SERVICE_NAME = 'Novelflow';
 const COMPANY = 'Novelflow 운영팀';
 const EMAIL = 'support@novelflow.io';
 
-export default function InfoModal({ themeMode, onClose, initialTab = 'terms' }: InfoModalProps) {
+export default function InfoPage({ themeMode, onClose }: InfoPageProps) {
   const isDark = themeMode === 'dark';
-  const [activeTab, setActiveTab] = useState<TabId>(initialTab);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') as TabId;
+  const activeTab: TabId = (tabParam && ['terms', 'privacy', 'ai', 'copyright'].includes(tabParam))
+    ? tabParam
+    : 'terms';
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+  const setActiveTab = (tab: TabId) => {
+    setSearchParams({ tab });
+  };
+
+  const MENU_ITEMS: { id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { id: 'terms', label: '이용약관', icon: FileText },
+    { id: 'privacy', label: '개인정보처리방침', icon: ShieldCheck },
+    { id: 'ai', label: 'AI 서비스 안내', icon: Cpu },
+    { id: 'copyright', label: '저작권 정책', icon: Copyright },
+  ];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-      <div className={`relative w-full max-w-2xl mx-4 rounded-2xl border shadow-2xl flex flex-col
-        max-h-[85vh] ${isDark ? 'bg-[#0D0E11] border-white/[0.08]' : 'bg-white border-black/[0.08]'}`}>
-
-        {/* 헤더 */}
-        <div className={`flex items-center justify-between px-6 py-5 border-b shrink-0 ${
-          isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'
-        }`}>
-          <div className="flex items-center gap-2">
-            <Info className="w-5 h-5 text-[#5E6AD2] shrink-0" />
-            <div>
-              <h2 className={`font-heading font-bold text-lg leading-none ${isDark ? 'text-white' : 'text-[#121316]'}`}>
-                서비스 정보
-              </h2>
-              <p className={`text-[10px] mt-1 ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
-                시행일: {EFFECTIVE_DATE}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className={`p-1.5 rounded-lg transition-colors ${
-              isDark
-                ? 'text-[#3A3D50] hover:bg-white/[0.06] hover:text-[#A1A1AA]'
-                : 'text-[#C5C5CC] hover:bg-black/[0.05] hover:text-[#55555A]'
-            }`}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        {/* 탭 */}
-        <div className={`flex border-b shrink-0 ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}`}>
-          {TABS.map(tab => {
-            const IconComponent = tab.icon;
+    <div className="w-full h-full flex flex-col overflow-hidden">
+      {/* 상단 탭 헤더 영역 */}
+      <div className={`px-8 py-4 border-b flex items-center justify-between shrink-0 ${
+        isDark ? 'border-white/[0.06] bg-[#0D0E11]' : 'bg-white border-black/[0.06]'
+      }`}>
+        {/* 항목 가로 배치 (상단 헤더) */}
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none">
+          {MENU_ITEMS.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
             return (
               <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-all border-b-2
-                  ${activeTab === tab.id
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all whitespace-nowrap
+                  ${isActive
                     ? isDark
-                      ? 'border-[#5E6AD2] text-[#7480E2]'
-                      : 'border-[#5E6AD2] text-[#5E6AD2]'
+                      ? 'bg-[#5E6AD2]/15 text-[#7480E2]'
+                      : 'bg-[#5E6AD2]/10 text-[#5E6AD2]'
                     : isDark
-                      ? 'border-transparent text-[#A1A1AA] hover:text-[#EDEDEF]'
-                      : 'border-transparent text-[#55555A] hover:text-[#121316]'
+                      ? 'text-[#A1A1AA] hover:bg-white/[0.04] hover:text-[#EDEDEF]'
+                      : 'text-[#55555A] hover:bg-black/[0.04] hover:text-[#121316]'
                   }`}
               >
-                <IconComponent className="w-3.5 h-3.5 shrink-0" />
-                <span className="hidden sm:inline">{tab.label}</span>
+                <Icon className="w-4 h-4 shrink-0" />
+                <span>{item.label}</span>
               </button>
             );
           })}
         </div>
 
-        {/* 콘텐츠 */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        {/* 닫기 버튼 */}
+        <button
+          onClick={onClose}
+          title="닫기"
+          className={`p-2 rounded-xl transition-all shrink-0 ml-4 ${
+            isDark
+              ? 'text-[#3A3D50] hover:bg-white/[0.06] hover:text-[#A1A1AA]'
+              : 'text-[#C5C5CC] hover:bg-black/[0.05] hover:text-[#55555A]'
+          }`}
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+
+      {/* 하단 상세 내용 영역 (스크롤) */}
+      <div className="flex-1 overflow-y-auto px-8 py-6">
+        <div className={`max-w-4xl mx-auto p-6 md:p-8 rounded-2xl border ${
+          isDark ? 'bg-white/[0.01] border-white/[0.06]' : 'bg-white border-black/[0.06] shadow-sm'
+        }`}>
           {activeTab === 'terms' && <TermsContent isDark={isDark} />}
           {activeTab === 'privacy' && <PrivacyContent isDark={isDark} />}
           {activeTab === 'ai' && <AiContent isDark={isDark} />}
           {activeTab === 'copyright' && <CopyrightContent isDark={isDark} />}
-        </div>
 
-        {/* 하단 */}
-        <div className={`px-6 py-4 border-t flex items-center justify-between shrink-0 ${
-          isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'
-        }`}>
-          <p className={`text-xs ${isDark ? 'text-[#3A3D50]' : 'text-[#C5C5CC]'}`}>
-            문의: <a href={`mailto:${EMAIL}`} className="text-[#5E6AD2] hover:underline">{EMAIL}</a>
-          </p>
-          <button
-            onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-[#5E6AD2] text-white text-xs font-semibold
-              hover:bg-[#7480E2] transition-all duration-150"
-          >
-            확인
-          </button>
+          {/* 메타 하단 푸터 고지 */}
+          <div className={`mt-10 pt-6 border-t text-xs leading-5 flex flex-col sm:flex-row sm:justify-between sm:items-center ${
+            isDark ? 'border-white/[0.06] text-[#3A3D50]' : 'border-black/[0.06] text-[#C5C5CC]'
+          }`}>
+            <p>시행일자: {EFFECTIVE_DATE} | {COMPANY}</p>
+            <p className="mt-1 sm:mt-0">문의 및 접수처: <a href={`mailto:${EMAIL}`} className="text-[#5E6AD2] hover:underline">{EMAIL}</a></p>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/* ─── 섹션 헬퍼 ─── */
+/* ─── 공통 섹션 컴포넌트 ─── */
 function Section({ title, children, isDark }: { title: string; children: React.ReactNode; isDark: boolean }) {
   return (
-    <section className="mb-7">
-      <h3 className={`font-heading font-bold text-sm mb-3 pb-2 border-b ${
+    <section className="mb-8">
+      <h3 className={`font-heading font-bold text-base mb-4 pb-2 border-b ${
         isDark ? 'text-white border-white/[0.06]' : 'text-[#121316] border-black/[0.06]'
       }`}>{title}</h3>
-      <div className={`text-xs leading-6 space-y-2 ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
+      <div className={`text-sm leading-7 space-y-3 ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
         {children}
       </div>
     </section>
   );
 }
 
-function P({ children }: { children: React.ReactNode }) {
-  return <p>{children}</p>;
+function P({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <p className={className}>{children}</p>;
 }
 
 function Li({ children }: { children: React.ReactNode }) {
