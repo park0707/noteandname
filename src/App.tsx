@@ -8,7 +8,7 @@ import Hero from './components/Hero';
 import Features from './components/Features';
 import LoginPage from './pages/LoginPage';
 import SignupPage from './pages/SignupPage';
-import AppPage from './pages/AppPage';
+import WorkspacePage from './pages/WorkspacePage';
 
 // 랜딩 페이지 레이아웃 (Header + Hero + Features)
 function LandingPage({ themeMode, setThemeMode }: {
@@ -61,7 +61,7 @@ export default function App() {
               path="/app"
               element={
                 <ProtectedRoute>
-                  <AppPage themeMode={themeMode} />
+                  <WorkspacePage themeMode={themeMode} />
                 </ProtectedRoute>
               }
             />

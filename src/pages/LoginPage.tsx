@@ -1,6 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
+import { ArrowLeft } from 'lucide-react';
 
 interface AuthPageProps {
   themeMode: 'dark' | 'light';
@@ -8,6 +10,7 @@ interface AuthPageProps {
 
 export default function LoginPage({ themeMode }: AuthPageProps) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const isDark = themeMode === 'dark';
 
   const [email, setEmail] = useState('');
@@ -16,19 +19,25 @@ export default function LoginPage({ themeMode }: AuthPageProps) {
   const [loading, setLoading] = useState(false);
   const [socialLoading, setSocialLoading] = useState<'google' | 'kakao' | null>(null);
 
+  // 이미 로그인된 상태거나 로그인 완료 후 자동으로 /app으로 이동
+  useEffect(() => {
+    if (user) navigate('/app');
+  }, [user, navigate]);
+
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setError('이메일 또는 비밀번호가 올바르지 않습니다.');
-    } else {
-      navigate('/');
+      setLoading(false);
+    } else if (data.session) {
+      // 세션 확인 즉시 이동 (onAuthStateChange와 무관하게 확실히 처리)
+      navigate('/app');
     }
-    setLoading(false);
   };
 
   const handleSocialLogin = async (provider: 'google' | 'kakao') => {
@@ -52,7 +61,7 @@ export default function LoginPage({ themeMode }: AuthPageProps) {
           className={`inline-flex items-center gap-2 text-sm font-medium transition-colors ${isDark ? 'text-[#A1A1AA] hover:text-[#EDEDEF]' : 'text-[#55555A] hover:text-[#121316]'
             }`}
         >
-          <span className="text-base">←</span>
+          <ArrowLeft className="w-4 h-4 shrink-0" />
           이전으로
         </Link>
       </div>

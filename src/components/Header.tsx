@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 interface HeaderProps {
   themeMode: 'dark' | 'light';
@@ -7,6 +8,8 @@ interface HeaderProps {
 }
 
 export default function Header({ themeMode, setThemeMode }: HeaderProps) {
+  const { user, signOut } = useAuth();
+
   return (
     <header className={`w-full h-20 border-b sticky top-0 backdrop-blur-md z-50 transition-colors duration-300 ${themeMode === 'dark' ? 'border-white/[0.06] bg-[#08090A]/85' : 'border-black/[0.06] bg-[#F4F4F6]/85'
       }`}>
@@ -34,22 +37,40 @@ export default function Header({ themeMode, setThemeMode }: HeaderProps) {
             {themeMode === 'dark' ? '☀️' : '🌙'}
           </button>
 
-          {/* 로그인 */}
-          <Link
-            to="/login"
-            className={`text-[20px] font-semibold transition-colors ${themeMode === 'dark' ? 'text-[#A1A1AA] hover:text-[#EDEDEF]' : 'text-[#555] hover:text-black'
-              }`}
-          >
-            로그인
-          </Link>
-
-          {/* 회원가입 */}
-          <Link
-            to="/signup"
-            className="btn btn-primary px-5 py-2 text-[20px] rounded-lg hover:shadow-lg transition-all cursor-pointer"
-          >
-            회원가입
-          </Link>
+          {user ? (
+            /* 로그인 상태: 워크스페이스 이동 + 로그아웃 */
+            <>
+              <Link
+                to="/app"
+                className={`text-[18px] font-semibold transition-colors ${themeMode === 'dark' ? 'text-[#A1A1AA] hover:text-[#EDEDEF]' : 'text-[#555] hover:text-black'}`}
+              >
+                워크스페이스
+              </Link>
+              <button
+                onClick={signOut}
+                className={`text-[18px] font-semibold transition-colors ${themeMode === 'dark' ? 'text-[#A1A1AA] hover:text-red-400' : 'text-[#555] hover:text-red-500'}`}
+              >
+                로그아웃
+              </button>
+            </>
+          ) : (
+            /* 비로그인 상태: 로그인 + 회원가입 */
+            <>
+              <Link
+                to="/login"
+                className={`text-[20px] font-semibold transition-colors ${themeMode === 'dark' ? 'text-[#A1A1AA] hover:text-[#EDEDEF]' : 'text-[#555] hover:text-black'
+                  }`}
+              >
+                로그인
+              </Link>
+              <Link
+                to="/signup"
+                className="btn btn-primary px-5 py-2 text-[20px] rounded-lg hover:shadow-lg transition-all cursor-pointer"
+              >
+                회원가입
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </header>

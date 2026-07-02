@@ -1,13 +1,32 @@
 import { useEffect, useRef } from 'react';
+import {
+  Sparkles,
+  Scale,
+  Network,
+  GitCommit,
+  Link2,
+  BookOpen,
+  Map
+} from 'lucide-react';
 
 interface FeaturesProps {
   themeMode: 'dark' | 'light';
 }
 
-const FEATURES = [
+interface FeatureItem {
+  number: string;
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  title: string;
+  subtitle: string;
+  description: string;
+  tags: string[];
+  accent: string;
+}
+
+const FEATURES: FeatureItem[] = [
   {
     number: '01',
-    icon: '✨',
+    icon: Sparkles,
     title: 'AI 작명 엔진',
     subtitle: '장르와 세계관에 어울리는 이름을 손 쉽게 생성',
     description:
@@ -17,7 +36,7 @@ const FEATURES = [
   },
   {
     number: '02',
-    icon: '⚖️',
+    icon: Scale,
     title: '자모 유사도 필터',
     subtitle: '어감 중복을 기술로 원천 차단',
     description:
@@ -27,7 +46,7 @@ const FEATURES = [
   },
   {
     number: '03',
-    icon: '🕸️',
+    icon: Network,
     title: '인물 관계도 캔버스',
     subtitle: '드래그 한 번으로 수십 명의 인물 관계를 한눈에',
     description:
@@ -37,7 +56,7 @@ const FEATURES = [
   },
   {
     number: '04',
-    icon: '⏳',
+    icon: GitCommit,
     title: '복선 타임라인',
     subtitle: '심은 복선을 잊지 않도록, 시스템이 기억합니다',
     description:
@@ -47,7 +66,7 @@ const FEATURES = [
   },
   {
     number: '05',
-    icon: '🔗',
+    icon: Link2,
     title: '노션 양방향 동기화',
     subtitle: '노션의 자유로움과 노벨플로우의 정밀함을 동시에',
     description:
@@ -57,7 +76,7 @@ const FEATURES = [
   },
   {
     number: '06',
-    icon: '📖',
+    icon: BookOpen,
     title: '캐릭터 히스토리',
     subtitle: '캐릭터의 성장과 변화를 회차 단위로 추적',
     description:
@@ -67,7 +86,7 @@ const FEATURES = [
   },
   {
     number: '07',
-    icon: '🗺️',
+    icon: Map,
     title: '세계관 지도 편집기',
     subtitle: '단순한 그림이 아닌 서사 관리와 시각화를 하나로',
     description:
@@ -119,70 +138,73 @@ export default function Features({ themeMode }: FeaturesProps) {
 
       {/* 기능 카드 목록 */}
       <div className="w-ful mx-auto px-12 md:px-24 flex flex-col gap-6">
-        {FEATURES.map((feat, idx) => (
-          <div
-            key={feat.number}
-            ref={(el) => { itemRefs.current[idx] = el; }}
-            className="feature-item"
-          >
-            <div className={`
-              group relative rounded-2xl border p-8 md:p-10 overflow-hidden
-              transition-all duration-300 cursor-default
-              ${isDark
-                ? 'bg-[#0D0E11] border-white/[0.06] hover:border-white/[0.14] hover:bg-[#111215]'
-                : 'bg-white border-black/[0.06] hover:border-black/[0.14] hover:shadow-lg'
-              }
-            `}>
-              {/* 배경 액센트 글로우 (다크 모드) */}
-              {isDark && (
-                <div
-                  className="absolute -top-16 -right-16 w-48 h-48 rounded-full blur-3xl opacity-0 group-hover:opacity-10 transition-opacity duration-500 pointer-events-none"
-                  style={{ backgroundColor: feat.accent }}
-                />
-              )}
-
-              <div className="relative flex flex-col md:flex-row md:items-start gap-6 md:gap-10">
-                {/* 번호 + 아이콘 */}
-                <div className="flex-shrink-0 flex flex-col items-start gap-3">
-                  <span className={`font-heading font-bold text-xs tracking-widest ${isDark ? 'text-[#3A3D50]' : 'text-[#C5C5CC]'}`}>
-                    {feat.number}
-                  </span>
+        {FEATURES.map((feat, idx) => {
+          const IconComponent = feat.icon;
+          return (
+            <div
+              key={feat.number}
+              ref={(el) => { itemRefs.current[idx] = el; }}
+              className="feature-item"
+            >
+              <div className={`
+                group relative rounded-2xl border p-8 md:p-10 overflow-hidden
+                transition-all duration-300 cursor-default
+                ${isDark
+                  ? 'bg-[#0D0E11] border-white/[0.06] hover:border-white/[0.14] hover:bg-[#111215]'
+                  : 'bg-white border-black/[0.06] hover:border-black/[0.14] hover:shadow-lg'
+                }
+              `}>
+                {/* 배경 액센트 글로우 (다크 모드) */}
+                {isDark && (
                   <div
-                    className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl"
-                    style={{ backgroundColor: `${feat.accent}18`, border: `1px solid ${feat.accent}30` }}
-                  >
-                    {feat.icon}
-                  </div>
-                </div>
+                    className="absolute -top-16 -right-16 w-48 h-48 rounded-full blur-3xl opacity-0 group-hover:opacity-10 transition-opacity duration-500 pointer-events-none"
+                    style={{ backgroundColor: feat.accent }}
+                  />
+                )}
 
-                {/* 본문 */}
-                <div className="flex-1 min-w-0">
-                  <h3 className={`font-heading font-bold text-xl mb-1 ${isDark ? 'text-white' : 'text-[#121316]'}`}>
-                    {feat.title}
-                  </h3>
-                  <p className="text-sm font-medium mb-4" style={{ color: feat.accent }}>
-                    {feat.subtitle}
-                  </p>
-                  <p className={`text-sm leading-relaxed mb-6 ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
-                    {feat.description}
-                  </p>
-                  {/* 태그 */}
-                  <div className="flex flex-wrap gap-2">
-                    {feat.tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className={`text-xs px-3 py-1 rounded-full font-medium ${isDark ? 'bg-white/[0.05] text-[#A1A1AA]' : 'bg-black/[0.05] text-[#55555A]'
-                          }`}
-                      >
-                        {tag}
-                      </span>
-                    ))}
+                <div className="relative flex flex-col md:flex-row md:items-start gap-6 md:gap-10">
+                  {/* 번호 + 아이콘 */}
+                  <div className="flex-shrink-0 flex flex-col items-start gap-3">
+                    <span className={`font-heading font-bold text-xs tracking-widest ${isDark ? 'text-[#3A3D50]' : 'text-[#C5C5CC]'}`}>
+                      {feat.number}
+                    </span>
+                    <div
+                      className="w-12 h-12 rounded-xl flex items-center justify-center"
+                      style={{ backgroundColor: `${feat.accent}18`, border: `1px solid ${feat.accent}30` }}
+                    >
+                      <IconComponent className="w-5 h-5 shrink-0" style={{ color: feat.accent }} />
+                    </div>
+                  </div>
+
+                  {/* 본문 */}
+                  <div className="flex-1 min-w-0">
+                    <h3 className={`font-heading font-bold text-xl mb-1 ${isDark ? 'text-white' : 'text-[#121316]'}`}>
+                      {feat.title}
+                    </h3>
+                    <p className="text-sm font-medium mb-4" style={{ color: feat.accent }}>
+                      {feat.subtitle}
+                    </p>
+                    <p className={`text-sm leading-relaxed mb-6 ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
+                      {feat.description}
+                    </p>
+                    {/* 태그 */}
+                    <div className="flex flex-wrap gap-2">
+                      {feat.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className={`text-xs px-3 py-1 rounded-full font-medium ${isDark ? 'bg-white/[0.05] text-[#A1A1AA]' : 'bg-black/[0.05] text-[#55555A]'
+                            }`}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </section>
   );

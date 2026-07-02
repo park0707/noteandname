@@ -21,18 +21,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 초기 세션 확인
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
+    // onAuthStateChange가 초기 세션 포함 모든 변경을 처리하는 Supabase 권장 패턴
+    // INITIAL_SESSION 이벤트가 현재 세션 상태를 즉시 전달함
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        setSession(session);
+        setLoading(false); // 초기 로드 포함 모든 이벤트 후 loading 해제
+      }
+    );
 
-    // 세션 변경 구독 (로그인/로그아웃 이벤트)
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => listener.subscription.unsubscribe();
+    return () => subscription.unsubscribe();
   }, []);
 
   const signOut = async () => {

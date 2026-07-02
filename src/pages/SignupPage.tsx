@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { ArrowLeft } from 'lucide-react';
 
 interface AuthPageProps {
   themeMode: 'dark' | 'light';
@@ -68,7 +69,7 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
           className={`inline-flex items-center gap-2 text-sm font-medium transition-colors ${isDark ? 'text-[#A1A1AA] hover:text-[#EDEDEF]' : 'text-[#55555A] hover:text-[#121316]'
             }`}
         >
-          <span className="text-base">←</span>
+          <ArrowLeft className="w-4 h-4 shrink-0" />
           이전으로
         </Link>
       </div>
