@@ -17,7 +17,28 @@ import {
   EyeOff,
   User,
   Layers,
-  ChevronRight
+  ChevronRight,
+  FileText,
+  Maximize2,
+  Minimize2,
+  Search,
+  Settings,
+  Undo,
+  Redo,
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
+  List,
+  ListOrdered,
+  Grid,
+  Link,
+  ChevronDown,
+  ChevronLeft
 } from 'lucide-react';
 import InfoPage from './InfoPage';
 
@@ -25,24 +46,24 @@ interface Project {
   id: string;
   name: string;
   description: string;
-  genre: string;
   created_at: string;
   updated_at: string;
+}
+
+interface Episode {
+  id: string;
+  projectId: string;
+  title: string;
+  content: string;
+  wordCount: number;
+  updatedAt: string;
 }
 
 interface WorkspacePageProps {
   themeMode: 'dark' | 'light';
 }
 
-const GENRE_COLORS: Record<string, string> = {
-  '판타지': '#5E6AD2',
-  '무협': '#E2487A',
-  '현대': '#2ECC71',
-  '로맨스': '#E91E8C',
-  'SF': '#00BCD4',
-  '스릴러': '#F39C12',
-  '기타': '#A1A1AA',
-};
+
 
 function formatDate(iso: string) {
   const d = new Date(iso);
@@ -117,6 +138,8 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [editingName, setEditingName] = useState(false);
+  const [editingNameValue, setEditingNameValue] = useState('');
 
   // -----------------------------------------------------------
   // [LIFTED STATES] Hook Rules 준수를 위해 상위 컴포넌트로 상태 승격
@@ -147,6 +170,37 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
   // 5. 세계관 지도 편집기
   const [worldMapSnapshotIdx, setWorldMapSnapshotIdx] = useState(0);
 
+  // 6. 집필실 (Writing Editor)
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
+  const [isFocusMode, setIsFocusMode] = useState(false);
+  const [targetWordCount, setTargetWordCount] = useState(3000);
+  const [editorSaveStatus, setEditorSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [editorFontSize, setEditorFontSize] = useState(16);
+  const [editorFontFamily, setEditorFontFamily] = useState('나눔고딕');
+  const [innerSidebarCollapsed, setInnerSidebarCollapsed] = useState(false);
+  const [writingSearchQuery, setWritingSearchQuery] = useState('');
+  const [trashEpisodes, setTrashEpisodes] = useState<Episode[]>([]);
+  const [showTrashModal, setShowTrashModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'document' | 'characters' | 'plot'>('document');
+  const [showStatsDropdown, setShowStatsDropdown] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showBgColorPicker, setShowBgColorPicker] = useState(false);
+
+  const editorRef = useRef<HTMLDivElement | null>(null);
+
+  const activeEpisode = episodes.find(ep => ep.id === selectedEpisodeId) || null;
+
+  // selectedEpisodeId 변경 시 editorRef.current.innerHTML을 원고 내용으로 동기화
+  useEffect(() => {
+    if (editorRef.current && activeEpisode) {
+      if (editorRef.current.innerHTML !== activeEpisode.content) {
+        editorRef.current.innerHTML = activeEpisode.content || '';
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEpisodeId]);
+
   // 프로젝트 목록 불러오기
   const fetchProjects = useCallback(async () => {
     setLoadingProjects(true);
@@ -165,7 +219,6 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
             id: 'mock-p1',
             name: '검은 마법사의 최후',
             description: '세계관 지도와 캐릭터 히스토리가 살아 숨쉬는 현대 판타지 웹소설',
-            genre: '판타지',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
@@ -173,7 +226,6 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
             id: 'mock-p2',
             name: '청풍검가',
             description: '강호를 휩쓰는 푸른 바람의 검객 서사시',
-            genre: '무협',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           }
@@ -209,6 +261,94 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     return () => clearTimeout(timer);
   }, [notes, selectedProject]);
 
+  // 프로젝트 선택 시 해당 에피소드(회차) 자동 로드
+  useEffect(() => {
+    if (selectedProject) {
+      const epKey = `novelflow_episodes_${selectedProject.id}`;
+      const saved = localStorage.getItem(epKey);
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved) as Episode[];
+          setEpisodes(parsed);
+          if (parsed.length > 0) {
+            setSelectedEpisodeId(parsed[0].id);
+          } else {
+            setSelectedEpisodeId(null);
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      } else {
+        // 기본 모의 에피소드 데이터 초기화
+        const initialEpisodes: Episode[] = [
+          {
+            id: 'ep-1',
+            projectId: selectedProject.id,
+            title: '제 1화: 깨어난 별빛',
+            content: '별빛이 어둠 속에서 깨어났다. 하늘을 가로지르는 차가운 성광(星光) 아래, 소년은 긴 잠에서 깨어났다. 주위는 온통 고요했고, 오직 바람만이 나뭇잎을 흔드는 스산한 소리만이 숲속을 채우고 있었다.\n\n"여기는 어디지?"\n\n소년은 자신의 손을 바라보았다. 검푸른 별빛의 마력이 은은하게 맴돌고 있었다.',
+            wordCount: 125,
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: 'ep-2',
+            projectId: selectedProject.id,
+            title: '제 2화: 위험한 의뢰',
+            content: '주점 구석에서 조용히 술을 마시던 유진에게 검은 망토의 사내가 다가왔다. 사내는 탁자 위에 낡은 양가죽 지도를 내려놓으며 나지막한 목소리로 말했다.\n\n"그림자 숲의 중심부로 안내해주게. 대가는 넉넉히 지불하지."\n\n그림자 숲. 그곳은 살아서 돌아온 자가 없다는 죽음의 땅이었다.',
+            wordCount: 135,
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: 'ep-3',
+            projectId: selectedProject.id,
+            title: '제 3화: 그림자 숲의 정체',
+            content: '그림자 숲의 입구는 거대한 괴물의 아가리처럼 아가리를 벌리고 있었다. 안개는 한 치 앞도 내다볼 수 없을 정도로 짙었고, 나무들은 기괴하게 비틀린 채 하늘을 가리고 있었다.\n\n"정말 괜찮겠나?"\n\n사내가 뒤를 돌아보며 물었지만, 유진은 이미 묵묵히 첫걸음을 내딛고 있었다.',
+            wordCount: 134,
+            updatedAt: new Date().toISOString(),
+          }
+        ];
+        setEpisodes(initialEpisodes);
+        setSelectedEpisodeId('ep-1');
+        localStorage.setItem(epKey, JSON.stringify(initialEpisodes));
+      }
+
+      // 휴지통 로드
+      const trashKey = `novelflow_trash_${selectedProject.id}`;
+      const savedTrash = localStorage.getItem(trashKey);
+      if (savedTrash) {
+        try {
+          setTrashEpisodes(JSON.parse(savedTrash) as Episode[]);
+        } catch (e) {
+          console.error(e);
+        }
+      } else {
+        setTrashEpisodes([]);
+      }
+    } else {
+      setEpisodes([]);
+      setSelectedEpisodeId(null);
+      setTrashEpisodes([]);
+    }
+  }, [selectedProject]);
+
+  // 에피소드 변경 시 자동 저장 및 로컬 스토리지 동기화
+  useEffect(() => {
+    if (!selectedProject || episodes.length === 0) return;
+    setEditorSaveStatus('saving');
+    const timer = setTimeout(() => {
+      const epKey = `novelflow_episodes_${selectedProject.id}`;
+      localStorage.setItem(epKey, JSON.stringify(episodes));
+      setEditorSaveStatus('saved');
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [episodes, selectedProject]);
+
+  // 휴지통 에피소드 변경 시 자동 저장
+  useEffect(() => {
+    if (!selectedProject) return;
+    const trashKey = `novelflow_trash_${selectedProject.id}`;
+    localStorage.setItem(trashKey, JSON.stringify(trashEpisodes));
+  }, [trashEpisodes, selectedProject]);
+
   // 프로젝트 생성
   const handleCreateProject = async (name: string, description: string) => {
     if (!user) return;
@@ -217,7 +357,6 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
         id: `mock-p-${Date.now()}`,
         name,
         description,
-        genre: '기타',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -230,7 +369,6 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
       user_id: user.id,
       name,
       description,
-      genre: '기타'
     });
     if (!error) {
       setShowCreateModal(false);
@@ -258,6 +396,68 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     }
   };
 
+  // 에피소드(회차) 집필 관련 핸들러
+
+  const handleTitleChange = (newTitle: string) => {
+    if (!selectedEpisodeId) return;
+    setEpisodes(prev =>
+      prev.map(ep =>
+        ep.id === selectedEpisodeId
+          ? { ...ep, title: newTitle, updatedAt: new Date().toISOString() }
+          : ep
+      )
+    );
+  };
+
+  const handleAddEpisode = () => {
+    if (!selectedProject) return;
+    const newEp: Episode = {
+      id: `ep-${Date.now()}`,
+      projectId: selectedProject.id,
+      title: `제 ${episodes.length + 1}화: 새로운 회차`,
+      content: '',
+      wordCount: 0,
+      updatedAt: new Date().toISOString(),
+    };
+    setEpisodes(prev => [...prev, newEp]);
+    setSelectedEpisodeId(newEp.id);
+  };
+
+  const handleDeleteEpisode = (epId: string) => {
+    const toDelete = episodes.find(ep => ep.id === epId);
+    if (!toDelete) return;
+    if (!confirm('이 문서를 휴지통으로 이동하시겠습니까?')) return;
+
+    // Add to trash
+    setTrashEpisodes(prev => [...prev, toDelete]);
+
+    // Remove from active list
+    setEpisodes(prev => prev.filter(ep => ep.id !== epId));
+    if (selectedEpisodeId === epId) {
+      const remaining = episodes.filter(ep => ep.id !== epId);
+      if (remaining.length > 0) {
+        setSelectedEpisodeId(remaining[0].id);
+      } else {
+        setSelectedEpisodeId(null);
+      }
+    }
+  };
+
+  const handleRestoreEpisode = (epId: string) => {
+    const toRestore = trashEpisodes.find(ep => ep.id === epId);
+    if (!toRestore) return;
+
+    // Move back to episodes
+    setEpisodes(prev => [...prev, toRestore]);
+    setTrashEpisodes(prev => prev.filter(ep => ep.id !== epId));
+    setSelectedEpisodeId(toRestore.id);
+  };
+
+  const handlePermanentlyDeleteEpisode = (epId: string) => {
+    if (!confirm('이 문서를 영구적으로 삭제하시겠습니까? 복구할 수 없습니다.')) return;
+    setTrashEpisodes(prev => prev.filter(ep => ep.id !== epId));
+  };
+
   // -----------------------------------------------------------
   // [SUB-VIEW] 1. 프로젝트 대시보드 (Home)
   // -----------------------------------------------------------
@@ -280,21 +480,13 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     return (
       <div className="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-6">
         {/* 프로젝트 개요 헤더 */}
-        <div className={`p-6 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-          isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-        }`}>
+        <div className={`p-6 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+          }`}>
           <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold uppercase ${
-                isDark ? 'bg-white/[0.06] text-[#A1A1AA]' : 'bg-black/[0.05] text-[#55555A]'
-              }`}>
-                {selectedProject.genre || '장르 미지정'}
-              </span>
-              <span className={`text-xs ${isDark ? 'text-[#3A3D50]' : 'text-[#C5C5CC]'}`}>
-                생성일: {formatDate(selectedProject.created_at)}
-              </span>
-            </div>
-            <h2 className={`font-heading font-bold text-2xl mb-1.5 ${isDark ? 'text-white' : 'text-[#121316]'}`}>
+            <span className={`text-xs ${isDark ? 'text-[#3A3D50]' : 'text-[#C5C5CC]'}`}>
+              생성일: {formatDate(selectedProject.created_at)}
+            </span>
+            <h2 className={`font-heading font-bold text-2xl mb-1.5 mt-1 ${isDark ? 'text-white' : 'text-[#121316]'}`}>
               {selectedProject.name}
             </h2>
             <p className={`text-sm ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
@@ -309,30 +501,26 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
           <div className="lg:col-span-2 flex flex-col gap-6">
             {/* 통계 요약 */}
             <div className="grid grid-cols-3 gap-4">
-              <div className={`p-5 rounded-2xl border flex flex-col gap-1 ${
-                isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-              }`}>
+              <div className={`p-5 rounded-2xl border flex flex-col gap-1 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+                }`}>
                 <span className={`text-xs font-semibold ${isDark ? 'text-[#3A3D50]' : 'text-[#A1A1AA]'}`}>전체 자수</span>
                 <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-[#121316]'}`}>{totalWords.toLocaleString()} 자</span>
               </div>
-              <div className={`p-5 rounded-2xl border flex flex-col gap-1 ${
-                isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-              }`}>
+              <div className={`p-5 rounded-2xl border flex flex-col gap-1 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+                }`}>
                 <span className={`text-xs font-semibold ${isDark ? 'text-[#3A3D50]' : 'text-[#A1A1AA]'}`}>챕터 수</span>
                 <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-[#121316]'}`}>{mockChapters.length} 화</span>
               </div>
-              <div className={`p-5 rounded-2xl border flex flex-col gap-1 ${
-                isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-              }`}>
+              <div className={`p-5 rounded-2xl border flex flex-col gap-1 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+                }`}>
                 <span className={`text-xs font-semibold ${isDark ? 'text-[#3A3D50]' : 'text-[#A1A1AA]'}`}>등록 인물</span>
                 <span className={`text-lg font-bold ${isDark ? 'text-white' : 'text-[#121316]'}`}>3 명</span>
               </div>
             </div>
 
             {/* 목표 달성 트래커 */}
-            <div className={`p-6 rounded-2xl border flex flex-col gap-3 ${
-              isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-            }`}>
+            <div className={`p-6 rounded-2xl border flex flex-col gap-3 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+              }`}>
               <div className="flex items-center justify-between">
                 <span className={`text-sm font-semibold ${isDark ? 'text-[#EDEDEF]' : 'text-[#121316]'}`}>1권 완결 목표 달성도</span>
                 <span className="text-xs font-medium text-[#5E6AD2]">44.1% ({totalWords.toLocaleString()}자 / 100,000자)</span>
@@ -343,9 +531,8 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
             </div>
 
             {/* 최근 원고 리스트 */}
-            <div className={`p-6 rounded-2xl border flex flex-col gap-4 ${
-              isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-            }`}>
+            <div className={`p-6 rounded-2xl border flex flex-col gap-4 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+              }`}>
               <div className="flex items-center justify-between">
                 <h3 className={`font-heading font-bold text-base ${isDark ? 'text-white' : 'text-[#121316]'}`}>최근 집필 원고</h3>
                 <button className="text-xs font-bold text-[#5E6AD2] hover:underline flex items-center gap-1">
@@ -354,16 +541,14 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
               </div>
               <div className="flex flex-col gap-2">
                 {mockChapters.map(ch => (
-                  <div key={ch.id} className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${
-                    isDark ? 'border-white/[0.04] bg-white/[0.01] hover:bg-white/[0.03]' : 'border-black/[0.04] bg-black/[0.01] hover:bg-black/[0.03]'
-                  }`}>
+                  <div key={ch.id} className={`flex items-center justify-between p-3 rounded-xl border transition-colors ${isDark ? 'border-white/[0.04] bg-white/[0.01] hover:bg-white/[0.03]' : 'border-black/[0.04] bg-black/[0.01] hover:bg-black/[0.03]'
+                    }`}>
                     <div>
                       <p className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-[#121316]'}`}>{ch.title}</p>
                       <p className={`text-xs ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>{ch.words.toLocaleString()} 자 · {ch.date}</p>
                     </div>
-                    <button className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition-colors ${
-                      isDark ? 'border-white/[0.08] text-[#A1A1AA] hover:text-white hover:bg-white/[0.05]' : 'border-black/[0.08] text-[#55555A] hover:text-[#121316] hover:bg-black/[0.05]'
-                    }`}>
+                    <button className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition-colors ${isDark ? 'border-white/[0.08] text-[#A1A1AA] hover:text-white hover:bg-white/[0.05]' : 'border-black/[0.08] text-[#55555A] hover:text-[#121316] hover:bg-black/[0.05]'
+                      }`}>
                       수정
                     </button>
                   </div>
@@ -375,14 +560,12 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
           {/* 오른쪽: 메모장 및 요약 위젯 */}
           <div className="flex flex-col gap-6">
             {/* 실시간 메모장 */}
-            <div className={`p-6 rounded-2xl border flex flex-col gap-3 flex-1 min-h-[280px] ${
-              isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-            }`}>
+            <div className={`p-6 rounded-2xl border flex flex-col gap-3 flex-1 min-h-[280px] ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+              }`}>
               <div className="flex items-center justify-between">
                 <h3 className={`font-heading font-bold text-base ${isDark ? 'text-white' : 'text-[#121316]'}`}>아이디어 데스크 메모</h3>
-                <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                  saveStatus === 'saved' ? 'bg-[#2ECC71]/15 text-[#2ECC71]' : 'bg-[#F39C12]/15 text-[#F39C12]'
-                }`}>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full ${saveStatus === 'saved' ? 'bg-[#2ECC71]/15 text-[#2ECC71]' : 'bg-[#F39C12]/15 text-[#F39C12]'
+                  }`}>
                   {saveStatus === 'saved' ? '저장 완료' : '저장 중...'}
                 </span>
               </div>
@@ -390,22 +573,19 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
                 value={notes}
                 onChange={e => handleNotesChange(e.target.value)}
                 placeholder="마감 일정, 복선 복기, 혹은 떠오르는 아이디어를 즉흥적으로 기록하세요..."
-                className={`flex-1 w-full p-4 rounded-xl text-sm outline-none border resize-none leading-relaxed transition-all duration-200 ${
-                  isDark
-                    ? 'bg-[#121316] border-white/[0.06] text-[#EDEDEF] placeholder-[#3A3D50] focus:border-[#5E6AD2]'
-                    : 'bg-[#F8F8FA] border-black/[0.06] text-[#121316] placeholder-[#C5C5CC] focus:border-[#5E6AD2]'
-                }`}
+                className={`flex-1 w-full p-4 rounded-xl text-sm outline-none border resize-none leading-relaxed transition-all duration-200 ${isDark
+                  ? 'bg-[#121316] border-white/[0.06] text-[#EDEDEF] placeholder-[#3A3D50] focus:border-[#5E6AD2]'
+                  : 'bg-[#F8F8FA] border-black/[0.06] text-[#121316] placeholder-[#C5C5CC] focus:border-[#5E6AD2]'
+                  }`}
               />
             </div>
 
             {/* 세계관 지도 위젯 */}
-            <div className={`p-5 rounded-2xl border flex flex-col gap-4 ${
-              isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-            }`}>
-              <h3 className={`font-heading font-bold text-sm ${isDark ? 'text-white' : 'text-[#121316]'}`}>세계관 지도 요약</h3>
-              <div className={`relative h-28 rounded-xl border overflow-hidden flex items-center justify-center ${
-                isDark ? 'bg-white/[0.02] border-white/[0.04]' : 'bg-black/[0.02] border-black/[0.04]'
+            <div className={`p-5 rounded-2xl border flex flex-col gap-4 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
               }`}>
+              <h3 className={`font-heading font-bold text-sm ${isDark ? 'text-white' : 'text-[#121316]'}`}>세계관 지도 요약</h3>
+              <div className={`relative h-28 rounded-xl border overflow-hidden flex items-center justify-center ${isDark ? 'bg-white/[0.02] border-white/[0.04]' : 'bg-black/[0.02] border-black/[0.04]'
+                }`}>
                 <div className="absolute inset-0 flex items-center justify-center opacity-30 pointer-events-none">
                   <Globe className="w-16 h-16 text-[#5E6AD2]" />
                 </div>
@@ -489,17 +669,15 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className={`p-6 rounded-2xl border flex flex-col gap-4 h-fit ${
-            isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-          }`}>
+          <div className={`p-6 rounded-2xl border flex flex-col gap-4 h-fit ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+            }`}>
             <div className="flex flex-col gap-1.5">
               <label className={`text-xs font-semibold ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>세계관 분위기</label>
               <select
                 value={namingConcept}
                 onChange={e => setNamingConcept(e.target.value)}
-                className={`px-3 py-2.5 rounded-lg text-sm border outline-none ${
-                  isDark ? 'bg-[#121316] border-white/[0.08] text-white' : 'bg-[#F8F8FA] border-black/[0.08] text-[#121316]'
-                }`}
+                className={`px-3 py-2.5 rounded-lg text-sm border outline-none ${isDark ? 'bg-[#121316] border-white/[0.08] text-white' : 'bg-[#F8F8FA] border-black/[0.08] text-[#121316]'
+                  }`}
               >
                 <option value="fantasy">판타지 서양풍</option>
                 <option value="wuxia">무협 동양풍</option>
@@ -516,13 +694,12 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
                     key={g}
                     type="button"
                     onClick={() => setNamingGender(g)}
-                    className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-colors ${
-                      namingGender === g
-                        ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white'
-                        : isDark
-                          ? 'border-white/[0.08] text-[#A1A1AA] hover:border-white/20'
-                          : 'border-black/[0.08] text-[#55555A] hover:border-black/20'
-                    }`}
+                    className={`flex-1 py-2 rounded-lg text-xs font-medium border transition-colors ${namingGender === g
+                      ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white'
+                      : isDark
+                        ? 'border-white/[0.08] text-[#A1A1AA] hover:border-white/20'
+                        : 'border-black/[0.08] text-[#55555A] hover:border-black/20'
+                      }`}
                   >
                     {g === 'all' ? '중성' : g === 'male' ? '남성풍' : '여성풍'}
                   </button>
@@ -537,9 +714,8 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
                 value={namingKeywords}
                 onChange={e => setNamingKeywords(e.target.value)}
                 placeholder="예) 빛, 칼, 어둠"
-                className={`px-3 py-2.5 rounded-lg text-sm border outline-none ${
-                  isDark ? 'bg-[#121316] border-white/[0.08] text-white' : 'bg-[#F8F8FA] border-black/[0.08] text-[#121316]'
-                }`}
+                className={`px-3 py-2.5 rounded-lg text-sm border outline-none ${isDark ? 'bg-[#121316] border-white/[0.08] text-white' : 'bg-[#F8F8FA] border-black/[0.08] text-[#121316]'
+                  }`}
               />
             </div>
 
@@ -555,18 +731,16 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
           <div className="md:col-span-2 flex flex-col gap-4">
             <h3 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-[#121316]'}`}>작명 결과</h3>
             {namingResults.length === 0 ? (
-              <div className={`flex-1 rounded-2xl border border-dashed flex flex-col items-center justify-center p-10 text-center ${
-                isDark ? 'border-white/[0.06] bg-white/[0.01] text-[#3A3D50]' : 'border-black/[0.06] bg-black/[0.01] text-[#C5C5CC]'
-              }`}>
+              <div className={`flex-1 rounded-2xl border border-dashed flex flex-col items-center justify-center p-10 text-center ${isDark ? 'border-white/[0.06] bg-white/[0.01] text-[#3A3D50]' : 'border-black/[0.06] bg-black/[0.01] text-[#C5C5CC]'
+                }`}>
                 <Sparkles className="w-8 h-8 mb-2 animate-pulse" />
                 <p className="text-sm font-medium">조건을 설정한 뒤 생성 버튼을 클릭하세요.</p>
               </div>
             ) : (
               <div className="flex flex-col gap-3">
                 {namingResults.map((item, idx) => (
-                  <div key={idx} className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${
-                    isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-                  }`}>
+                  <div key={idx} className={`p-4 rounded-xl border flex items-center justify-between gap-4 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+                    }`}>
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`text-base font-bold ${isDark ? 'text-white' : 'text-[#121316]'}`}>{item.name}</span>
@@ -588,9 +762,8 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
                         navigator.clipboard.writeText(item.name);
                         alert(`"${item.name}" 이름이 복사되었습니다.`);
                       }}
-                      className={`text-xs px-3 py-1.5 rounded-lg border font-semibold hover:bg-white/[0.05] transition-colors ${
-                        isDark ? 'border-white/[0.08] text-[#EDEDEF]' : 'border-black/[0.08] text-[#121316]'
-                      }`}
+                      className={`text-xs px-3 py-1.5 rounded-lg border font-semibold hover:bg-white/[0.05] transition-colors ${isDark ? 'border-white/[0.08] text-[#EDEDEF]' : 'border-black/[0.08] text-[#121316]'
+                        }`}
                     >
                       복사
                     </button>
@@ -625,18 +798,16 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className={`p-6 rounded-2xl border flex flex-col gap-4 h-fit ${
-            isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-          }`}>
+          <div className={`p-6 rounded-2xl border flex flex-col gap-4 h-fit ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+            }`}>
             <h3 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-[#121316]'}`}>실시간 이름 자모 검사</h3>
             <input
               type="text"
               value={jamoTestName}
               onChange={e => setJamoTestName(e.target.value.trim())}
               placeholder="검사할 이름을 입력하세요 (예: 카엘)"
-              className={`px-3 py-2.5 rounded-lg text-sm border outline-none ${
-                isDark ? 'bg-[#121316] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-[#F8F8FA] border-black/[0.08] text-[#121316] focus:border-[#5E6AD2]'
-              }`}
+              className={`px-3 py-2.5 rounded-lg text-sm border outline-none ${isDark ? 'bg-[#121316] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-[#F8F8FA] border-black/[0.08] text-[#121316] focus:border-[#5E6AD2]'
+                }`}
             />
             {jamoTestName && (
               <div className="flex flex-col gap-2">
@@ -656,11 +827,10 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
               const isWarning = sim >= 75;
 
               return (
-                <div key={idx} className={`p-4 rounded-xl border flex items-center justify-between gap-4 transition-all duration-200 ${
-                  jamoTestName && isWarning
-                    ? 'border-red-500/30 bg-red-500/[0.02]'
-                    : isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-                }`}>
+                <div key={idx} className={`p-4 rounded-xl border flex items-center justify-between gap-4 transition-all duration-200 ${jamoTestName && isWarning
+                  ? 'border-red-500/30 bg-red-500/[0.02]'
+                  : isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+                  }`}>
                   <div>
                     <div className="flex items-center gap-2">
                       <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-[#121316]'}`}>{char.name}</span>
@@ -676,9 +846,8 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
                     {jamoTestName ? (
                       <div className="flex flex-col items-end gap-1">
                         <span className={`text-sm font-bold ${isWarning ? 'text-red-400' : 'text-green-400'}`}>{sim}% 유사</span>
-                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
-                          isWarning ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'
-                        }`}>{isWarning ? '발음 중복 경고' : '안전'}</span>
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${isWarning ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-green-500/10 text-green-400 border border-green-500/20'
+                          }`}>{isWarning ? '발음 중복 경고' : '안전'}</span>
                       </div>
                     ) : (
                       <span className={`text-xs ${isDark ? 'text-[#3A3D50]' : 'text-[#C5C5CC]'}`}>대기 중</span>
@@ -719,9 +888,8 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
           </p>
         </div>
 
-        <div className={`relative w-full h-[400px] rounded-2xl border overflow-hidden select-none cursor-grab ${
-          draggingNodeId ? 'cursor-grabbing' : ''
-        } ${isDark ? 'bg-[#090A0C] border-white/[0.06]' : 'bg-[#FAF8FA] border-black/[0.06]'}`}>
+        <div className={`relative w-full h-[400px] rounded-2xl border overflow-hidden select-none cursor-grab ${draggingNodeId ? 'cursor-grabbing' : ''
+          } ${isDark ? 'bg-[#090A0C] border-white/[0.06]' : 'bg-[#FAF8FA] border-black/[0.06]'}`}>
           <svg
             ref={canvasRef}
             className="absolute inset-0 w-full h-full"
@@ -760,9 +928,8 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
             <div
               key={node.id}
               onMouseDown={() => setDraggingNodeId(node.id)}
-              className={`absolute px-4 py-2 rounded-xl border flex items-center gap-2.5 transition-shadow shadow ${
-                draggingNodeId === node.id ? 'shadow-2xl border-[#5E6AD2]' : 'hover:shadow-md'
-              } ${isDark ? 'bg-[#121316] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-[#121316]'}`}
+              className={`absolute px-4 py-2 rounded-xl border flex items-center gap-2.5 transition-shadow shadow ${draggingNodeId === node.id ? 'shadow-2xl border-[#5E6AD2]' : 'hover:shadow-md'
+                } ${isDark ? 'bg-[#121316] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-[#121316]'}`}
               style={{ left: `${node.x}px`, top: `${node.y}px`, transform: 'translate(-50%, -50%)', cursor: 'inherit' }}
             >
               <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: node.color }} />
@@ -904,9 +1071,8 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className={`p-5 rounded-2xl border flex flex-col gap-4 h-[350px] overflow-y-auto ${
-            isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-          }`}>
+          <div className={`p-5 rounded-2xl border flex flex-col gap-4 h-[350px] overflow-y-auto ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+            }`}>
             <h3 className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-[#3A3D50]' : 'text-[#C5C5CC]'}`}>지도 레이어 및 요소</h3>
             <div className="flex flex-col gap-2">
               {elements.map(el => (
@@ -921,9 +1087,8 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
           </div>
 
           <div className="lg:col-span-3 flex flex-col gap-6">
-            <div className={`relative h-[280px] rounded-2xl border overflow-hidden flex items-center justify-center ${
-              isDark ? 'bg-[#090A0C] border-white/[0.06]' : 'bg-[#FAF8FA] border-black/[0.06]'
-            }`}>
+            <div className={`relative h-[280px] rounded-2xl border overflow-hidden flex items-center justify-center ${isDark ? 'bg-[#090A0C] border-white/[0.06]' : 'bg-[#FAF8FA] border-black/[0.06]'
+              }`}>
               <svg className="absolute inset-0 w-full h-full">
                 {elements.filter(el => el.type === 'polygon' && el.visible !== false).map(el => (
                   <path key={el.id} d={el.coords} fill={el.color} fillOpacity={el.opacity} stroke={el.color} strokeWidth="2.5" className="transition-all duration-300" />
@@ -964,6 +1129,679 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     );
   };
 
+  const renderWritingSpace = () => {
+    const activeEpisode = episodes.find(ep => ep.id === selectedEpisodeId) || null;
+
+    // 공백 포함 글자수, 공백 제외 글자수
+    const charCountWithSpaces = activeEpisode ? activeEpisode.content.replace(/<[^>]*>/g, '').length : 0;
+    const charCountWithoutSpaces = activeEpisode ? activeEpisode.content.replace(/<[^>]*>/g, '').replace(/\s/g, '').length : 0;
+
+    // 진행률 계산
+    const progressPercent = Math.min(100, Math.round((charCountWithSpaces / targetWordCount) * 100)) || 0;
+
+    // 필터링된 에피소드 목록
+    const filteredEpisodes = episodes.filter(ep =>
+      ep.title.toLowerCase().includes(writingSearchQuery.toLowerCase())
+    );
+
+    // 에디터 포맷 툴바 명령어 실행 헬퍼
+    const execFormat = (command: string, value: string = '') => {
+      if (command === 'fontSize') {
+        const sizeNum = parseInt(value);
+        document.execCommand('fontSize', false, '7');
+        const fontElements = editorRef.current?.querySelectorAll('font[size="7"]');
+        fontElements?.forEach(font => {
+          const span = document.createElement('span');
+          span.style.fontSize = `${sizeNum}px`;
+          span.innerHTML = font.innerHTML;
+          font.parentNode?.replaceChild(span, font);
+        });
+        setEditorFontSize(sizeNum);
+      } else if (command === 'fontName') {
+        document.execCommand('fontName', false, value);
+        const fontElements = editorRef.current?.querySelectorAll(`font[face="${value}"]`);
+        fontElements?.forEach(font => {
+          const span = document.createElement('span');
+          span.style.fontFamily = value;
+          span.innerHTML = font.innerHTML;
+          font.parentNode?.replaceChild(span, font);
+        });
+        setEditorFontFamily(value);
+      } else {
+        document.execCommand(command, false, value);
+      }
+      handleContentInput();
+    };
+
+    // 링크 삽입
+    const handleInsertLink = () => {
+      const url = prompt('연결할 URL을 입력하세요:');
+      if (url) execFormat('createLink', url);
+    };
+
+    // 표 삽입
+    const handleInsertTable = () => {
+      const rows = prompt('행(Row) 개수를 입력하세요 (기본 3):', '3');
+      const cols = prompt('열(Column) 개수를 입력하세요 (기본 3):', '3');
+      if (rows && cols) {
+        let tableHtml = `<table style="border-collapse: collapse; width: 100%; border: 1px solid ${isDark ? '#3F3F46' : '#E4E4E7'}; margin: 12px 0;">`;
+        for (let r = 0; r < parseInt(rows); r++) {
+          tableHtml += '<tr>';
+          for (let c = 0; c < parseInt(cols); c++) {
+            tableHtml += `<td style="border: 1px solid ${isDark ? '#3F3F46' : '#E4E4E7'}; padding: 8px; min-width: 50px;">&nbsp;</td>`;
+          }
+          tableHtml += '</tr>';
+        }
+        tableHtml += '</table>';
+        document.execCommand('insertHTML', false, tableHtml);
+        handleContentInput();
+      }
+    };
+
+    // 에디터 변경 감지 및 동기화
+    const handleContentInput = () => {
+      if (!editorRef.current || !selectedEpisodeId) return;
+      const html = editorRef.current.innerHTML;
+      const text = editorRef.current.innerText || '';
+      const charCount = text.length;
+
+      setEpisodes(prev =>
+        prev.map(ep =>
+          ep.id === selectedEpisodeId
+            ? { ...ep, content: html, wordCount: charCount, updatedAt: new Date().toISOString() }
+            : ep
+        )
+      );
+    };
+
+    return (
+      <div className="flex-1 flex overflow-hidden relative">
+        <style>{`
+          .novela-editor-paper [contenteditable]:empty:before {
+            content: attr(data-placeholder);
+            color: ${isDark ? '#4B5563' : '#9CA3AF'};
+            pointer-events: none;
+            display: block;
+          }
+          .novela-editor-paper table td {
+            border: 1px solid ${isDark ? '#3F3F46' : '#E4E4E7'} !important;
+          }
+        `}</style>
+
+        {/* 1. 보조 사이드바 (Collapsible) */}
+        {!isFocusMode && (
+          <div
+            className={`flex flex-col shrink-0 transition-all duration-300 border-r relative z-10 ${innerSidebarCollapsed ? 'w-0 overflow-hidden border-r-0' : 'w-60'
+              } ${isDark ? 'bg-[#111215] border-white/[0.06]' : 'bg-[#FAFAFB] border-black/[0.06]'}`}
+          >
+            {/* 새 작품 대분류 정보 */}
+            <div className="p-4 flex flex-col gap-3 shrink-0">
+              {/* 검색바 */}
+              <div className="relative">
+                <Search className={`w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} />
+                <input
+                  type="text"
+                  placeholder="검색..."
+                  value={writingSearchQuery}
+                  onChange={e => setWritingSearchQuery(e.target.value)}
+                  className={`w-full pl-8 pr-3 py-1.5 rounded-lg text-xs outline-none transition-all ${isDark
+                    ? 'bg-white/[0.02] border border-white/[0.04] text-white placeholder-gray-600 focus:border-[#5E6AD2]'
+                    : 'bg-black/[0.02] border border-black/[0.04] text-[#121316] placeholder-gray-400 focus:border-[#5E6AD2]'
+                    }`}
+                />
+              </div>
+
+              {/* 내비게이션 탭 */}
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={() => setActiveTab('document')}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${activeTab === 'document'
+                    ? isDark ? 'bg-[#5E6AD2]/15 text-[#7480E2]' : 'bg-[#5E6AD2]/10 text-[#5E6AD2]'
+                    : isDark ? 'text-gray-400 hover:bg-white/[0.02]' : 'text-gray-600 hover:bg-black/[0.02]'
+                    }`}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  문서 목록
+                </button>
+                <button
+                  onClick={() => setActiveTab('characters')}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${activeTab === 'characters'
+                    ? isDark ? 'bg-[#5E6AD2]/15 text-[#7480E2]' : 'bg-[#5E6AD2]/10 text-[#5E6AD2]'
+                    : isDark ? 'text-gray-400 hover:bg-white/[0.02]' : 'text-gray-600 hover:bg-black/[0.02]'
+                    }`}
+                >
+                  <User className="w-3.5 h-3.5" />
+                  등장인물
+                </button>
+                <button
+                  onClick={() => setActiveTab('plot')}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${activeTab === 'plot'
+                    ? isDark ? 'bg-[#5E6AD2]/15 text-[#7480E2]' : 'bg-[#5E6AD2]/10 text-[#5E6AD2]'
+                    : isDark ? 'text-gray-400 hover:bg-white/[0.02]' : 'text-gray-600 hover:bg-black/[0.02]'
+                    }`}
+                >
+                  <GitCommit className="w-3.5 h-3.5" />
+                  플롯 개요
+                </button>
+              </div>
+            </div>
+
+            {/* 탭 내용 분기 */}
+            <div className={`flex-1 overflow-y-auto px-4 py-2 border-t ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+              {activeTab === 'document' && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between py-1">
+                    <span className={`text-[10px] font-bold tracking-wider ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>문서</span>
+                    <button
+                      onClick={handleAddEpisode}
+                      className={`p-1 rounded-md transition-colors ${isDark ? 'hover:bg-white/[0.04] text-gray-400 hover:text-white' : 'hover:bg-black/[0.04] text-gray-600 hover:text-black'
+                        }`}
+                      title="새 문서 추가"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="flex flex-col gap-1">
+                    {filteredEpisodes.map(ep => (
+                      <div
+                        key={ep.id}
+                        onClick={() => setSelectedEpisodeId(ep.id)}
+                        className={`group relative px-3 py-2.5 rounded-lg cursor-pointer transition-all flex items-center justify-between ${selectedEpisodeId === ep.id
+                          ? isDark ? 'bg-[#5E6AD2]/15 text-[#7480E2] font-semibold' : 'bg-[#5E6AD2]/10 text-[#5E6AD2] font-semibold'
+                          : isDark ? 'text-gray-400 hover:bg-white/[0.02] hover:text-white' : 'text-gray-600 hover:bg-black/[0.02] hover:text-black'
+                          }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0 pr-6">
+                          <FileText className="w-3.5 h-3.5 shrink-0 text-gray-500" />
+                          <span className="text-xs truncate">{ep.title}</span>
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeleteEpisode(ep.id); }}
+                          className="absolute right-2 opacity-0 group-hover:opacity-100 p-0.5 rounded text-gray-400 hover:text-red-500 transition-all hover:bg-red-500/10"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {filteredEpisodes.length === 0 && (
+                      <span className="text-[10px] text-gray-500 py-4 text-center">검색된 문서가 없습니다.</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'characters' && (
+                <div className="flex flex-col gap-2">
+                  <span className={`text-[10px] font-bold tracking-wider py-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>인물 퀵 목록</span>
+                  <div className="flex flex-col gap-1">
+                    {relationNodes.map(node => (
+                      <div
+                        key={node.id}
+                        onClick={() => {
+                          setActiveFeature('history');
+                        }}
+                        className={`px-3 py-2 rounded-lg text-xs cursor-pointer flex items-center justify-between ${isDark ? 'bg-white/[0.01] border border-white/[0.04] text-gray-300 hover:bg-[#5E6AD2]/10' : 'bg-black/[0.01] border border-black/[0.04] text-gray-700 hover:bg-[#5E6AD2]/10'
+                          }`}
+                      >
+                        <span className="font-medium truncate">{node.name}</span>
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: node.color }} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'plot' && (
+                <div className="flex flex-col gap-2">
+                  <span className={`text-[10px] font-bold tracking-wider py-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>플롯 요약</span>
+                  <div className={`p-3 rounded-lg text-xs leading-relaxed ${isDark ? 'bg-white/[0.02] text-gray-400' : 'bg-black/[0.02] text-gray-600'}`}>
+                    <p className="font-semibold mb-1 text-xs text-gray-300">발단 - 깨어난 성광</p>
+                    <p className="text-[10px]">주인공 유진이 긴 잠에서 깨어나 검푸른 마력의 비밀을 마주하며 서사가 시작됩니다.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 하단 영역: 휴지통 & 설정 */}
+            <div className={`p-3 border-t flex flex-col gap-1 shrink-0 ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+              <button
+                onClick={() => setShowTrashModal(true)}
+                className={`w-full py-2 px-3 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-colors ${isDark ? 'text-gray-400 hover:bg-white/[0.03] hover:text-white' : 'text-gray-600 hover:bg-black/[0.03] hover:text-[#121316]'
+                  }`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                휴지통 ({trashEpisodes.length})
+              </button>
+              <button
+                onClick={() => {
+                  const target = prompt('목표 글자수를 수정해 주세요:', targetWordCount.toString());
+                  if (target) setTargetWordCount(parseInt(target));
+                }}
+                className={`w-full py-2 px-3 rounded-lg text-xs font-semibold flex items-center gap-2.5 transition-colors ${isDark ? 'text-gray-400 hover:bg-white/[0.03] hover:text-white' : 'text-gray-600 hover:bg-black/[0.03] hover:text-[#121316]'
+                  }`}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                설정
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* 보조 사이드바 접기/토글 버튼 (포커스 모드 아닐 때 노출) */}
+        {!isFocusMode && (
+          <button
+            onClick={() => setInnerSidebarCollapsed(!innerSidebarCollapsed)}
+            className={`absolute top-1/2 -translate-y-1/2 z-20 w-5 h-10 border rounded-r-md flex items-center justify-center transition-all ${innerSidebarCollapsed ? 'left-0' : 'left-60'
+              } ${isDark ? 'bg-[#111215] border-white/[0.08] hover:bg-[#1A1B1F] text-gray-500' : 'bg-white border-black/[0.08] hover:bg-[#F3F4F6] text-gray-400'}`}
+            title={innerSidebarCollapsed ? "문서 목록 열기" : "문서 목록 닫기"}
+          >
+            <ChevronRight className={`w-3 h-3 transition-transform ${innerSidebarCollapsed ? '' : 'rotate-180'}`} />
+          </button>
+        )}
+
+        {/* 2. 메인 에디터 컨테이너 */}
+        <div
+          className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${innerSidebarCollapsed ? 'pl-0' : ''
+            } ${isDark ? 'bg-[#0F1012]' : 'bg-[#F0F0F3]'}`}
+        >
+          {activeEpisode ? (
+            <>
+              {/* 노벨라 스타일 에디터 툴바 */}
+              <div
+                className={`px-6 py-2 border-b flex items-center justify-between gap-4 shrink-0 select-none ${isDark ? 'bg-[#161719] border-white/[0.04]' : 'bg-white border-black/[0.04]'
+                  }`}
+              >
+                {/* 툴바 왼쪽: Undo/Redo & 파일명 */}
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => execFormat('undo')}
+                      className={`p-1.5 rounded hover:bg-white/[0.04] transition-colors ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                      title="실행 취소 (Ctrl+Z)"
+                    >
+                      <Undo className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => execFormat('redo')}
+                      className={`p-1.5 rounded hover:bg-white/[0.04] transition-colors ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                      title="다시 실행 (Ctrl+Y)"
+                    >
+                      <Redo className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className={`w-[1px] h-3 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+
+                  {/* 문서 이름 및 실시간 저장 링커 */}
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-xs font-bold ${isDark ? 'text-gray-300' : 'text-[#121316]'}`}>{activeEpisode.title}</span>
+                    <div
+                      className={`w-1.5 h-1.5 rounded-full transition-colors ${editorSaveStatus === 'saved' ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'
+                        }`}
+                      title={editorSaveStatus === 'saved' ? '저장 완료' : '저장 중...'}
+                    />
+                  </div>
+                </div>
+
+                {/* 툴바 중앙: 포맷팅 버튼 그룹 */}
+                <div className="flex items-center gap-1.5 overflow-x-auto max-w-xl">
+                  {/* 글꼴 패밀리 선택 */}
+                  <select
+                    value={editorFontFamily}
+                    onChange={e => execFormat('fontName', e.target.value)}
+                    className={`px-2 py-1 rounded text-xs border outline-none font-sans cursor-pointer ${isDark
+                      ? 'bg-[#1F2023] border-white/[0.08] text-gray-300 focus:border-[#5E6AD2]'
+                      : 'bg-[#F3F4F6] border-black/[0.08] text-[#121316] focus:border-[#5E6AD2]'
+                      }`}
+                  >
+                    <option value="나눔고딕">나눔고딕</option>
+                    <option value="나눔명조">나눔명조</option>
+                    <option value="Noto Sans KR">본고딕</option>
+                    <option value="Noto Serif KR">본명조</option>
+                    <option value="system-ui">시스템 기본</option>
+                  </select>
+
+                  {/* 글자 크기 선택 */}
+                  <select
+                    value={editorFontSize}
+                    onChange={e => execFormat('fontSize', e.target.value)}
+                    className={`px-2 py-1 rounded text-xs border outline-none font-sans cursor-pointer ${isDark
+                      ? 'bg-[#1F2023] border-white/[0.08] text-gray-300 focus:border-[#5E6AD2]'
+                      : 'bg-[#F3F4F6] border-black/[0.08] text-[#121316] focus:border-[#5E6AD2]'
+                      }`}
+                  >
+                    <option value="12">12</option>
+                    <option value="14">14</option>
+                    <option value="16">16</option>
+                    <option value="18">18</option>
+                    <option value="20">20</option>
+                    <option value="24">24</option>
+                    <option value="28">28</option>
+                  </select>
+
+                  <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+
+                  {/* 볼드/이탤릭/밑줄/취소선 */}
+                  <button
+                    onClick={() => execFormat('bold')}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] font-bold ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="굵게 (Ctrl+B)"
+                  >
+                    <Bold className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => execFormat('italic')}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] italic ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="기울임 (Ctrl+I)"
+                  >
+                    <Italic className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => execFormat('underline')}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] underline ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="밑줄 (Ctrl+U)"
+                  >
+                    <Underline className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => execFormat('strikeThrough')}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] line-through ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="취소선"
+                  >
+                    <Strikethrough className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+
+                  {/* 글자 색상 피커 */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowColorPicker(!showColorPicker)}
+                      className={`p-1.5 rounded hover:bg-white/[0.04] flex items-center font-bold text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'
+                        }`}
+                      title="글자 색상"
+                    >
+                      A
+                      <ChevronDown className="w-2.5 h-2.5 ml-0.5" />
+                    </button>
+                    {showColorPicker && (
+                      <div className={`absolute left-0 mt-1 z-30 p-2 rounded-lg border shadow-xl flex gap-1 ${isDark ? 'bg-[#1E1F22] border-white/[0.06]' : 'bg-white border-black/[0.06]'}`}>
+                        {['#EDEDEF', '#EF4444', '#F97316', '#FACC15', '#22C55E', '#3B82F6', '#A855F7', '#121316'].map(color => (
+                          <div
+                            key={color}
+                            onClick={() => { execFormat('foreColor', color); setShowColorPicker(false); }}
+                            className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 transition-transform border border-black/20"
+                            style={{ backgroundColor: color }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 하이라이트 색상 피커 */}
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowBgColorPicker(!showBgColorPicker)}
+                      className={`p-1.5 rounded hover:bg-white/[0.04] flex items-center text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'
+                        }`}
+                      title="하이라이트 색상"
+                    >
+                      <span className="bg-yellow-500 text-black px-0.5 rounded text-[10px]">ab</span>
+                      <ChevronDown className="w-2.5 h-2.5 ml-0.5" />
+                    </button>
+                    {showBgColorPicker && (
+                      <div className={`absolute left-0 mt-1 z-30 p-2 rounded-lg border shadow-xl flex gap-1 ${isDark ? 'bg-[#1E1F22] border-white/[0.06]' : 'bg-white border-black/[0.06]'}`}>
+                        {['transparent', '#3F3F46', '#FCA5A5', '#FED7AA', '#FEF08A', '#86EFAC', '#93C5FD', '#C084FC'].map(color => (
+                          <div
+                            key={color}
+                            onClick={() => { execFormat('hiliteColor', color); setShowBgColorPicker(false); }}
+                            className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 transition-transform border border-black/20"
+                            style={{ backgroundColor: color }}
+                            title={color === 'transparent' ? '지우기' : undefined}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+
+                  {/* 정렬 */}
+                  <button
+                    onClick={() => execFormat('justifyLeft')}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="왼쪽 정렬"
+                  >
+                    <AlignLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => execFormat('justifyCenter')}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="가운데 정렬"
+                  >
+                    <AlignCenter className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => execFormat('justifyRight')}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="오른쪽 정렬"
+                  >
+                    <AlignRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => execFormat('justifyFull')}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="양쪽 정렬"
+                  >
+                    <AlignJustify className="w-3.5 h-3.5" />
+                  </button>
+
+                  <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+
+                  {/* 리스트 & 부가 구성요소 */}
+                  <button
+                    onClick={() => execFormat('insertUnorderedList')}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="글머리 기호 목록"
+                  >
+                    <List className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => execFormat('insertOrderedList')}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="번호 매기기 목록"
+                  >
+                    <ListOrdered className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={handleInsertTable}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="표 삽입"
+                  >
+                    <Grid className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={handleInsertLink}
+                    className={`p-1.5 rounded hover:bg-white/[0.04] ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                    title="링크 삽입"
+                  >
+                    <Link className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* 툴바 오른쪽: 집중 모드 & 실시간 글자수 드롭다운 */}
+                <div className="flex items-center gap-3">
+                  {/* 집중 모드 버튼 */}
+                  <button
+                    onClick={() => setIsFocusMode(!isFocusMode)}
+                    title={isFocusMode ? "집중 모드 종료" : "집중 모드 시작"}
+                    className={`p-1.5 rounded-lg border transition-all duration-150 ${isFocusMode
+                      ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]'
+                      : isDark
+                        ? 'border-white/[0.08] text-gray-400 hover:bg-white/[0.04]'
+                        : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'
+                      }`}
+                  >
+                    {isFocusMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                  </button>
+
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowStatsDropdown(!showStatsDropdown)}
+                      className={`px-3 py-1 rounded text-xs font-semibold border flex items-center gap-1 transition-all ${isDark
+                        ? 'bg-[#1F2023] border-white/[0.08] text-gray-300 hover:text-white'
+                        : 'bg-[#F3F4F6] border-black/[0.08] text-gray-700 hover:text-black'
+                        }`}
+                    >
+                      {charCountWithSpaces.toLocaleString()}자
+                      <ChevronDown className="w-3 h-3" />
+                    </button>
+
+                    {showStatsDropdown && (
+                      <div
+                        className={`absolute right-0 mt-2 z-40 p-4 rounded-xl border shadow-2xl w-56 flex flex-col gap-3 ${isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+                          }`}
+                      >
+                        <h4 className="text-xs font-bold border-b pb-1.5">상세 자수 통계</h4>
+                        <div className="flex flex-col gap-1.5 text-xs">
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">공백 포함 글자수</span>
+                            <span className="font-bold">{charCountWithSpaces.toLocaleString()}자</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">공백 제외 글자수</span>
+                            <span className="font-bold">{charCountWithoutSpaces.toLocaleString()}자</span>
+                          </div>
+                          <div className="border-t pt-2 mt-1">
+                            <div className="flex justify-between mb-1">
+                              <span className="text-gray-500 font-medium">목표 달성도 ({targetWordCount.toLocaleString()}자)</span>
+                              <span className="text-[#5E6AD2] font-bold">{progressPercent}%</span>
+                            </div>
+                            <div className={`w-full h-1.5 rounded-full overflow-hidden ${isDark ? 'bg-white/[0.06]' : 'bg-black/[0.06]'}`}>
+                              <div className="h-full bg-[#5E6AD2] rounded-full" style={{ width: `${progressPercent}%` }} />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Centered Paper WYSIWYG 원고지 편집지 */}
+              <div
+                onClick={() => editorRef.current?.focus()}
+                className="flex-1 overflow-y-auto px-6 py-10 flex justify-center cursor-text"
+              >
+                <div
+                  className={`w-full max-w-3xl flex flex-col h-full rounded-2xl border shadow-lg novela-editor-paper transition-all ${isDark
+                    ? 'bg-[#161719] border-white/[0.04] text-gray-200'
+                    : 'bg-white border-black/[0.04] text-gray-800'
+                    }`}
+                  style={{
+                    fontFamily: editorFontFamily,
+                    fontSize: `${editorFontSize}px`,
+                    lineHeight: '1.8'
+                  }}
+                >
+                  {/* 문서 내부 대제목 인풋 */}
+                  <div className={`px-12 pt-12 pb-4 ${isDark ? 'border-white/[0.02]' : 'border-black/[0.02]'}`}>
+                    <input
+                      type="text"
+                      value={activeEpisode.title}
+                      onChange={e => handleTitleChange(e.target.value)}
+                      placeholder="제목 없음"
+                      className={`w-full font-heading font-bold text-3xl bg-transparent outline-none border-b border-transparent focus:border-[#5E6AD2]/50 pb-2 transition-all ${isDark ? 'text-white placeholder-gray-700' : 'text-black placeholder-gray-300'
+                        }`}
+                    />
+                  </div>
+
+                  {/* WYSIWYG contentEditable 본문 영역 */}
+                  <div className="flex-1 px-12 pb-12 overflow-y-auto">
+                    <div
+                      ref={editorRef}
+                      contentEditable
+                      data-placeholder="내용을 입력하세요..."
+                      onInput={handleContentInput}
+                      className="w-full h-full outline-none font-serif min-h-[400px]"
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-3">
+              <FileText className="w-12 h-12 text-gray-500 opacity-40 animate-pulse" />
+              <p className="text-sm text-gray-500 font-medium">집필할 회차를 선택하거나 새 회차를 만들어 주세요.</p>
+              <button
+                onClick={handleAddEpisode}
+                className="mt-1 px-4 py-2 bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-semibold rounded-xl transition-all duration-150"
+              >
+                새 회차 만들기
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 3. 휴지통 모달 팝업 */}
+        {showTrashModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setShowTrashModal(false)} />
+            <div className={`relative w-full max-w-md mx-4 rounded-2xl border shadow-2xl p-6 ${isDark ? 'bg-[#1E1F22] border-white/[0.08]' : 'bg-white border-black/[0.08]'
+              }`}>
+              <h3 className={`font-heading font-bold text-base mb-4 ${isDark ? 'text-white' : 'text-black'}`}>집필실 휴지통</h3>
+
+              <div className="max-h-60 overflow-y-auto flex flex-col gap-2 mb-6">
+                {trashEpisodes.map(ep => (
+                  <div
+                    key={ep.id}
+                    className={`p-3 rounded-lg border text-xs flex items-center justify-between gap-3 ${isDark ? 'bg-white/[0.02] border-white/[0.04]' : 'bg-black/[0.02] border-black/[0.04]'
+                      }`}
+                  >
+                    <div className="flex flex-col min-w-0">
+                      <span className={`font-semibold truncate ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>{ep.title}</span>
+                      <span className="text-[10px] text-gray-500">글자수: {ep.wordCount.toLocaleString()}자</span>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleRestoreEpisode(ep.id)}
+                        className="px-2 py-1 rounded bg-[#5E6AD2] text-white font-semibold hover:bg-[#7480E2] transition-colors"
+                      >
+                        복구
+                      </button>
+                      <button
+                        onClick={() => handlePermanentlyDeleteEpisode(ep.id)}
+                        className="px-2 py-1 rounded bg-red-600 text-white font-semibold hover:bg-red-500 transition-colors"
+                      >
+                        영구삭제
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {trashEpisodes.length === 0 && (
+                  <div className="text-center py-8 text-xs text-gray-500">휴지통이 비어 있습니다.</div>
+                )}
+              </div>
+
+              <div className="flex justify-end pt-2">
+                <button
+                  onClick={() => setShowTrashModal(false)}
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-all ${isDark
+                    ? 'border-white/[0.08] text-gray-400 hover:text-white hover:border-white/20'
+                    : 'border-black/[0.08] text-gray-600 hover:text-black hover:border-black/20'
+                    }`}
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderInfoPage = () => <InfoPage themeMode={themeMode} onClose={() => setActiveFeature('dashboard')} />;
 
   return (
@@ -979,22 +1817,45 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
         <div className="flex-1 flex flex-col overflow-hidden">
           {selectedProject ? (
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className={`px-8 py-4 border-b flex items-center justify-between shrink-0 ${isDark ? 'border-white/[0.06] bg-[#0D0E11]' : 'border-black/[0.06] bg-white'}`}>
-                <div className="flex items-center gap-3">
-                  <div
-                    className="w-6 h-6 rounded-lg flex items-center justify-center text-white text-xs font-bold"
-                    style={{ backgroundColor: GENRE_COLORS[selectedProject.genre] ?? '#5E6AD2' }}
+              <div className={`px-8 py-4 border-b flex items-center shrink-0 ${isDark ? 'border-white/[0.06] bg-[#0D0E11]' : 'border-black/[0.06] bg-white'}`}>
+                {editingName ? (
+                  <input
+                    id="project-name-input"
+                    autoFocus
+                    type="text"
+                    value={editingNameValue}
+                    onChange={e => setEditingNameValue(e.target.value)}
+                    onBlur={async () => {
+                      const trimmed = editingNameValue.trim();
+                      if (trimmed && trimmed !== selectedProject.name) {
+                        await supabase.from('projects').update({ name: trimmed }).eq('id', selectedProject.id);
+                        setSelectedProject({ ...selectedProject, name: trimmed });
+                        setProjects(prev => prev.map(p => p.id === selectedProject.id ? { ...p, name: trimmed } : p));
+                      }
+                      setEditingName(false);
+                    }}
+                    onKeyDown={async e => {
+                      if (e.key === 'Enter') {
+                        (e.target as HTMLInputElement).blur();
+                      } else if (e.key === 'Escape') {
+                        setEditingName(false);
+                      }
+                    }}
+                    className={`font-heading font-bold text-xl bg-transparent border-b-2 border-[#5E6AD2] outline-none leading-tight w-full max-w-md ${isDark ? 'text-white' : 'text-[#121316]'}`}
+                  />
+                ) : (
+                  <h1
+                    onClick={() => { setEditingNameValue(selectedProject.name); setEditingName(true); }}
+                    title="클릭하여 제목 수정"
+                    className={`font-heading font-bold text-xl leading-tight cursor-text select-none hover:opacity-70 transition-opacity ${isDark ? 'text-white' : 'text-[#121316]'}`}
                   >
-                    {selectedProject.genre?.[0] || '기'}
-                  </div>
-                  <div>
-                    <h1 className={`font-heading font-bold text-sm leading-none ${isDark ? 'text-white' : 'text-[#121316]'}`}>{selectedProject.name}</h1>
-                    <span className="text-[10px] text-gray-500">워크스페이스 활성 상태 · {formatDate(selectedProject.updated_at)}</span>
-                  </div>
-                </div>
+                    {selectedProject.name}
+                  </h1>
+                )}
               </div>
               <div className="flex-1 flex overflow-hidden">
                 {activeFeature === 'dashboard' && renderProjectDashboard()}
+                {activeFeature === 'editor' && renderWritingSpace()}
                 {activeFeature === 'naming' && renderAiNamingEngine()}
                 {activeFeature === 'jamo' && renderJamoFilter()}
                 {activeFeature === 'relations' && renderRelationsMap()}
@@ -1045,35 +1906,26 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         {projects.map((project) => {
-                          const genreColor = GENRE_COLORS[project.genre] ?? '#A1A1AA';
                           return (
                             <div
                               key={project.id}
                               onClick={() => { setSelectedProject(project); setActiveFeature('dashboard'); }}
-                              className={`group relative rounded-2xl border p-5 flex flex-col gap-3 cursor-pointer transition-all duration-200 hover:shadow-lg ${
-                                isDark ? 'bg-[#0D0E11] border-white/[0.06] hover:border-white/[0.12] hover:bg-[#111215]' : 'bg-white border-black/[0.06] hover:border-black/[0.12]'
-                              }`}
+                              className={`group relative rounded-2xl border p-5 flex flex-col gap-3 cursor-pointer transition-all duration-200 hover:shadow-lg ${isDark ? 'bg-[#0D0E11] border-white/[0.06] hover:border-white/[0.12] hover:bg-[#111215]' : 'bg-white border-black/[0.06] hover:border-black/[0.12]'
+                                }`}
                             >
-                              <div className="w-8 h-1 rounded-full" style={{ backgroundColor: genreColor }} />
                               <div className="flex-1">
                                 <h3 className={`font-heading font-bold text-base mb-1 leading-snug ${isDark ? 'text-white' : 'text-[#121316]'}`}>{project.name}</h3>
                                 {project.description && <p className={`text-xs leading-relaxed line-clamp-2 ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>{project.description}</p>}
                               </div>
                               <div className="flex items-center justify-between mt-auto">
                                 <div className="flex items-center gap-2">
-                                  {project.genre && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ backgroundColor: `${genreColor}18`, color: genreColor }}>
-                                      {project.genre}
-                                    </span>
-                                  )}
                                 </div>
                                 <span className={`text-xs ${isDark ? 'text-[#3A3D50]' : 'text-[#C5C5CC]'}`}>{formatDate(project.updated_at)}</span>
                               </div>
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDeleteProject(project.id); }}
-                                className={`absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 ${
-                                  isDark ? 'bg-[#1A1C20] text-[#A1A1AA] hover:bg-red-900/30 hover:text-red-400' : 'bg-[#F0F0F3] text-[#A1A1AA] hover:bg-red-50 hover:text-red-500'
-                                }`}
+                                className={`absolute top-3 right-3 w-7 h-7 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-150 ${isDark ? 'bg-[#1A1C20] text-[#A1A1AA] hover:bg-red-900/30 hover:text-red-400' : 'bg-[#F0F0F3] text-[#A1A1AA] hover:bg-red-50 hover:text-red-500'
+                                  }`}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>

@@ -15,7 +15,8 @@ import {
   PanelLeftOpen,
   MoreVertical,
   ChevronLeft,
-  Compass
+  Compass,
+  FileText
 } from 'lucide-react';
 
 interface Project {
@@ -48,6 +49,7 @@ export default function Sidebar({
 
   const navItems = [
     { id: 'dashboard', icon: LayoutDashboard, label: selectedProject ? '프로젝트 홈' : '대시보드' },
+    { id: 'editor', icon: FileText, label: '집필실', badge: selectedProject ? undefined : '선택 필요' },
     { id: 'naming', icon: Sparkles, label: 'AI 작명 엔진', badge: selectedProject ? undefined : '선택 필요' },
     { id: 'jamo', icon: Scale, label: '자모 유사도 필터', badge: selectedProject ? undefined : '선택 필요' },
     { id: 'relations', icon: Network, label: '인물 관계도', badge: selectedProject ? undefined : '선택 필요' },

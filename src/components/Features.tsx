@@ -121,7 +121,7 @@ export default function Features({ themeMode }: FeaturesProps) {
   const isDark = themeMode === 'dark';
 
   return (
-    <section className={`w-full ${isDark ? 'bg-[#08090A]' : 'bg-[#F4F4F6]'}`}>
+    <section className={`w-full pb-24 ${isDark ? 'bg-[#08090A]' : 'bg-[#F4F4F6]'}`}>
       {/* 섹션 헤더 */}
       <div className="w-full mx-auto px-12 md:px-24 mb-24 text-center">
         <p className={`text-sm font-semibold tracking-widest uppercase mb-4 pb-2 ${isDark ? 'text-[#5E6AD2]' : 'text-[#5E6AD2]'}`}>

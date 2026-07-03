@@ -37,4 +37,5 @@
 - [데이터베이스 및 백엔드 서비스 설계서](file:///c:/project/noteandname/Documents/database_and_api_design.md)
 - [UI/UX 디자인 가이드라인 및 규격서](file:///c:/project/noteandname/Documents/design_specification.md)
 - [세계관 지도 편집기 기능 상세 설계서](file:///c:/project/noteandname/Documents/world_map_editor_spec.md)
+- [소설 창작 지원 도구 필수 기능 분석 보고서](file:///c:/project/noteandname/Documents/feature_analysis_report.md)
 
