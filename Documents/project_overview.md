@@ -38,4 +38,5 @@
 - [UI/UX 디자인 가이드라인 및 규격서](file:///c:/project/noteandname/Documents/design_specification.md)
 - [세계관 지도 편집기 기능 상세 설계서](file:///c:/project/noteandname/Documents/world_map_editor_spec.md)
 - [소설 창작 지원 도구 필수 기능 분석 보고서](file:///c:/project/noteandname/Documents/feature_analysis_report.md)
+- [파일 구조 및 관계도 상세 정의서](file:///c:/project/noteandname/Documents/file_structure_and_relations.md)
 
