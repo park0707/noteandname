@@ -13,6 +13,9 @@ export interface Episode {
   content: string;
   wordCount: number;
   updatedAt: string;
+  isFolder?: boolean;
+  parentId?: string | null;
+  deletedAt?: string;
 }
 
 export interface Node {
@@ -45,4 +48,14 @@ export interface JamoResult {
   name: string;
   similarity: number;
   matchChar: string;
+}
+
+export interface Snapshot {
+  id: string;
+  timestamp: string;
+  name: string;
+  memo: string;
+  content: string;
+  wordCount: number;
+  type: 'manual' | 'auto_words' | 'auto_time';
 }

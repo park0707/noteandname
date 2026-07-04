@@ -347,6 +347,60 @@ function CopyrightContent({ isDark }: { isDark: boolean }) {
         </ul>
         <P>각 오픈소스의 라이선스는 해당 프로젝트의 공식 페이지에서 확인할 수 있습니다.</P>
       </Section>
+
+      <Section title="제공 폰트 라이선스 안내" isDark={isDark}>
+        <P>노벨플로우의 집필실에서 제공하는 기본 폰트들은 상업적 목적으로도 무료 이용이 가능한 라이선스를 따르고 있습니다. 사용 범위와 출처는 다음과 같습니다:</P>
+        <div className="overflow-x-auto mt-4">
+          <table className={`w-full text-xs border-collapse ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+            <thead>
+              <tr className={`border-b text-left ${isDark ? 'border-white/[0.08] bg-white/[0.02]' : 'border-black/[0.08] bg-black/[0.02]'}`}>
+                <th className="px-3 py-2 font-bold">폰트명</th>
+                <th className="px-3 py-2 font-bold">제작 및 배포처</th>
+                <th className="px-3 py-2 font-bold">라이선스 형태</th>
+                <th className="px-3 py-2 font-bold">비고</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">리디바탕</td>
+                <td className="px-3 py-2">리디주식회사</td>
+                <td className="px-3 py-2">자체 라이선스</td>
+                <td className="px-3 py-2">상업적 무료 이용, 폰트 파일 자체 판매 금지, 출처 표기 권장</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">마루 부리</td>
+                <td className="px-3 py-2">네이버/네이버문화재단</td>
+                <td className="px-3 py-2">자체 라이선스</td>
+                <td className="px-3 py-2">상업적 무료 이용, 출처 표기 권장</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">배민 주아체/도현체 등</td>
+                <td className="px-3 py-2">우아한형제들</td>
+                <td className="px-3 py-2">자체 라이선스</td>
+                <td className="px-3 py-2">상업적 무료 이용, 수정 및 재배포 허용, 폰트 파일 자체 판매 금지</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">KoPub 바탕/돋움</td>
+                <td className="px-3 py-2">한국전자출판협회</td>
+                <td className="px-3 py-2">무료 배포 라이선스</td>
+                <td className="px-3 py-2">상업적 무료 이용, 배포처 라이선스 준수 권장</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">스포카 한 산스</td>
+                <td className="px-3 py-2">스포카</td>
+                <td className="px-3 py-2">자체 라이선스</td>
+                <td className="px-3 py-2">상업적 무료 이용 가능</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">나눔고딕/나눔명조/본고딕 등 14종</td>
+                <td className="px-3 py-2">Google Fonts 한글 컬렉션</td>
+                <td className="px-3 py-2">SIL Open Font License (OFL)</td>
+                <td className="px-3 py-2">상업적 및 비상업적 목적 모두 자유 이용 가능</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Section>
     </div>
   );
 }

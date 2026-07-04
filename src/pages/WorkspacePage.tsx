@@ -36,8 +36,6 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [editingName, setEditingName] = useState(false);
-  const [editingNameValue, setEditingNameValue] = useState('');
 
   // 1. 대시보드 실시간 메모장
   const [notes, setNotes] = useState('');
@@ -229,6 +227,20 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     }
   };
 
+  // 프로젝트 이름 수정
+  const handleUpdateProjectName = async (newName: string) => {
+    if (!selectedProject) return;
+    if (selectedProject.id.startsWith('mock-')) {
+      setSelectedProject({ ...selectedProject, name: newName });
+      setProjects(prev => prev.map(p => p.id === selectedProject.id ? { ...p, name: newName } : p));
+      return;
+    }
+
+    await supabase.from('projects').update({ name: newName }).eq('id', selectedProject.id);
+    setSelectedProject({ ...selectedProject, name: newName });
+    setProjects(prev => prev.map(p => p.id === selectedProject.id ? { ...p, name: newName } : p));
+  };
+
   return (
     <div className={`w-full h-screen flex overflow-hidden ${isDark ? 'bg-[#08090A] text-[#EDEDEF]' : 'bg-[#F4F4F6] text-[#121316]'}`}>
       <Sidebar
@@ -242,42 +254,6 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
         <div className="flex-1 flex flex-col overflow-hidden">
           {selectedProject ? (
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className={`px-8 py-4 border-b flex items-center shrink-0 ${isDark ? 'border-white/[0.06] bg-[#0D0E11]' : 'border-black/[0.06] bg-white'}`}>
-                {editingName ? (
-                  <input
-                    id="project-name-input"
-                    autoFocus
-                    type="text"
-                    value={editingNameValue}
-                    onChange={e => setEditingNameValue(e.target.value)}
-                    onBlur={async () => {
-                      const trimmed = editingNameValue.trim();
-                      if (trimmed && trimmed !== selectedProject.name) {
-                        await supabase.from('projects').update({ name: trimmed }).eq('id', selectedProject.id);
-                        setSelectedProject({ ...selectedProject, name: trimmed });
-                        setProjects(prev => prev.map(p => p.id === selectedProject.id ? { ...p, name: trimmed } : p));
-                      }
-                      setEditingName(false);
-                    }}
-                    onKeyDown={async e => {
-                      if (e.key === 'Enter') {
-                        (e.target as HTMLInputElement).blur();
-                      } else if (e.key === 'Escape') {
-                        setEditingName(false);
-                      }
-                    }}
-                    className={`font-heading font-bold text-xl bg-transparent border-b-2 border-[#5E6AD2] outline-none leading-tight w-full max-w-md ${isDark ? 'text-white' : 'text-[#121316]'}`}
-                  />
-                ) : (
-                  <h1
-                    onClick={() => { setEditingNameValue(selectedProject.name); setEditingName(true); }}
-                    title="클릭하여 제목 수정"
-                    className={`font-heading font-bold text-xl leading-tight cursor-text select-none hover:opacity-70 transition-opacity ${isDark ? 'text-white' : 'text-[#121316]'}`}
-                  >
-                    {selectedProject.name}
-                  </h1>
-                )}
-              </div>
               <div className="flex-1 flex overflow-hidden">
                 {activeFeature === 'dashboard' && (
                   <ProjectDashboard
@@ -286,6 +262,7 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
                     setNotes={setNotes}
                     saveStatus={saveStatus}
                     setSaveStatus={setSaveStatus}
+                    onUpdateProjectName={handleUpdateProjectName}
                     setActiveFeature={setActiveFeature}
                     isDark={isDark}
                   />

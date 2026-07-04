@@ -1,6 +1,37 @@
 @import "tailwindcss";
 @source "./**/*.{js,jsx,ts,tsx}";
 
+@font-face {
+  font-family: 'RIDIBatang';
+  src: local('RIDIBatang'), local('리디바탕'), local('RIDIBatangOTF');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'KoPubBatang';
+  src: local('KoPubWorldBatang'), local('KoPub Batang');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'KoPubDotum';
+  src: local('KoPubWorldDotum'), local('KoPub Dotum');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'MaruBuri';
+  src: local('MaruBuri'), local('마루 부리');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Spoqa Han Sans Neo';
+  src: local('Spoqa Han Sans Neo'), local('SpoqaHanSansNeo-Regular');
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NanumSquareRound';
+  src: local('NanumSquareRound'), local('나눔스퀘어라운드');
+  font-display: swap;
+}
+
 
 /* ==========================================================================
    노벨플로우 (Novelflow) 디자인 시스템 스타일 가이드 및 CSS 정의
