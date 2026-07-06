@@ -227,18 +227,19 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     }
   };
 
-  // 프로젝트 이름 수정
-  const handleUpdateProjectName = async (newName: string) => {
+  // 프로젝트 이름 및 설명 수정
+  const handleUpdateProjectDetails = async (newName: string, newDescription: string) => {
     if (!selectedProject) return;
+    const updatedFields = { name: newName, description: newDescription };
     if (selectedProject.id.startsWith('mock-')) {
-      setSelectedProject({ ...selectedProject, name: newName });
-      setProjects(prev => prev.map(p => p.id === selectedProject.id ? { ...p, name: newName } : p));
+      setSelectedProject({ ...selectedProject, ...updatedFields });
+      setProjects(prev => prev.map(p => p.id === selectedProject.id ? { ...p, ...updatedFields } : p));
       return;
     }
 
-    await supabase.from('projects').update({ name: newName }).eq('id', selectedProject.id);
-    setSelectedProject({ ...selectedProject, name: newName });
-    setProjects(prev => prev.map(p => p.id === selectedProject.id ? { ...p, name: newName } : p));
+    await supabase.from('projects').update(updatedFields).eq('id', selectedProject.id);
+    setSelectedProject({ ...selectedProject, ...updatedFields });
+    setProjects(prev => prev.map(p => p.id === selectedProject.id ? { ...p, ...updatedFields } : p));
   };
 
   return (
@@ -262,9 +263,12 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
                     setNotes={setNotes}
                     saveStatus={saveStatus}
                     setSaveStatus={setSaveStatus}
-                    onUpdateProjectName={handleUpdateProjectName}
+                    onUpdateProjectDetails={handleUpdateProjectDetails}
                     setActiveFeature={setActiveFeature}
                     isDark={isDark}
+                    episodes={episodes}
+                    relationNodes={relationNodes}
+                    setSelectedEpisodeId={setSelectedEpisodeId}
                   />
                 )}
                 {activeFeature === 'editor' && (
