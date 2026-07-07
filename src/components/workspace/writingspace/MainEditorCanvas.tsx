@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { RefObject } from 'react';
 import type { Episode } from '../types';
 
@@ -7,7 +8,6 @@ interface MainEditorCanvasProps {
   editorFontFamily: string;
   editorFontSize: number;
   lineHeight: string;
-  themeStyles: any;
   typewriterMode: boolean;
   paragraphSpacing: number;
   editorRef: RefObject<HTMLDivElement | null>;
@@ -23,7 +23,6 @@ export default function MainEditorCanvas(props: MainEditorCanvasProps) {
     editorFontFamily,
     editorFontSize,
     lineHeight,
-    themeStyles,
     typewriterMode,
     paragraphSpacing,
     editorRef,
@@ -33,22 +32,55 @@ export default function MainEditorCanvas(props: MainEditorCanvasProps) {
     editorTheme,
   } = props;
 
+  const [hoveredDivider, setHoveredDivider] = useState<HTMLElement | null>(null);
+  const [deleteBtnPos, setDeleteBtnPos] = useState<{ top: number; left: number } | null>(null);
+
+  const handleEditorMouseMove = (e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    const divider = target.closest('hr, .novela-divider-stars, .novela-divider-wave, .novela-divider-custom');
+    if (divider && editorRef.current?.contains(divider)) {
+      const rect = divider.getBoundingClientRect();
+      const containerRect = e.currentTarget.getBoundingClientRect();
+      setHoveredDivider(divider as HTMLElement);
+      setDeleteBtnPos({
+        top: rect.top - containerRect.top + rect.height / 2 - 10,
+        left: rect.right - containerRect.left - 25
+      });
+    } else {
+      const isOverDeleteBtn = (e.target as HTMLElement).closest('.divider-delete-btn');
+      if (!isOverDeleteBtn) {
+        setHoveredDivider(null);
+        setDeleteBtnPos(null);
+      }
+    }
+  };
+
+  const handleEditorMouseLeave = () => {
+    setHoveredDivider(null);
+    setDeleteBtnPos(null);
+  };
+
   return (
     <div
-      onClick={() => editorRef.current?.focus()}
-      className="flex-1 overflow-y-auto px-6 py-10 flex justify-center cursor-text editor-scroll-container"
+      onClick={(e) => {
+        if (e.target instanceof HTMLInputElement) return;
+        editorRef.current?.focus();
+      }}
+      onMouseMove={handleEditorMouseMove}
+      onMouseLeave={handleEditorMouseLeave}
+      className="flex-1 overflow-y-auto px-6 py-10 flex justify-center cursor-text editor-scroll-container relative"
     >
       <div
-        className={`w-full flex flex-col h-full rounded-2xl border shadow-lg novela-editor-paper transition-all max-w-3xl ${themeStyles.paper}`}
+        className="w-full flex flex-col max-w-3xl"
         style={{
           fontFamily: editorFontFamily,
           fontSize: `${editorFontSize}px`,
           lineHeight: lineHeight,
-          paddingTop: '3rem',
+          paddingTop: '1rem',
           paddingBottom: typewriterMode ? '50vh' : '3rem'
         }}
       >
-        <div className="px-12 pb-4">
+        <div className="px-4 pb-4">
           <input
             type="text"
             value={activeEpisode.title}
@@ -60,7 +92,7 @@ export default function MainEditorCanvas(props: MainEditorCanvasProps) {
           />
         </div>
 
-        <div className="flex-1 px-12 pb-12 overflow-y-auto">
+        <div className="flex-1 px-4 pb-12 h-auto">
           <style>{`
             .novela-editor-content p, .novela-editor-content div {
               margin-bottom: ${paragraphSpacing}px;
@@ -77,10 +109,27 @@ export default function MainEditorCanvas(props: MainEditorCanvasProps) {
             onBlur={saveSelection}
             onMouseUp={saveSelection}
             onKeyUp={saveSelection}
-            className="w-full h-full outline-none font-serif min-h-[400px] novela-editor-content"
+            className="w-full h-auto outline-none font-serif min-h-[400px] novela-editor-content"
           />
         </div>
       </div>
+
+      {deleteBtnPos && hoveredDivider && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            hoveredDivider.remove();
+            setHoveredDivider(null);
+            setDeleteBtnPos(null);
+            handleContentInput();
+          }}
+          className="absolute divider-delete-btn z-30 bg-red-500 hover:bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold shadow-lg transition-colors cursor-pointer select-none"
+          style={{ top: `${deleteBtnPos.top}px`, left: `${deleteBtnPos.left}px` }}
+          title="구분선 삭제"
+        >
+          ✕
+        </button>
+      )}
     </div>
   );
 }

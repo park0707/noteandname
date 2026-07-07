@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { FileText } from 'lucide-react';
 import type { Project, Episode, Node, Snapshot } from './types';
@@ -10,7 +10,6 @@ import EpisodeSidebar from './writingspace/EpisodeSidebar';
 import EditorToolbar from './writingspace/EditorToolbar';
 import FindReplaceBar from './writingspace/FindReplaceBar';
 import DiffViewPane from './writingspace/DiffViewPane';
-import SplitEditorPane from './writingspace/SplitEditorPane';
 import MainEditorCanvas from './writingspace/MainEditorCanvas';
 import TrashModal from './writingspace/Modals/TrashModal';
 import SnapshotHistoryModal from './writingspace/Modals/SnapshotHistoryModal';
@@ -115,11 +114,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const [totalSearchMatches, setTotalSearchMatches] = useState(0);
 
-  // 화면 분할 (Split View) 상태 정의
-  const [isSplitView, setIsSplitView] = useState<boolean>(false);
-  const [splitEpisodeId, setSplitEpisodeId] = useState<string | null>(null);
-  const [isSplitEditable, setIsSplitEditable] = useState<boolean>(true);
-  const splitEditorRef = useRef<HTMLDivElement | null>(null);
+
 
   const [historySnapshots, setHistorySnapshots] = useState<Snapshot[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -252,19 +247,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEpisodeId]);
 
-  // Sync splitEditorRef.innerHTML when splitEpisodeId changes
-  const splitEpisode = useMemo(() => {
-    return episodes.find(ep => ep.id === splitEpisodeId) || null;
-  }, [episodes, splitEpisodeId]);
 
-  useEffect(() => {
-    if (splitEditorRef.current && splitEpisode) {
-      if (splitEditorRef.current.innerHTML !== splitEpisode.content) {
-        splitEditorRef.current.innerHTML = splitEpisode.content || '';
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [splitEpisodeId]);
 
   // Load and sync trash episodes
   useEffect(() => {
@@ -491,51 +474,9 @@ export default function WritingSpace(props: WritingSpaceProps) {
     }
   };
 
-  // 화면 분할 토글 및 디폴트 이전 화 로드 핸들러
-  const handleToggleSplitView = () => {
-    if (!isSplitView) {
-      const manuscripts = episodes.filter(ep => !ep.isFolder);
-      const currentIdx = manuscripts.findIndex(ep => ep.id === selectedEpisodeId);
-      
-      let defaultSplitId: string | null = null;
-      if (currentIdx > 0) {
-        defaultSplitId = manuscripts[currentIdx - 1].id;
-      } else if (manuscripts.length > 1) {
-        defaultSplitId = manuscripts[currentIdx + 1]?.id || manuscripts[1]?.id || null;
-      }
-      
-      setSplitEpisodeId(defaultSplitId);
-      setIsSplitView(true);
-    } else {
-      setIsSplitView(false);
-    }
-  };
 
-  const handleSplitContentInput = () => {
-    if (!splitEditorRef.current || !splitEpisodeId) return;
-    const html = splitEditorRef.current.innerHTML;
-    const text = splitEditorRef.current.innerText || '';
-    const charCount = text.length;
 
-    setEpisodes(prev =>
-      prev.map(ep =>
-        ep.id === splitEpisodeId
-          ? { ...ep, content: html, wordCount: charCount, updatedAt: new Date().toISOString() }
-          : ep
-      )
-    );
-  };
 
-  const handleSplitTitleChange = (newTitle: string) => {
-    if (!splitEpisodeId) return;
-    setEpisodes(prev =>
-      prev.map(ep =>
-        ep.id === splitEpisodeId
-          ? { ...ep, title: newTitle, updatedAt: new Date().toISOString() }
-          : ep
-      )
-    );
-  };
 
   const handleContentInput = () => {
     if (!editorRef.current || !selectedEpisodeId) return;
@@ -709,8 +650,17 @@ export default function WritingSpace(props: WritingSpaceProps) {
     setRenamingId(null);
   };
 
+  const preventScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (e.currentTarget.scrollTop !== 0) {
+      e.currentTarget.scrollTop = 0;
+    }
+    if (e.currentTarget.scrollLeft !== 0) {
+      e.currentTarget.scrollLeft = 0;
+    }
+  };
+
   return (
-    <div className="flex-1 flex overflow-hidden relative">
+    <div className="flex-1 flex h-full w-full overflow-hidden relative" onScroll={preventScroll}>
       <style>{`
         .novela-editor-paper [contenteditable]:empty:before {
           content: attr(data-placeholder);
@@ -724,29 +674,31 @@ export default function WritingSpace(props: WritingSpaceProps) {
       `}</style>
 
       {/* 1. 보조 사이드바 */}
-      <EpisodeSidebar
-        isDark={isDark}
-        isFocusMode={isFocusMode}
-        innerSidebarCollapsed={innerSidebarCollapsed}
-        setInnerSidebarCollapsed={setInnerSidebarCollapsed}
-        episodes={episodes}
-        setEpisodes={setEpisodes}
-        selectedEpisodeId={selectedEpisodeId}
-        setSelectedEpisodeId={setSelectedEpisodeId}
-        handleAddNewItem={handleAddNewItem}
-        expandedFolderIds={expandedFolderIds}
-        setExpandedFolderIds={setExpandedFolderIds}
-        contextMenuId={contextMenuId}
-        setContextMenuId={setContextMenuId}
-        renamingId={renamingId}
-        setRenamingId={setRenamingId}
-        renamingValue={renamingValue}
-        setRenamingValue={setRenamingValue}
-        handleRenameSave={handleRenameSave}
-        handleMoveToTrash={handleMoveToTrash}
-        setShowTrashModal={setShowTrashModal}
-        trashCount={trashEpisodes.length}
-      />
+      <div className="h-full shrink-0 relative flex">
+        <EpisodeSidebar
+          isDark={isDark}
+          isFocusMode={isFocusMode}
+          innerSidebarCollapsed={innerSidebarCollapsed}
+          setInnerSidebarCollapsed={setInnerSidebarCollapsed}
+          episodes={episodes}
+          setEpisodes={setEpisodes}
+          selectedEpisodeId={selectedEpisodeId}
+          setSelectedEpisodeId={setSelectedEpisodeId}
+          handleAddNewItem={handleAddNewItem}
+          expandedFolderIds={expandedFolderIds}
+          setExpandedFolderIds={setExpandedFolderIds}
+          contextMenuId={contextMenuId}
+          setContextMenuId={setContextMenuId}
+          renamingId={renamingId}
+          setRenamingId={setRenamingId}
+          renamingValue={renamingValue}
+          setRenamingValue={setRenamingValue}
+          handleRenameSave={handleRenameSave}
+          handleMoveToTrash={handleMoveToTrash}
+          setShowTrashModal={setShowTrashModal}
+          trashCount={trashEpisodes.length}
+        />
+      </div>
 
       {/* 2. 메인 에디터 컨테이너 */}
       <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${themeStyles.bg}`}>
@@ -779,8 +731,6 @@ export default function WritingSpace(props: WritingSpaceProps) {
               setShowFindReplace={setShowFindReplace}
               handleCreateSnapshot={handleCreateSnapshot}
               setShowHistoryModal={setShowHistoryModal}
-              handleToggleSplitView={handleToggleSplitView}
-              isSplitView={isSplitView}
               historySnapshotsCount={historySnapshots.length}
               editorSaveStatus={editorSaveStatus}
               charCountWithSpaces={charCountWithSpaces}
@@ -832,33 +782,6 @@ export default function WritingSpace(props: WritingSpaceProps) {
                 handleRestoreSnapshot={handleRestoreSnapshot}
                 themeStyles={themeStyles}
               />
-            ) : isSplitView && splitEpisode ? (
-              /* 화면 좌우 분할 모드 (Split View) */
-              <SplitEditorPane
-                isDark={isDark}
-                activeEpisode={activeEpisode}
-                splitEpisode={splitEpisode}
-                splitEpisodeId={splitEpisodeId}
-                setSplitEpisodeId={setSplitEpisodeId}
-                selectedEpisodeId={selectedEpisodeId}
-                episodes={episodes}
-                isSplitEditable={isSplitEditable}
-                setIsSplitEditable={setIsSplitEditable}
-                setIsSplitView={setIsSplitView}
-                editorFontFamily={editorFontFamily}
-                editorFontSize={editorFontSize}
-                lineHeight={lineHeight}
-                themeStyles={themeStyles}
-                editorTheme={editorTheme}
-                paragraphSpacing={paragraphSpacing}
-                editorRef={editorRef}
-                splitEditorRef={splitEditorRef}
-                handleContentInput={handleContentInput}
-                handleSplitContentInput={handleSplitContentInput}
-                saveSelection={saveSelection}
-                handleTitleChange={handleTitleChange}
-                handleSplitTitleChange={handleSplitTitleChange}
-              />
             ) : (
               /* 단일 화면 모드 (Centered Paper WYSIWYG) */
               <MainEditorCanvas
@@ -867,7 +790,6 @@ export default function WritingSpace(props: WritingSpaceProps) {
                 editorFontFamily={editorFontFamily}
                 editorFontSize={editorFontSize}
                 lineHeight={lineHeight}
-                themeStyles={themeStyles}
                 typewriterMode={typewriterMode}
                 paragraphSpacing={paragraphSpacing}
                 editorRef={editorRef}

@@ -221,19 +221,17 @@ export default function ProjectDashboard({
   return (
     <div className="flex-1 overflow-y-auto px-8 py-6 flex flex-col gap-6 relative">
       {/* 작품 정보 헤더 - 넓은 여백과 구조적 공간 배치 */}
-      <div className={`p-8 md:p-10 rounded-3xl border flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden transition-all ${
-        isDark
+      <div className={`p-8 md:p-10 rounded-3xl border flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden transition-all ${isDark
           ? 'bg-gradient-to-r from-[#0C0D10] to-[#121318] border-white/[0.06]'
           : 'bg-gradient-to-r from-white to-[#F8F9FA] border-black/[0.06] shadow-sm'
-      }`}>
+        }`}>
         {/* 장식용 그래디언트 구체 */}
         <div className="absolute right-0 top-0 w-80 h-80 bg-[#5E6AD2]/5 rounded-full blur-[80px] pointer-events-none" />
 
         <div className="flex flex-col flex-1 relative z-10 gap-3.5">
           <div className="flex items-center gap-2">
-            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-              isDark ? 'bg-white/[0.04] text-gray-400' : 'bg-black/[0.04] text-gray-600'
-            }`}>
+            <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${isDark ? 'bg-white/[0.04] text-gray-400' : 'bg-black/[0.04] text-gray-600'
+              }`}>
               생성일자 {formatDate(selectedProject.created_at)}
             </span>
             <span className="flex items-center gap-1 text-[11px] text-[#5E6AD2] font-bold">
@@ -262,35 +260,31 @@ export default function ProjectDashboard({
                   setEditingName(false);
                 }
               }}
-              className={`font-heading font-bold text-3xl mb-1.5 mt-2 bg-transparent border-b-2 border-[#5E6AD2] outline-none leading-tight w-full max-w-md ${
-                isDark ? 'text-white' : 'text-[#121316]'
-              }`}
+              className={`font-heading font-bold text-3xl mb-1.5 mt-2 bg-transparent border-b-2 border-[#5E6AD2] outline-none leading-tight w-full max-w-md ${isDark ? 'text-white' : 'text-[#121316]'
+                }`}
             />
           ) : (
             <h2
               onClick={() => { setEditingNameValue(selectedProject.name); setEditingName(true); }}
               title="더블클릭 또는 탭하여 제목 수정"
-              className={`font-heading font-bold text-3xl mb-1.5 mt-2 cursor-text select-none hover:opacity-75 transition-opacity ${
-                isDark ? 'text-white' : 'text-[#121316]'
-              }`}
+              className={`font-heading font-bold text-3xl mb-1.5 mt-2 cursor-text select-none hover:opacity-75 transition-opacity ${isDark ? 'text-white' : 'text-[#121316]'
+                }`}
             >
               {selectedProject.name}
             </h2>
           )}
 
           <p className={`text-sm leading-relaxed max-w-3xl mt-1.5 ${isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'}`}>
-            {selectedProject.description || '작품 소개 및 로그라인이 없습니다. 설정에서 추가해보세요.'}
+            {selectedProject.description || '작품 소개 문장이 없습니다. 설정에서 추가해보세요.'}
           </p>
 
           <div className="flex flex-wrap items-center gap-3 mt-5 pt-1.5">
-            <span className={`text-[11px] px-3.5 py-1.5 rounded-lg font-bold border ${
-              isDark ? 'bg-[#5E6AD2]/10 border-[#5E6AD2]/20 text-[#7480E2]' : 'bg-[#5E6AD2]/5 border-[#5E6AD2]/15 text-[#5E6AD2]'
-            }`}>
+            <span className={`text-[11px] px-3.5 py-1.5 rounded-lg font-bold border ${isDark ? 'bg-[#5E6AD2]/10 border-[#5E6AD2]/20 text-[#7480E2]' : 'bg-[#5E6AD2]/5 border-[#5E6AD2]/15 text-[#5E6AD2]'
+              }`}>
               📅 연재 목표: {publishSchedule}
             </span>
-            <span className={`text-[11px] px-3.5 py-1.5 rounded-lg font-bold border ${
-              isDark ? 'bg-white/[0.02] border-white/[0.04] text-gray-400' : 'bg-black/[0.02] border-black/[0.04] text-gray-600'
-            }`}>
+            <span className={`text-[11px] px-3.5 py-1.5 rounded-lg font-bold border ${isDark ? 'bg-white/[0.02] border-white/[0.04] text-gray-400' : 'bg-black/[0.02] border-black/[0.04] text-gray-600'
+              }`}>
               🎯 회차별 목표: {targetWordCount.toLocaleString()}자
             </span>
           </div>
@@ -298,11 +292,10 @@ export default function ProjectDashboard({
 
         <button
           onClick={() => setShowSettingsModal(true)}
-          className={`px-4.5 py-3 text-xs font-bold rounded-xl border flex items-center gap-2 transition-all shrink-0 self-start md:self-center relative z-10 ${
-            isDark
+          className={`px-4.5 py-3 text-xs font-bold rounded-xl border flex items-center gap-2 transition-all shrink-0 self-start md:self-center relative z-10 ${isDark
               ? 'bg-[#18191C] border-white/[0.06] text-gray-300 hover:text-white hover:border-white/20'
               : 'bg-[#F3F4F6] border-black/[0.06] text-gray-700 hover:text-black hover:border-black/20'
-          }`}
+            }`}
         >
           <Settings className="w-4 h-4" /> 작품 설정
         </button>
@@ -310,16 +303,15 @@ export default function ProjectDashboard({
 
       {/* 3단 대시보드 레이아웃 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {/* 좌측 2개 열 (원고 통계, 최근 작성, 집필 분석 그래프) */}
         <div className="lg:col-span-2 flex flex-col gap-6">
-          
+
           {/* 통계 카드 그리드 */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* 최근 회차 달성률 프로그레스 */}
-            <div className={`p-5 rounded-2xl border flex items-center justify-between gap-4 ${
-              isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-            }`}>
+            <div className={`p-5 rounded-2xl border flex items-center justify-between gap-4 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+              }`}>
               <div className="flex flex-col gap-1.5">
                 <span className={`text-xs font-semibold ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>최근 회차 집필율</span>
                 <span className={`text-xl font-bold ${isDark ? 'text-white' : 'text-[#121316]'}`}>
@@ -354,9 +346,8 @@ export default function ProjectDashboard({
             </div>
 
             {/* 누적 글자 수 */}
-            <div className={`p-5 rounded-2xl border flex flex-col gap-1 ${
-              isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-            }`}>
+            <div className={`p-5 rounded-2xl border flex flex-col gap-1 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+              }`}>
               <span className={`text-xs font-semibold ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>누적 원고량</span>
               <span className={`text-xl font-bold mt-1 ${isDark ? 'text-white' : 'text-[#121316]'}`}>
                 {totalWords.toLocaleString()} 자
@@ -365,9 +356,8 @@ export default function ProjectDashboard({
             </div>
 
             {/* 집필 회차 수 */}
-            <div className={`p-5 rounded-2xl border flex flex-col gap-1 ${
-              isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-            }`}>
+            <div className={`p-5 rounded-2xl border flex flex-col gap-1 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+              }`}>
               <span className={`text-xs font-semibold ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>집필 회차</span>
               <span className={`text-xl font-bold mt-1 ${isDark ? 'text-white' : 'text-[#121316]'}`}>
                 {manuscriptEpisodes.length} 화
@@ -377,9 +367,8 @@ export default function ProjectDashboard({
           </div>
 
           {/* 최근 집필 원고 바로가기 */}
-          <div className={`p-6 rounded-2xl border flex flex-col gap-4 ${
-            isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-          }`}>
+          <div className={`p-6 rounded-2xl border flex flex-col gap-4 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+            }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-[#5E6AD2]" />
@@ -397,25 +386,22 @@ export default function ProjectDashboard({
 
             <div className="flex flex-col gap-3">
               {recentEpisodes.length === 0 ? (
-                <div className={`p-8 rounded-xl border border-dashed text-center text-xs text-gray-500 ${
-                  isDark ? 'border-white/[0.08]' : 'border-black/[0.08]'
-                }`}>
+                <div className={`p-8 rounded-xl border border-dashed text-center text-xs text-gray-500 ${isDark ? 'border-white/[0.08]' : 'border-black/[0.08]'
+                  }`}>
                   아직 작성된 회차가 없습니다. 에디터에서 새 회차를 만들어 보세요!
                 </div>
               ) : (
                 recentEpisodes.map(ep => (
                   <div
                     key={ep.id}
-                    className={`flex items-center justify-between p-3.5 rounded-xl border transition-all ${
-                      isDark
+                    className={`flex items-center justify-between p-3.5 rounded-xl border transition-all ${isDark
                         ? 'border-white/[0.04] bg-white/[0.01] hover:bg-white/[0.03]'
                         : 'border-black/[0.04] bg-black/[0.01] hover:bg-black/[0.03] hover:shadow-sm'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${
-                        isDark ? 'bg-white/[0.04] text-[#7480E2]' : 'bg-black/[0.04] text-[#5E6AD2]'
-                      }`}>
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${isDark ? 'bg-white/[0.04] text-[#7480E2]' : 'bg-black/[0.04] text-[#5E6AD2]'
+                        }`}>
                         <FileText className="w-4 h-4" />
                       </div>
                       <div>
@@ -432,11 +418,10 @@ export default function ProjectDashboard({
                         setSelectedEpisodeId(ep.id);
                         setActiveFeature('editor');
                       }}
-                      className={`text-xs px-3.5 py-1.5 rounded-lg border font-bold transition-all ${
-                        isDark
+                      className={`text-xs px-3.5 py-1.5 rounded-lg border font-bold transition-all ${isDark
                           ? 'border-white/[0.08] text-gray-300 hover:text-white hover:bg-white/[0.05] active:scale-[0.98]'
                           : 'border-black/[0.08] text-gray-600 hover:text-[#121316] hover:bg-black/[0.05] active:scale-[0.98]'
-                      }`}
+                        }`}
                     >
                       이어 쓰기
                     </button>
@@ -447,9 +432,8 @@ export default function ProjectDashboard({
           </div>
 
           {/* 주간 집필 분석 그래프 (SVG 기반 직접 구현) */}
-          <div className={`p-6 rounded-2xl border flex flex-col gap-4 ${
-            isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-          }`}>
+          <div className={`p-6 rounded-2xl border flex flex-col gap-4 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+            }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-[#5E6AD2]" />
@@ -494,16 +478,14 @@ export default function ProjectDashboard({
         <div className="flex flex-col gap-6">
 
           {/* 아이디어 메모 스크래치패드 */}
-          <div className={`p-5 rounded-2xl border flex flex-col gap-3 h-64 ${
-            isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-          }`}>
+          <div className={`p-5 rounded-2xl border flex flex-col gap-3 h-64 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+            }`}>
             <div className="flex items-center justify-between">
               <h3 className={`font-heading font-bold text-sm ${isDark ? 'text-white' : 'text-[#121316]'}`}>
                 아이디어 스크래치패드
               </h3>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                saveStatus === 'saved' ? 'bg-[#2ECC71]/15 text-[#2ECC71]' : 'bg-[#F39C12]/15 text-[#F39C12]'
-              }`}>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full ${saveStatus === 'saved' ? 'bg-[#2ECC71]/15 text-[#2ECC71]' : 'bg-[#F39C12]/15 text-[#F39C12]'
+                }`}>
                 {saveStatus === 'saved' ? '저장됨' : '입력 중...'}
               </span>
             </div>
@@ -511,18 +493,16 @@ export default function ProjectDashboard({
               value={notes}
               onChange={e => handleNotesChange(e.target.value)}
               placeholder="마감 일정, 복선 복기, 혹은 떠오르는 아이디어를 즉흥적으로 기록하세요..."
-              className={`flex-1 w-full p-3.5 rounded-xl text-xs outline-none border resize-none leading-relaxed transition-all duration-200 ${
-                isDark
+              className={`flex-1 w-full p-3.5 rounded-xl text-xs outline-none border resize-none leading-relaxed transition-all duration-200 ${isDark
                   ? 'bg-[#121316] border-white/[0.06] text-[#EDEDEF] placeholder-[#3A3D50] focus:border-[#5E6AD2]'
                   : 'bg-[#F8F8FA] border-black/[0.06] text-[#121316] placeholder-[#C5C5CC] focus:border-[#5E6AD2]'
-              }`}
+                }`}
             />
           </div>
 
           {/* To-Do 마감 체크리스트 */}
-          <div className={`p-5 rounded-2xl border flex flex-col gap-3 ${
-            isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-          }`}>
+          <div className={`p-5 rounded-2xl border flex flex-col gap-3 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+            }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <CheckSquare className="w-4 h-4 text-[#5E6AD2]" />
@@ -549,11 +529,10 @@ export default function ProjectDashboard({
                         onChange={() => handleToggleTodo(item.id)}
                         className="rounded border-gray-300 text-[#5E6AD2] focus:ring-[#5E6AD2] w-3.5 h-3.5"
                       />
-                      <span className={`text-xs truncate ${
-                        item.completed
+                      <span className={`text-xs truncate ${item.completed
                           ? 'line-through text-gray-500'
                           : isDark ? 'text-gray-300' : 'text-gray-700'
-                      }`}>
+                        }`}>
                         {item.text}
                       </span>
                     </label>
@@ -575,11 +554,10 @@ export default function ProjectDashboard({
                 placeholder="새 마감 과제 추가..."
                 value={newTodoText}
                 onChange={e => setNewTodoText(e.target.value)}
-                className={`flex-1 px-3 py-1.5 rounded-lg text-xs outline-none border transition-all ${
-                  isDark
+                className={`flex-1 px-3 py-1.5 rounded-lg text-xs outline-none border transition-all ${isDark
                     ? 'bg-[#121316] border-white/[0.06] text-white focus:border-[#5E6AD2]'
                     : 'bg-[#F9FAFB] border-black/[0.06] text-black focus:border-[#5E6AD2]'
-                }`}
+                  }`}
               />
               <button
                 type="submit"
@@ -591,9 +569,8 @@ export default function ProjectDashboard({
           </div>
 
           {/* 복선 떡밥 현황 경고판 */}
-          <div className={`p-5 rounded-2xl border flex flex-col gap-3 ${
-            isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-          }`}>
+          <div className={`p-5 rounded-2xl border flex flex-col gap-3 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+            }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <AlertCircle className="w-4 h-4 text-amber-500" />
@@ -613,17 +590,15 @@ export default function ProjectDashboard({
               {mockForeshadows.map(f => (
                 <div
                   key={f.id}
-                  className={`p-2.5 rounded-xl border flex flex-col gap-1 ${
-                    f.status === 'warning'
+                  className={`p-2.5 rounded-xl border flex flex-col gap-1 ${f.status === 'warning'
                       ? isDark ? 'bg-red-500/10 border-red-500/20' : 'bg-red-50 border-red-200'
                       : isDark ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-emerald-50 border-emerald-200'
-                  }`}
+                    }`}
                 >
-                  <span className={`text-[11px] font-bold ${
-                    f.status === 'warning'
+                  <span className={`text-[11px] font-bold ${f.status === 'warning'
                       ? 'text-red-400'
                       : 'text-emerald-500'
-                  }`}>
+                    }`}>
                     {f.title}
                   </span>
                   <span className="text-[10px] text-gray-500">{f.text}</span>
@@ -633,9 +608,8 @@ export default function ProjectDashboard({
           </div>
 
           {/* 세계관 지도 위젯 */}
-          <div className={`p-5 rounded-2xl border flex flex-col gap-4 ${
-            isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
-          }`}>
+          <div className={`p-5 rounded-2xl border flex flex-col gap-4 ${isDark ? 'bg-[#0D0E11] border-white/[0.06]' : 'bg-white border-black/[0.06]'
+            }`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <Globe className="w-4 h-4 text-[#5E6AD2]" />
@@ -650,9 +624,8 @@ export default function ProjectDashboard({
                 지도 열기
               </button>
             </div>
-            <div className={`relative h-28 rounded-xl border overflow-hidden flex items-center justify-center ${
-              isDark ? 'bg-white/[0.02] border-white/[0.04]' : 'bg-black/[0.02] border-black/[0.04]'
-            }`}>
+            <div className={`relative h-28 rounded-xl border overflow-hidden flex items-center justify-center ${isDark ? 'bg-white/[0.02] border-white/[0.04]' : 'bg-black/[0.02] border-black/[0.04]'
+              }`}>
               <div className="absolute inset-0 flex items-center justify-center opacity-[0.06] pointer-events-none">
                 <Globe className="w-16 h-16 text-[#5E6AD2]" />
               </div>
@@ -677,9 +650,8 @@ export default function ProjectDashboard({
       {/* 작품 설정 모달 */}
       {showSettingsModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4">
-          <div className={`w-full max-w-lg rounded-2xl border shadow-2xl overflow-hidden flex flex-col transition-all ${
-            isDark ? 'bg-[#15161A] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
-          }`}>
+          <div className={`w-full max-w-lg rounded-2xl border shadow-2xl overflow-hidden flex flex-col transition-all ${isDark ? 'bg-[#15161A] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+            }`}>
             {/* 헤더 */}
             <div className="px-6 py-4 border-b border-gray-500/10 flex items-center justify-between">
               <h3 className="text-base font-bold flex items-center gap-2">
@@ -702,11 +674,10 @@ export default function ProjectDashboard({
                   value={inputName}
                   onChange={e => setInputName(e.target.value)}
                   placeholder="작품 이름을 입력하세요"
-                  className={`w-full px-3 py-2 rounded-xl border text-sm outline-none transition-all ${
-                    isDark
+                  className={`w-full px-3 py-2 rounded-xl border text-sm outline-none transition-all ${isDark
                       ? 'bg-[#1E1F22] border-white/[0.06] text-white focus:border-[#5E6AD2]'
                       : 'bg-[#F9FAFB] border-black/[0.06] text-black focus:border-[#5E6AD2]'
-                  }`}
+                    }`}
                 />
               </div>
 
@@ -717,11 +688,10 @@ export default function ProjectDashboard({
                   onChange={e => setInputDescription(e.target.value)}
                   placeholder="작품에 대한 상세 정보나 설명을 입력하세요"
                   rows={2}
-                  className={`w-full px-3 py-2 rounded-xl border text-sm outline-none resize-none transition-all ${
-                    isDark
+                  className={`w-full px-3 py-2 rounded-xl border text-sm outline-none resize-none transition-all ${isDark
                       ? 'bg-[#1E1F22] border-white/[0.06] text-white focus:border-[#5E6AD2]'
                       : 'bg-[#F9FAFB] border-black/[0.06] text-black focus:border-[#5E6AD2]'
-                  }`}
+                    }`}
                 />
               </div>
 
@@ -732,11 +702,10 @@ export default function ProjectDashboard({
                   value={inputSchedule}
                   onChange={e => setInputSchedule(e.target.value)}
                   placeholder="예: 주 5회 (월~금), 자유연재"
-                  className={`w-full px-3 py-2 rounded-xl border text-sm outline-none transition-all ${
-                    isDark
+                  className={`w-full px-3 py-2 rounded-xl border text-sm outline-none transition-all ${isDark
                       ? 'bg-[#1E1F22] border-white/[0.06] text-white focus:border-[#5E6AD2]'
                       : 'bg-[#F9FAFB] border-black/[0.06] text-black focus:border-[#5E6AD2]'
-                  }`}
+                    }`}
                 />
               </div>
 
@@ -747,17 +716,15 @@ export default function ProjectDashboard({
                   value={inputTargetWordCount}
                   onChange={e => setInputTargetWordCount(Number(e.target.value))}
                   min={1}
-                  className={`w-full px-3 py-2 rounded-xl border text-sm outline-none transition-all ${
-                    isDark
+                  className={`w-full px-3 py-2 rounded-xl border text-sm outline-none transition-all ${isDark
                       ? 'bg-[#1E1F22] border-white/[0.06] text-white focus:border-[#5E6AD2]'
                       : 'bg-[#F9FAFB] border-black/[0.06] text-black focus:border-[#5E6AD2]'
-                  }`}
+                    }`}
                 />
               </div>
 
-              <div className={`p-4 rounded-xl border flex flex-col gap-2 mt-2 text-xs ${
-                isDark ? 'bg-white/[0.01] border-white/[0.04]' : 'bg-black/[0.01] border-black/[0.04]'
-              }`}>
+              <div className={`p-4 rounded-xl border flex flex-col gap-2 mt-2 text-xs ${isDark ? 'bg-white/[0.01] border-white/[0.04]' : 'bg-black/[0.01] border-black/[0.04]'
+                }`}>
                 <div className="flex justify-between">
                   <span className="text-gray-400">생성일자</span>
                   <span className="font-semibold">{formatDate(selectedProject.created_at)}</span>
@@ -777,11 +744,10 @@ export default function ProjectDashboard({
             <div className="px-6 py-4 border-t border-gray-500/10 flex justify-end gap-2 shrink-0">
               <button
                 onClick={() => setShowSettingsModal(false)}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-colors ${
-                  isDark
+                className={`px-4 py-2 rounded-xl text-xs font-semibold border transition-colors ${isDark
                     ? 'border-white/[0.08] text-gray-400 hover:bg-white/[0.04]'
                     : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'
-                }`}
+                  }`}
               >
                 취소
               </button>

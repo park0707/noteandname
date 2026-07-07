@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
   Undo,
   Redo,
@@ -9,7 +9,6 @@ import {
   Strikethrough,
   ChevronDown,
   ChevronUp,
-  Columns,
   Search,
   Minimize2,
   Maximize2,
@@ -46,8 +45,6 @@ interface EditorToolbarProps {
   setShowFindReplace: (show: boolean) => void;
   handleCreateSnapshot: () => void;
   setShowHistoryModal: (show: boolean) => void;
-  handleToggleSplitView: () => void;
-  isSplitView: boolean;
   historySnapshotsCount: number;
   editorSaveStatus: 'saved' | 'saving';
   charCountWithSpaces: number;
@@ -94,8 +91,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     setShowFindReplace,
     handleCreateSnapshot,
     setShowHistoryModal,
-    handleToggleSplitView,
-    isSplitView,
     historySnapshotsCount,
     editorSaveStatus,
     charCountWithSpaces,
@@ -117,6 +112,153 @@ export default function EditorToolbar(props: EditorToolbarProps) {
   } = props;
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [showDividerDropdown, setShowDividerDropdown] = useState(false);
+  const [dropdownCoords, setDropdownCoords] = useState<{ top: number; left: number } | null>(null);
+
+  const [showCreateDividerModal, setShowCreateDividerModal] = useState(false);
+
+  // 모달 입력 필드 상태
+  const [newDividerName, setNewDividerName] = useState('');
+  const [newDividerType, setNewDividerType] = useState<'line' | 'text'>('line');
+  const [newDividerStyle, setNewDividerStyle] = useState('dashed'); // solid, dashed, double
+  const [newDividerSymbol, setNewDividerSymbol] = useState('◆ ◆ ◆');
+  const [newDividerSize, setNewDividerSize] = useState('16'); // font-size or thickness
+
+  // 통합 구분선 설정 모달 상태
+  const [activeDividerConfig, setActiveDividerConfig] = useState<any | null>(null);
+  const [dividerAlign, setDividerAlign] = useState<'left' | 'center' | 'right'>('center');
+  const [dividerWidth, setDividerWidth] = useState('100'); // 100, 80, 50, 30
+  const [dividerSize, setDividerSize] = useState('2'); // default 2px (or 16px for text)
+
+  const [recentDividers, setRecentDividers] = useState<any[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('novelflow_recent_dividers') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const [customDividers, setCustomDividers] = useState<any[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('novelflow_custom_dividers') || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  const toggleDividerDropdown = () => {
+    if (!showDividerDropdown && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownCoords({
+        top: rect.bottom + 4,
+        left: rect.left
+      });
+    }
+    setShowDividerDropdown(!showDividerDropdown);
+  };
+
+  const openDividerConfigModal = (config: any) => {
+    setActiveDividerConfig(config);
+    setDividerAlign('center');
+    setDividerWidth('100');
+    setDividerSize(config.type === 'line' ? '2' : '16');
+    setShowDividerDropdown(false);
+  };
+
+  const addToRecentDividers = (divider: any) => {
+    setRecentDividers(prev => {
+      const filtered = prev.filter(d => d.html !== divider.html);
+      const updated = [divider, ...filtered].slice(0, 3);
+      localStorage.setItem('novelflow_recent_dividers', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const handleInsertDividerWithRecent = (name: string, html: string) => {
+    execFormat('insertHTML', html);
+    setShowDividerDropdown(false);
+    
+    const tempDivider = {
+      id: `temp_${Date.now()}`,
+      name,
+      html
+    };
+    addToRecentDividers(tempDivider);
+  };
+
+  const handleInsertConfiguredDivider = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeDividerConfig) return;
+
+    let marginStyle = 'margin: 24px auto;'; // center
+    if (dividerAlign === 'left') {
+      marginStyle = 'margin: 24px auto 24px 0;';
+    } else if (dividerAlign === 'right') {
+      marginStyle = 'margin: 24px 0 24px auto;';
+    }
+
+    let html = '';
+    const styleOrSymbol = activeDividerConfig.type === 'line' 
+      ? activeDividerConfig.style 
+      : activeDividerConfig.symbol;
+
+    if (activeDividerConfig.type === 'line') {
+      html = `<hr class="novela-divider-custom novela-divider-line" style="border: 0; border-top: ${dividerSize}px ${styleOrSymbol} #888888; ${marginStyle} width: ${dividerWidth}%; display: block; clear: both;" />`;
+    } else {
+      html = `<div class="novela-divider-custom novela-divider-text" style="display: block; text-align: ${dividerAlign}; ${marginStyle} color: #888888; font-size: ${dividerSize}px; letter-spacing: 6px; font-weight: bold; width: 100%; clear: both; font-family: sans-serif;">${styleOrSymbol}</div>`;
+    }
+
+    const typeLabel = activeDividerConfig.type === 'line' 
+      ? (styleOrSymbol === 'dashed' ? '점선' : styleOrSymbol === 'solid' ? '실선' : '이중선')
+      : (styleOrSymbol === '★ ★ ★' ? '별장식' : styleOrSymbol === '~ ~ ~' ? '물결선' : '기호선');
+    const comboName = `${dividerSize}px ${typeLabel} (${dividerWidth}%, ${dividerAlign})`;
+
+    const newCombo = {
+      id: `combo_${Date.now()}`,
+      name: comboName,
+      html
+    };
+
+    execFormat('insertHTML', html);
+    addToRecentDividers(newCombo);
+    
+    setActiveDividerConfig(null);
+  };
+
+  const handleCreateCustomDivider = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDividerName.trim()) return;
+
+    let html = '';
+    if (newDividerType === 'line') {
+      html = `<hr class="novela-divider-custom novela-divider-line" style="border: 0; border-top: ${newDividerSize}px ${newDividerStyle} #888888; margin: 24px 0; width: 100%;" />`;
+    } else {
+      html = `<div class="novela-divider-custom novela-divider-text" style="text-align: center; margin: 24px 0; color: #888888; font-size: ${newDividerSize}px; letter-spacing: 6px; font-weight: bold; width: 100%;">${newDividerSymbol}</div>`;
+    }
+
+    const newDivider = {
+      id: `div_${Date.now()}`,
+      name: newDividerName.trim(),
+      type: newDividerType,
+      styleOrSymbol: newDividerType === 'line' ? newDividerStyle : newDividerSymbol,
+      color: '#888888',
+      sizeOrThickness: newDividerSize,
+      html
+    };
+
+    const updatedCustom = [newDivider, ...customDividers];
+    setCustomDividers(updatedCustom);
+    localStorage.setItem('novelflow_custom_dividers', JSON.stringify(updatedCustom));
+
+    execFormat('insertHTML', html);
+    addToRecentDividers(newDivider);
+    
+    setNewDividerName('');
+    setShowCreateDividerModal(false);
+  };
+
+
 
   return (
     <div className="flex flex-col shrink-0 select-none">
@@ -496,9 +638,9 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
       {/* 2. 보조 설정 바 */}
       {!isFocusMode && (
-        <div className={`px-6 py-2 border-b flex items-center justify-between gap-4 text-xs ${themeStyles.toolbar}`}>
+        <div className={`px-6 py-2 border-b flex items-center justify-between gap-4 text-xs overflow-x-auto scrollbar-thin ${themeStyles.toolbar}`}>
           {/* 특수 편집 도구 */}
-          <div className="flex items-center gap-3 overflow-x-auto">
+          <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => execFormat('justifyLeft')}
               className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
@@ -547,13 +689,114 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
             <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
-            <button
-              onClick={() => execFormat('insertHTML', '<hr style="border: 0; border-top: 1px dashed #666; margin: 24px 0;" />')}
-              className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors shrink-0 ${isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}
-              title="장면 전환용 구분선 삽입"
-            >
-              구분선
-            </button>
+            <div className="relative shrink-0">
+              <button
+                ref={buttonRef}
+                onClick={toggleDividerDropdown}
+                className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors flex items-center gap-1 shrink-0 ${
+                  isDark
+                    ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400'
+                    : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
+                }`}
+                title="장면 전환용 구분선 종류 선택"
+              >
+                <span>구분선</span>
+                <span className="text-[8px] opacity-60">▼</span>
+              </button>
+
+              {showDividerDropdown && (
+                <div
+                  onMouseLeave={() => setShowDividerDropdown(false)}
+                  style={dropdownCoords ? { top: `${dropdownCoords.top}px`, left: `${dropdownCoords.left}px` } : undefined}
+                  className={`fixed w-72 rounded-xl border p-1.5 shadow-2xl z-50 flex flex-col gap-0.5 max-h-80 overflow-y-auto backdrop-blur-md ${
+                    isDark
+                      ? 'bg-[#1E1F22]/95 border-white/[0.08] text-gray-200 shadow-black/80'
+                      : 'bg-white/95 border-black/[0.08] text-gray-800 shadow-black/10'
+                  }`}
+                >
+                  {/* 최근 사용 구분선 */}
+                  {recentDividers.length > 0 && (
+                    <>
+                      <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">최근 구분선</div>
+                      {recentDividers.map((div: any) => (
+                        <button
+                          key={div.id}
+                          onClick={() => handleInsertDividerWithRecent(div.name, div.html)}
+                          className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                          title={div.name}
+                        >
+                          <span className="truncate block w-full">{div.name}</span>
+                        </button>
+                      ))}
+                      <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+                    </>
+                  )}
+
+                  {/* 기본 구분선 */}
+                  <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">기본 구분선</div>
+                  <button
+                    onClick={() => openDividerConfigModal({ type: 'line', style: 'dashed', defaultName: '점선 구분선' })}
+                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                  >
+                    점선 구분선 (설정 후 삽입)
+                  </button>
+                  <button
+                    onClick={() => openDividerConfigModal({ type: 'line', style: 'solid', defaultName: '실선 구분선' })}
+                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                  >
+                    실선 구분선 (설정 후 삽입)
+                  </button>
+                  <button
+                    onClick={() => openDividerConfigModal({ type: 'line', style: 'double', defaultName: '이중선 구분선' })}
+                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                  >
+                    이중선 구분선 (설정 후 삽입)
+                  </button>
+                  <button
+                    onClick={() => openDividerConfigModal({ type: 'text', symbol: '★ ★ ★', defaultName: '별 장식선' })}
+                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                  >
+                    별 장식선 (★ ★ ★)
+                  </button>
+                  <button
+                    onClick={() => openDividerConfigModal({ type: 'text', symbol: '~ ~ ~', defaultName: '물결선' })}
+                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                  >
+                    물결선 (~ ~ ~)
+                  </button>
+
+                  {/* 저장된 커스텀 구분선 */}
+                  {customDividers.length > 0 && (
+                    <>
+                      <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+                      <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">마이 커스텀 구분선</div>
+                      {customDividers.map((div: any) => (
+                        <button
+                          key={div.id}
+                          onClick={() => handleInsertDividerWithRecent(div.name, div.html)}
+                          className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                          title={div.name}
+                        >
+                          <span className="truncate block w-full">{div.name}</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
+
+                  {/* 커스텀 구분선 만들기 (가장 하단) */}
+                  <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+                  <button
+                    onClick={() => {
+                      setShowDividerDropdown(false);
+                      setShowCreateDividerModal(true);
+                    }}
+                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-bold text-[#5E6AD2] hover:bg-[#5E6AD2]/10 transition-colors h-8 flex items-center leading-normal"
+                  >
+                    ➕ 커스텀 구분선 만들기
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={() => execFormat('formatBlock', '<blockquote>')}
               className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
@@ -642,19 +885,272 @@ export default function EditorToolbar(props: EditorToolbarProps) {
               </button>
             )}
 
-            <button
-              onClick={handleToggleSplitView}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors flex items-center gap-1.5 ${
-                isSplitView
-                  ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]'
-                  : isDark
-                    ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300'
-                    : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-700'
-              }`}
-              title="에디터 화면 좌우 분할"
-            >
-              <Columns className="w-3 h-3" /> 화면 분할
-            </button>
+
+          </div>
+        </div>
+      )}
+
+      {/* 구분선 스타일 설정 모달 */}
+      {activeDividerConfig && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`w-96 rounded-2xl border p-6 flex flex-col gap-4 shadow-2xl ${
+            isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            <div className="flex items-center justify-between pb-2 border-b border-gray-500/10">
+              <h3 className="text-sm font-bold">⚙️ 구분선 스타일 설정 및 생성</h3>
+              <button 
+                onClick={() => setActiveDividerConfig(null)}
+                className="text-gray-400 hover:text-gray-200 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleInsertConfiguredDivider} className="flex flex-col gap-3.5 text-xs">
+              {/* 구분선 형태 명시 */}
+              <div className="flex flex-col gap-1 px-3 py-2 rounded-lg bg-gray-500/5 border border-gray-500/10">
+                <span className="font-semibold text-gray-400 text-[10px]">선택한 형태</span>
+                <span className="font-bold text-sm">
+                  {activeDividerConfig.defaultName} 
+                  {activeDividerConfig.type === 'text' ? ` (${activeDividerConfig.symbol})` : ` (${activeDividerConfig.style})`}
+                </span>
+              </div>
+
+              {/* 정렬 위치 */}
+              <div className="flex flex-col gap-1.5">
+                <span className="font-semibold text-gray-400">정렬 위치</span>
+                <div className="flex gap-2">
+                  {(['left', 'center', 'right'] as const).map((align) => (
+                    <button
+                      key={align}
+                      type="button"
+                      onClick={() => setDividerAlign(align)}
+                      className={`flex-1 py-1.5 rounded-lg border font-bold transition-all ${
+                        dividerAlign === align
+                          ? 'border-[#5E6AD2] bg-[#5E6AD2]/10 text-[#7480E2]'
+                          : isDark ? 'border-white/[0.06] hover:bg-white/[0.04]' : 'border-black/[0.06] hover:bg-black/[0.04]'
+                      }`}
+                    >
+                      {align === 'left' ? '왼쪽' : align === 'center' ? '가운데' : '오른쪽'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 길이 설정 (Line 타입인 경우 활성화) */}
+              {activeDividerConfig.type === 'line' && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="font-semibold text-gray-400">길이 (비율)</span>
+                  <select
+                    value={dividerWidth}
+                    onChange={(e) => setDividerWidth(e.target.value)}
+                    className={`px-3 py-1.5 rounded-lg border outline-none cursor-pointer ${
+                      isDark ? 'bg-[#1E1F22] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-black'
+                    }`}
+                  >
+                    <option value="100">100% (전체)</option>
+                    <option value="80">80% (보통)</option>
+                    <option value="50">50% (절반)</option>
+                    <option value="30">30% (짧게)</option>
+                  </select>
+                </div>
+              )}
+
+              {/* 두께/크기 설정 */}
+              <div className="flex flex-col gap-1.5">
+                <span className="font-semibold text-gray-400">
+                  {activeDividerConfig.type === 'line' ? '선 두께 (px)' : '글자 크기 (px)'}
+                </span>
+                <select
+                  value={dividerSize}
+                  onChange={(e) => setDividerSize(e.target.value)}
+                  className={`px-3 py-1.5 rounded-lg border outline-none cursor-pointer ${
+                    isDark ? 'bg-[#1E1F22] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-black'
+                  }`}
+                >
+                  {activeDividerConfig.type === 'line' ? (
+                    <>
+                      <option value="1">1px (가장 얇게)</option>
+                      <option value="2">2px (보통)</option>
+                      <option value="3">3px (두껍게)</option>
+                      <option value="4">4px (가장 두껍게)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="12">12px (작게)</option>
+                      <option value="16">16px (보통)</option>
+                      <option value="20">20px (크게)</option>
+                      <option value="24">24px (가장 크게)</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* 버튼 그룹 */}
+              <div className="flex gap-2.5 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveDividerConfig(null)}
+                  className={`flex-1 py-2 rounded-xl font-bold border transition-colors ${
+                    isDark ? 'border-white/[0.06] hover:bg-white/[0.04]' : 'border-black/[0.06] hover:bg-black/[0.04]'
+                  }`}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
+                >
+                  생성 및 삽입
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 커스텀 구분선 만들기 모달 */}
+      {showCreateDividerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`w-96 rounded-2xl border p-6 flex flex-col gap-4 shadow-2xl ${
+            isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            <div className="flex items-center justify-between pb-2 border-b border-gray-500/10">
+              <h3 className="text-sm font-bold">➕ 나만의 커스텀 구분선 만들기</h3>
+              <button 
+                onClick={() => setShowCreateDividerModal(false)}
+                className="text-gray-400 hover:text-gray-200 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateCustomDivider} className="flex flex-col gap-3.5 text-xs">
+              {/* 이름 */}
+              <div className="flex flex-col gap-1.5">
+                <span className="font-semibold text-gray-400">구분선 이름</span>
+                <input
+                  type="text"
+                  required
+                  placeholder="예: 내 장미 기호 구분선"
+                  value={newDividerName}
+                  onChange={(e) => setNewDividerName(e.target.value)}
+                  className={`px-3 py-1.5 rounded-lg border outline-none ${
+                    isDark ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'
+                  }`}
+                />
+              </div>
+
+              {/* 유형 */}
+              <div className="flex flex-col gap-1.5">
+                <span className="font-semibold text-gray-400">구분선 종류</span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setNewDividerType('line'); setNewDividerSize('2'); }}
+                    className={`flex-1 py-1.5 rounded-lg border font-bold transition-all ${
+                      newDividerType === 'line'
+                        ? 'border-[#5E6AD2] bg-[#5E6AD2]/10 text-[#7480E2]'
+                        : isDark ? 'border-white/[0.06] hover:bg-white/[0.04]' : 'border-black/[0.06] hover:bg-black/[0.04]'
+                    }`}
+                  >
+                    선형 (Line)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setNewDividerType('text'); setNewDividerSize('16'); }}
+                    className={`flex-1 py-1.5 rounded-lg border font-bold transition-all ${
+                      newDividerType === 'text'
+                        ? 'border-[#5E6AD2] bg-[#5E6AD2]/10 text-[#7480E2]'
+                        : isDark ? 'border-white/[0.06] hover:bg-white/[0.04]' : 'border-black/[0.06] hover:bg-black/[0.04]'
+                    }`}
+                  >
+                    문자기호형 (Text)
+                  </button>
+                </div>
+              </div>
+
+              {/* 형태 스타일/기호 입력 */}
+              {newDividerType === 'line' ? (
+                <div className="flex flex-col gap-1.5">
+                  <span className="font-semibold text-gray-400">선 스타일</span>
+                  <select
+                    value={newDividerStyle}
+                    onChange={(e) => setNewDividerStyle(e.target.value)}
+                    className={`px-3 py-1.5 rounded-lg border outline-none cursor-pointer ${
+                      isDark ? 'bg-[#1E1F22] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-black'
+                    }`}
+                  >
+                    <option value="solid">실선 (Solid)</option>
+                    <option value="dashed">점선 (Dashed)</option>
+                    <option value="double">이중선 (Double)</option>
+                  </select>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1.5">
+                  <span className="font-semibold text-gray-400">구분 기호 문자</span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="예: ◆ ◆ ◆ 또는 ◇ ◇ ◇ 또는 ★ ★ ★"
+                    value={newDividerSymbol}
+                    onChange={(e) => setNewDividerSymbol(e.target.value)}
+                    className={`px-3 py-1.5 rounded-lg border outline-none ${
+                      isDark ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'
+                    }`}
+                  />
+                </div>
+              )}
+
+              {/* 두께/크기 설정 */}
+              <div className="flex flex-col gap-1.5">
+                <span className="font-semibold text-gray-400">
+                  {newDividerType === 'line' ? '선 두께 (px)' : '글자 크기 (px)'}
+                </span>
+                <select
+                  value={newDividerSize}
+                  onChange={(e) => setNewDividerSize(e.target.value)}
+                  className={`px-3 py-1.5 rounded-lg border outline-none cursor-pointer ${
+                    isDark ? 'bg-[#1E1F22] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-black'
+                  }`}
+                >
+                  {newDividerType === 'line' ? (
+                    <>
+                      <option value="1">1px (가장 얇게)</option>
+                      <option value="2">2px (보통)</option>
+                      <option value="3">3px (두껍게)</option>
+                      <option value="4">4px (가장 두껍게)</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="12">12px (작게)</option>
+                      <option value="16">16px (보통)</option>
+                      <option value="20">20px (크게)</option>
+                      <option value="24">24px (가장 크게)</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* 버튼 그룹 */}
+              <div className="flex gap-2.5 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateDividerModal(false)}
+                  className={`flex-1 py-2 rounded-xl font-bold border transition-colors ${
+                    isDark ? 'border-white/[0.06] hover:bg-white/[0.04]' : 'border-black/[0.06] hover:bg-black/[0.04]'
+                  }`}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
+                >
+                  저장 및 삽입
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

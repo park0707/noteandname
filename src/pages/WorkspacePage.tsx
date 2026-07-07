@@ -7,15 +7,16 @@ import { Plus, FolderOpen, Trash2 } from 'lucide-react';
 import InfoPage from './InfoPage';
 
 // Import new modularized components
-import ProjectDashboard from '../components/workspace/ProjectDashboard';
-import AiNamingEngine from '../components/workspace/AiNamingEngine';
-import JamoFilter from '../components/workspace/JamoFilter';
-import RelationsMap from '../components/workspace/RelationsMap';
-import ForeshadowingTimeline from '../components/workspace/ForeshadowingTimeline';
-import CharacterHistory from '../components/workspace/CharacterHistory';
-import NotionSync from '../components/workspace/NotionSync';
-import WorldMap from '../components/workspace/WorldMap';
-import WritingSpace from '../components/workspace/WritingSpace';
+import WorkspaceLayoutManager from '../components/workspace/WorkspaceLayoutManager';
+import type { LayoutNode, PanelNode } from '../components/workspace/layoutUtils';
+import {
+  findPanel,
+  findFirstPanelId,
+  updatePanelState,
+  splitPanel,
+  closePanel,
+  updateSplitRatio,
+} from '../components/workspace/layoutUtils';
 import type { Project, Episode, Node } from '../components/workspace/types';
 
 interface WorkspacePageProps {
@@ -31,7 +32,17 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
   const { user } = useAuth();
   const isDark = themeMode === 'dark';
 
-  const [activeFeature, setActiveFeature] = useState('dashboard');
+  const [layoutTree, setLayoutTree] = useState<LayoutNode>({
+    type: 'panel',
+    id: 'main-panel',
+    activeFeature: 'dashboard',
+    selectedEpisodeId: null,
+  });
+  const [focusedPanelId, setFocusedPanelId] = useState<string>('main-panel');
+
+  const currentFocusedPanel = findPanel(layoutTree, focusedPanelId);
+  const activeFeature = currentFocusedPanel ? currentFocusedPanel.activeFeature : 'dashboard';
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loadingProjects, setLoadingProjects] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -50,7 +61,6 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
 
   // 3. 집필실 (Writing Editor) 에피소드 공유 상태
   const [episodes, setEpisodes] = useState<Episode[]>([]);
-  const [selectedEpisodeId, setSelectedEpisodeId] = useState<string | null>(null);
   const [editorSaveStatus, setEditorSaveStatus] = useState<'saved' | 'saving'>('saved');
 
   // 프로젝트 목록 불러오기
@@ -113,6 +123,27 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     return () => clearTimeout(timer);
   }, [notes, selectedProject]);
 
+  // 프로젝트 선택 시 layoutTree 및 focusedPanelId 초기화
+  useEffect(() => {
+    if (selectedProject) {
+      setLayoutTree({
+        type: 'panel',
+        id: 'main-panel',
+        activeFeature: 'dashboard',
+        selectedEpisodeId: null,
+      });
+      setFocusedPanelId('main-panel');
+    } else {
+      setLayoutTree({
+        type: 'panel',
+        id: 'main-panel',
+        activeFeature: 'dashboard',
+        selectedEpisodeId: null,
+      });
+      setFocusedPanelId('main-panel');
+    }
+  }, [selectedProject]);
+
   // 프로젝트 선택 시 해당 에피소드(회차) 자동 로드
   useEffect(() => {
     if (selectedProject) {
@@ -123,9 +154,15 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
           const parsed = JSON.parse(saved) as Episode[];
           setEpisodes(parsed);
           if (parsed.length > 0) {
-            setSelectedEpisodeId(parsed[0].id);
+            setLayoutTree(prev => {
+              const firstPanelId = findFirstPanelId(prev);
+              return updatePanelState(prev, firstPanelId, { selectedEpisodeId: parsed[0].id });
+            });
           } else {
-            setSelectedEpisodeId(null);
+            setLayoutTree(prev => {
+              const firstPanelId = findFirstPanelId(prev);
+              return updatePanelState(prev, firstPanelId, { selectedEpisodeId: null });
+            });
           }
         } catch (e) {
           console.error(e);
@@ -159,12 +196,18 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
           }
         ];
         setEpisodes(initialEpisodes);
-        setSelectedEpisodeId('ep-1');
+        setLayoutTree(prev => {
+          const firstPanelId = findFirstPanelId(prev);
+          return updatePanelState(prev, firstPanelId, { selectedEpisodeId: 'ep-1' });
+        });
         localStorage.setItem(epKey, JSON.stringify(initialEpisodes));
       }
     } else {
       setEpisodes([]);
-      setSelectedEpisodeId(null);
+      setLayoutTree(prev => {
+        const firstPanelId = findFirstPanelId(prev);
+        return updatePanelState(prev, firstPanelId, { selectedEpisodeId: null });
+      });
     }
   }, [selectedProject]);
 
@@ -214,7 +257,7 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
       setProjects(prev => prev.filter(p => p.id !== id));
       if (selectedProject?.id === id) {
         setSelectedProject(null);
-        setActiveFeature('dashboard');
+        handleFeatureSelect('dashboard');
       }
       return;
     }
@@ -223,7 +266,7 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     setProjects(prev => prev.filter(p => p.id !== id));
     if (selectedProject?.id === id) {
       setSelectedProject(null);
-      setActiveFeature('dashboard');
+      handleFeatureSelect('dashboard');
     }
   };
 
@@ -242,100 +285,99 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     setProjects(prev => prev.map(p => p.id === selectedProject.id ? { ...p, ...updatedFields } : p));
   };
 
+  // 화면 분할 조작 헬퍼 함수들
+  const handleFocus = (panelId: string) => {
+    setFocusedPanelId(panelId);
+  };
+
+  const handleSplit = (targetId: string, direction: 'row' | 'col', position: 'first' | 'second') => {
+    const newPanelId = `panel-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    setLayoutTree(prev => splitPanel(prev, targetId, direction, position, newPanelId));
+    setFocusedPanelId(newPanelId);
+  };
+
+  const handleClose = (panelId: string) => {
+    setLayoutTree(prev => {
+      const { root, nextFocusId } = closePanel(prev, panelId);
+      if (nextFocusId) {
+        setFocusedPanelId(nextFocusId);
+      }
+      return root;
+    });
+  };
+
+  const handleRatioChange = (splitId: string, ratio: number) => {
+    setLayoutTree(prev => updateSplitRatio(prev, splitId, ratio));
+  };
+
+  const handleUpdatePanelState = (
+    panelId: string,
+    updates: Partial<Omit<PanelNode, 'type' | 'id'>>
+  ) => {
+    setLayoutTree(prev => updatePanelState(prev, panelId, updates));
+  };
+
+  const handleFeatureSelect = (feat: string) => {
+    let defaultEpId: string | null = null;
+    if (feat === 'editor') {
+      const currentPanel = findPanel(layoutTree, focusedPanelId);
+      if (!currentPanel?.selectedEpisodeId && episodes.length > 0) {
+        const firstEp = episodes.find(e => !e.isFolder);
+        if (firstEp) {
+          defaultEpId = firstEp.id;
+        }
+      }
+    }
+
+    setLayoutTree(prev => updatePanelState(prev, focusedPanelId, {
+      activeFeature: feat,
+      ...(feat === 'editor' && defaultEpId ? { selectedEpisodeId: defaultEpId } : {})
+    }));
+  };
+
   return (
     <div className={`w-full h-screen flex overflow-hidden ${isDark ? 'bg-[#08090A] text-[#EDEDEF]' : 'bg-[#F4F4F6] text-[#121316]'}`}>
       <Sidebar
         themeMode={themeMode}
         activeFeature={activeFeature}
-        onFeatureSelect={setActiveFeature}
+        onFeatureSelect={handleFeatureSelect}
         selectedProject={selectedProject}
-        onBackToProjects={() => { setSelectedProject(null); setActiveFeature('dashboard'); }}
+        onBackToProjects={() => { setSelectedProject(null); handleFeatureSelect('dashboard'); }}
       />
       <main className="flex-1 flex flex-col overflow-hidden">
         <div className="flex-1 flex flex-col overflow-hidden">
           {selectedProject ? (
             <div className="flex-1 flex flex-col overflow-hidden">
               <div className="flex-1 flex overflow-hidden">
-                {activeFeature === 'dashboard' && (
-                  <ProjectDashboard
-                    selectedProject={selectedProject}
-                    notes={notes}
-                    setNotes={setNotes}
-                    saveStatus={saveStatus}
-                    setSaveStatus={setSaveStatus}
-                    onUpdateProjectDetails={handleUpdateProjectDetails}
-                    setActiveFeature={setActiveFeature}
-                    isDark={isDark}
-                    episodes={episodes}
-                    relationNodes={relationNodes}
-                    setSelectedEpisodeId={setSelectedEpisodeId}
-                  />
-                )}
-                {activeFeature === 'editor' && (
-                  <WritingSpace
-                    selectedProject={selectedProject}
-                    setSelectedProject={setSelectedProject}
-                    setActiveFeature={setActiveFeature}
-                    episodes={episodes}
-                    setEpisodes={setEpisodes}
-                    selectedEpisodeId={selectedEpisodeId}
-                    setSelectedEpisodeId={setSelectedEpisodeId}
-                    editorSaveStatus={editorSaveStatus}
-                    relationNodes={relationNodes}
-                    isDark={isDark}
-                  />
-                )}
-                {activeFeature === 'naming' && (
-                  <AiNamingEngine
-                    isDark={isDark}
-                    relationNodes={relationNodes}
-                  />
-                )}
-                {activeFeature === 'jamo' && (
-                  <JamoFilter
-                    isDark={isDark}
-                    relationNodes={relationNodes}
-                  />
-                )}
-                {activeFeature === 'relations' && (
-                  <RelationsMap
-                    isDark={isDark}
-                    relationNodes={relationNodes}
-                    setRelationNodes={setRelationNodes}
-                  />
-                )}
-                {activeFeature === 'timeline' && (
-                  <ForeshadowingTimeline
-                    isDark={isDark}
-                  />
-                )}
-                {activeFeature === 'history' && (
-                  <CharacterHistory
-                    isDark={isDark}
-                  />
-                )}
-                {activeFeature === 'notion' && (
-                  <NotionSync
-                    isDark={isDark}
-                  />
-                )}
-                {activeFeature === 'worldmap' && (
-                  <WorldMap
-                    isDark={isDark}
-                  />
-                )}
-                {activeFeature === 'info' && (
-                  <InfoPage
-                    themeMode={themeMode}
-                    onClose={() => setActiveFeature('dashboard')}
-                  />
-                )}
+                <WorkspaceLayoutManager
+                  layoutTree={layoutTree}
+                  focusedPanelId={focusedPanelId}
+                  onFocus={handleFocus}
+                  onSplit={handleSplit}
+                  onClose={handleClose}
+                  onRatioChange={handleRatioChange}
+                  onUpdatePanelState={handleUpdatePanelState}
+                  selectedProject={selectedProject}
+                  setSelectedProject={setSelectedProject}
+                  episodes={episodes}
+                  setEpisodes={setEpisodes}
+                  editorSaveStatus={editorSaveStatus}
+                  relationNodes={relationNodes}
+                  setRelationNodes={setRelationNodes}
+                  notes={notes}
+                  setNotes={setNotes}
+                  saveStatus={saveStatus}
+                  setSaveStatus={setSaveStatus}
+                  onUpdateProjectDetails={handleUpdateProjectDetails}
+                  isDark={isDark}
+                  themeMode={themeMode}
+                />
               </div>
             </div>
           ) : (
             <>
               {activeFeature === 'info' ? (
-                <InfoPage themeMode={themeMode} onClose={() => setActiveFeature('dashboard')} />
+                <InfoPage themeMode={themeMode} onClose={() => handleFeatureSelect('dashboard')} />
               ) : (
                 <>
                   <div className={`px-8 py-5 border-b flex items-center justify-between shrink-0 ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}`}>
@@ -375,7 +417,7 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
                           return (
                             <div
                               key={project.id}
-                              onClick={() => { setSelectedProject(project); setActiveFeature('dashboard'); }}
+                              onClick={() => { setSelectedProject(project); handleFeatureSelect('dashboard'); }}
                               className={`group relative rounded-2xl border p-5 flex flex-col gap-3 cursor-pointer transition-all duration-200 hover:shadow-lg ${isDark ? 'bg-[#0D0E11] border-white/[0.06] hover:border-white/[0.12] hover:bg-[#111215]' : 'bg-white border-black/[0.06] hover:border-black/[0.12]'
                                 }`}
                             >
