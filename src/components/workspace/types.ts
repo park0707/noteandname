@@ -11,7 +11,7 @@ export interface Episode {
   projectId: string;
   title: string;
   content: string;
-  wordCount: number;
+  charCount: number;
   updatedAt: string;
   isFolder?: boolean;
   parentId?: string | null;
@@ -56,6 +56,17 @@ export interface Snapshot {
   name: string;
   memo: string;
   content: string;
-  wordCount: number;
+  charCount: number;
   type: 'manual' | 'auto_words' | 'auto_time';
+}
+
+export interface Foreshadowing {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  createdChapter: number;
+  targetChapter: number;
+  isResolved: boolean;
+  createdAt: string;
 }

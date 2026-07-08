@@ -133,7 +133,7 @@ export default function SnapshotHistoryModal(props: SnapshotHistoryModalProps) {
                   </span>
                 )}
 
-                <span className="text-[9px] text-gray-400 mt-1">저장일자: {snap.timestamp} (글자수: {snap.wordCount.toLocaleString()}자)</span>
+                <span className="text-[9px] text-gray-400 mt-1">저장일자: {snap.timestamp} (글자수: {snap.charCount.toLocaleString()}자)</span>
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0">

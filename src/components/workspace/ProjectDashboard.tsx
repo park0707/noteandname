@@ -27,6 +27,8 @@ interface ProjectDashboardProps {
   episodes: Episode[];
   relationNodes: Node[];
   setSelectedEpisodeId: (id: string | null) => void;
+  targetWordCount?: number;
+  onTargetWordCountChange?: (v: number) => void;
 }
 
 interface ToDoItem {
@@ -53,6 +55,8 @@ export default function ProjectDashboard({
   episodes,
   relationNodes,
   setSelectedEpisodeId,
+  targetWordCount: targetWordCountProp,
+  onTargetWordCountChange,
 }: ProjectDashboardProps) {
   const [editingName, setEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState(selectedProject.name);
@@ -60,7 +64,8 @@ export default function ProjectDashboard({
 
   // Extended project configurations
   const [publishSchedule, setPublishSchedule] = useState('주 5회 (월~금)');
-  const [targetWordCount, setTargetWordCount] = useState(5000);
+  // 외부 prop이 있으면 우선 사용, 없으면 로컈 localStorage에서 하이드
+  const [targetWordCount, setTargetWordCount] = useState(targetWordCountProp ?? 5000);
 
   // Modal form input states
   const [inputName, setInputName] = useState(selectedProject.name);
@@ -136,6 +141,12 @@ export default function ProjectDashboard({
   }, [publishSchedule, targetWordCount]);
 
   useEffect(() => {
+    if (targetWordCountProp !== undefined) {
+      setTargetWordCount(targetWordCountProp);
+    }
+  }, [targetWordCountProp]);
+
+  useEffect(() => {
     setEditingNameValue(selectedProject.name);
   }, [selectedProject.name]);
 
@@ -179,17 +190,25 @@ export default function ProjectDashboard({
       return;
     }
 
+    const parsedWordCount = Number(inputTargetWordCount);
+    if (isNaN(parsedWordCount) || parsedWordCount <= 0) {
+      alert('목표 글자 수는 0보다 큰 숫자여야 합니다.');
+      return;
+    }
+
     onUpdateProjectDetails?.(trimmedName, inputDescription.trim());
 
     const settingsKey = `novelflow_project_settings_${selectedProject.id}`;
     const settingsData = {
       publishSchedule: inputSchedule,
-      targetWordCount: inputTargetWordCount || 5000,
+      targetWordCount: parsedWordCount,
     };
     localStorage.setItem(settingsKey, JSON.stringify(settingsData));
 
     setPublishSchedule(inputSchedule);
-    setTargetWordCount(inputTargetWordCount || 5000);
+    setTargetWordCount(parsedWordCount);
+    // WorkspacePage의 공유 상태도 업데이트
+    onTargetWordCountChange?.(parsedWordCount);
     setShowSettingsModal(false);
   };
 
@@ -197,7 +216,7 @@ export default function ProjectDashboard({
   const manuscriptEpisodes = episodes.filter(ep => !ep.isFolder);
 
   // Compute total characters count
-  const totalWords = manuscriptEpisodes.reduce((sum, ep) => sum + (ep.wordCount || 0), 0);
+  const totalWords = manuscriptEpisodes.reduce((sum, ep) => sum + (ep.charCount || 0), 0);
 
   // Sort episodes by updatedAt desc for "Recent Manuscripts"
   const recentEpisodes = [...manuscriptEpisodes]
@@ -206,7 +225,7 @@ export default function ProjectDashboard({
 
   // Progress calculations based on the latest active episode
   const latestEpisode = recentEpisodes[0];
-  const currentWords = latestEpisode ? (latestEpisode.wordCount || 0) : 0;
+  const currentWords = latestEpisode ? (latestEpisode.charCount || 0) : 0;
   const progressPercent = Math.min(Math.round((currentWords / targetWordCount) * 100), 100);
 
   // Simulated week dates for charts
@@ -409,7 +428,7 @@ export default function ProjectDashboard({
                           {ep.title}
                         </p>
                         <p className="text-[11px] text-gray-500 mt-0.5">
-                          {ep.wordCount?.toLocaleString() || 0}자 · 마지막 저장 {formatDate(ep.updatedAt)}
+                          {ep.charCount?.toLocaleString() || 0}자 · 마지막 저장 {formatDate(ep.updatedAt)}
                         </p>
                       </div>
                     </div>

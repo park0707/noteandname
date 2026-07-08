@@ -1,9 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { FileText } from 'lucide-react';
 import type { Project, Episode, Node, Snapshot } from './types';
-import { DEFAULT_FONTS } from '../../lib/fonts';
-import type { FontOption } from '../../lib/fonts';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
+
+// Import custom hooks
+import { useEpisodes } from '../../hooks/useEpisodes';
+import { useEditorFormat } from '../../hooks/useEditorFormat';
 
 // Import modular subcomponents
 import EpisodeSidebar from './writingspace/EpisodeSidebar';
@@ -13,7 +17,6 @@ import DiffViewPane from './writingspace/DiffViewPane';
 import MainEditorCanvas from './writingspace/MainEditorCanvas';
 import TrashModal from './writingspace/Modals/TrashModal';
 import SnapshotHistoryModal from './writingspace/Modals/SnapshotHistoryModal';
-import { getRecursiveDescendants } from './utils';
 
 interface WritingSpaceProps {
   selectedProject: Project;
@@ -26,6 +29,7 @@ interface WritingSpaceProps {
   editorSaveStatus: 'saved' | 'saving';
   relationNodes: Node[];
   isDark: boolean;
+  targetWordCount?: number;
 }
 
 export default function WritingSpace(props: WritingSpaceProps) {
@@ -36,77 +40,79 @@ export default function WritingSpace(props: WritingSpaceProps) {
     selectedEpisodeId,
     setSelectedEpisodeId,
     editorSaveStatus,
-    isDark
+    isDark,
+    targetWordCount: targetWordCountProp = 3000,
   } = props;
+
+  const { user } = useAuth();
 
   const activeEpisode = episodes.find(ep => ep.id === selectedEpisodeId) || null;
 
-  const handleAddNewItem = (parentId: string | null = null, isFolder: boolean = false) => {
-    const newItem: Episode = {
-      id: `${isFolder ? 'folder' : 'ep'}-${Date.now()}`,
-      projectId: selectedProject.id,
-      title: isFolder ? '새 폴더' : '새 문서',
-      content: '',
-      wordCount: 0,
-      updatedAt: new Date().toISOString(),
-      isFolder,
-      parentId,
-    };
-    setEpisodes(prev => [...prev, newItem]);
-    if (!isFolder) {
-      setSelectedEpisodeId(newItem.id);
-    }
-    if (parentId) {
-      setExpandedFolderIds(prev => prev.includes(parentId) ? prev : [...prev, parentId]);
-    }
-  };
+  // 1. 에피소드 및 휴지통 커스텀 훅
+  const {
+    expandedFolderIds,
+    setExpandedFolderIds,
+    contextMenuId,
+    setContextMenuId,
+    renamingId,
+    setRenamingId,
+    renamingValue,
+    setRenamingValue,
+    trashEpisodes,
+    showTrashModal,
+    setShowTrashModal,
+    handleAddNewItem,
+    handleTitleChange,
+    handleMoveToTrash,
+    handleSidebarRestoreEpisode,
+    handleSidebarPermanentlyDeleteEpisode
+  } = useEpisodes(selectedProject, episodes, setEpisodes, selectedEpisodeId, setSelectedEpisodeId);
 
-  const handleTitleChange = (newTitle: string) => {
-    if (!selectedEpisodeId) return;
-    setEpisodes(prev =>
-      prev.map(ep =>
-        ep.id === selectedEpisodeId
-          ? { ...ep, title: newTitle, updatedAt: new Date().toISOString() }
-          : ep
-      )
-    );
-  };
+  // 2. 에디터 서식 및 스타일 커스텀 훅
+  const {
+    editorFontSize,
+    setEditorFontSize,
+    editorFontFamily,
+    recentFontIds,
+    showFontDropdown,
+    setShowFontDropdown,
+    showStatsDropdown,
+    setShowStatsDropdown,
+    showColorPicker,
+    setShowColorPicker,
+    colorPickerPos,
+    setColorPickerPos,
+    showBgColorPicker,
+    setShowBgColorPicker,
+    bgColorPickerPos,
+    setBgColorPickerPos,
+    typewriterMode,
+    setTypewriterMode,
+    lineHeight,
+    setLineHeight,
+    paragraphSpacing,
+    setParagraphSpacing,
+    editorWidth,
+    firstLineIndent,
+    setFirstLineIndent,
+    editorThemeOverride,
+    editorRef,
+    saveSelection,
+    restoreSelection,
+    execFormat,
+    allFonts,
+    groupedFonts,
+    handleFontUpload
+  } = useEditorFormat();
+
+  // 에디터 테마는 에디터 전용 오버라이드가 있으면 적용, 없으면(system) 메인 화면의 다크/라이트 모드에서 파생
+  const editorTheme: 'dark' | 'light' | 'sepia' | 'gray' = 
+    editorThemeOverride === 'system' ? (isDark ? 'dark' : 'light') : editorThemeOverride;
 
   // Local editor configurations & layout states
   const [isFocusMode, setIsFocusMode] = useState(false);
-  const [targetWordCount] = useState(3000);
-  const [editorFontSize, setEditorFontSize] = useState(16);
-  const [editorFontFamily, setEditorFontFamily] = useState('Nanum Gothic');
-  const [recentFontIds, setRecentFontIds] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('novelflow_recent_fonts') || '[]');
-    } catch {
-      return [];
-    }
-  });
-  const [uploadedFonts, setUploadedFonts] = useState<FontOption[]>([]);
   const [innerSidebarCollapsed, setInnerSidebarCollapsed] = useState(false);
-  const [trashEpisodes, setTrashEpisodes] = useState<Episode[]>([]);
-  const [showTrashModal, setShowTrashModal] = useState(false);
 
-  // Custom Font Dropdown and File Input reference
-  const [showFontDropdown, setShowFontDropdown] = useState(false);
-
-  // Folder tree and custom context menu states
-  const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
-  const [contextMenuId, setContextMenuId] = useState<string | null>(null);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renamingValue, setRenamingValue] = useState('');
-
-  const [showStatsDropdown, setShowStatsDropdown] = useState(false);
-  const [showColorPicker, setShowColorPicker] = useState(false);
-  const [colorPickerPos, setColorPickerPos] = useState<{ top: number; left: number } | null>(null);
-  const [showBgColorPicker, setShowBgColorPicker] = useState(false);
-  const [bgColorPickerPos, setBgColorPickerPos] = useState<{ top: number; left: number } | null>(null);
-  const [typewriterMode, setTypewriterMode] = useState(false);
-  const [editorTheme] = useState<'dark' | 'light' | 'sepia' | 'gray'>('dark');
-  const [lineHeight, setLineHeight] = useState('1.8');
-  const [paragraphSpacing, setParagraphSpacing] = useState(8);
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [isReplaceMode, setIsReplaceMode] = useState(false);
   const [findQuery, setFindQuery] = useState('');
@@ -114,11 +120,14 @@ export default function WritingSpace(props: WritingSpaceProps) {
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
   const [totalSearchMatches, setTotalSearchMatches] = useState(0);
 
-
-
   const [historySnapshots, setHistorySnapshots] = useState<Snapshot[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [lastSnapshotWordCount, setLastSnapshotWordCount] = useState(0);
+
+  // 간편 스냅샷 이름/메모 입력 모달 상태
+  const [showSnapshotInputModal, setShowSnapshotInputModal] = useState(false);
+  const [snapshotInputName, setSnapshotInputName] = useState('');
+  const [snapshotInputMemo, setSnapshotInputMemo] = useState('');
 
   // Snapshot visual comparison states
   const [isDiffMode, setIsDiffMode] = useState(false);
@@ -127,115 +136,6 @@ export default function WritingSpace(props: WritingSpaceProps) {
   const [snapshotNameEditValue, setSnapshotNameEditValue] = useState('');
   const [snapshotMemoEditId, setSnapshotMemoEditId] = useState<string | null>(null);
   const [snapshotMemoEditValue, setSnapshotMemoEditValue] = useState('');
-
-  const editorRef = useRef<HTMLDivElement | null>(null);
-  const savedRangeRef = useRef<Range | null>(null);
-
-  const saveSelection = () => {
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) {
-      savedRangeRef.current = sel.getRangeAt(0);
-    }
-  };
-
-  const restoreSelection = () => {
-    if (!savedRangeRef.current) return;
-    const sel = window.getSelection();
-    if (sel) {
-      sel.removeAllRanges();
-      sel.addRange(savedRangeRef.current);
-      editorRef.current?.focus();
-    }
-  };
-
-  useEffect(() => {
-    localStorage.setItem('novelflow_recent_fonts', JSON.stringify(recentFontIds));
-  }, [recentFontIds]);
-
-  useEffect(() => {
-    const loadUploadedFonts = async () => {
-      try {
-        const saved = JSON.parse(localStorage.getItem('novelflow_uploaded_fonts') || '[]');
-        const restored: FontOption[] = [];
-        for (const item of saved) {
-          try {
-            const response = await fetch(item.dataUrl);
-            const buffer = await response.arrayBuffer();
-            const fontFace = new FontFace(item.family, buffer);
-            await fontFace.load();
-            (document.fonts as any).add(fontFace);
-
-            restored.push({
-              id: item.id,
-              label: item.label,
-              family: item.family,
-              category: 'uploaded',
-              source: 'upload',
-            });
-          } catch (error) {
-            console.error('업로드 폰트 복원 실패', error);
-          }
-        }
-        setUploadedFonts(restored);
-      } catch (error) {
-        console.error('업로드 폰트 로드 실패', error);
-      }
-    };
-    loadUploadedFonts();
-  }, []);
-
-  const allFonts = [...DEFAULT_FONTS, ...uploadedFonts];
-
-  const groupedFonts = allFonts.reduce<Record<string, FontOption[]>>((acc, font) => {
-    const key = font.category;
-    if (!acc[key]) acc[key] = [];
-    acc[key].push(font);
-    return acc;
-  }, {});
-
-  const recordRecentFont = (fontId: string) => {
-    setRecentFontIds(prev => [fontId, ...prev.filter(id => id !== fontId)].slice(0, 3));
-  };
-
-  const handleFontUpload = async (file: File) => {
-    const confirmMsg = "업로드하시는 폰트 파일의 라이선스 및 상업적 이용 가능 여부는 사용자 본인의 책임 하에 있습니다. 계속 진행하시겠습니까?";
-    if (!confirm(confirmMsg)) return;
-
-    try {
-      const family = file.name.replace(/\.(ttf|otf|woff|woff2)$/i, '').trim() || `uploaded-font-${Date.now()}`;
-      const fontId = `upload-${Date.now()}`;
-      const buffer = await file.arrayBuffer();
-      const fontFace = new FontFace(family, buffer);
-      await fontFace.load();
-      (document.fonts as any).add(fontFace);
-
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-
-      const saved = JSON.parse(localStorage.getItem('novelflow_uploaded_fonts') || '[]');
-      const nextSaved = [...saved, { id: fontId, label: family, family, dataUrl }];
-      localStorage.setItem('novelflow_uploaded_fonts', JSON.stringify(nextSaved));
-
-      const newFont: FontOption = {
-        id: fontId,
-        label: family,
-        family,
-        category: 'uploaded',
-        source: 'upload',
-      };
-
-      setUploadedFonts(prev => [...prev, newFont]);
-      setEditorFontFamily(family);
-      recordRecentFont(fontId);
-    } catch (error) {
-      console.error(error);
-      alert('폰트 업로드에 실패했습니다. ttf, otf, woff, woff2 파일인지 확인해 주세요.');
-    }
-  };
 
   // Sync editorRef.innerHTML when selectedEpisodeId changes
   useEffect(() => {
@@ -247,49 +147,75 @@ export default function WritingSpace(props: WritingSpaceProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEpisodeId]);
 
-
-
-  // Load and sync trash episodes
-  useEffect(() => {
-    const trashKey = `novelflow_trash_${selectedProject.id}`;
-    const savedTrash = localStorage.getItem(trashKey);
-    if (savedTrash) {
-      try {
-        setTrashEpisodes(JSON.parse(savedTrash));
-      } catch (e) {
-        console.error(e);
-      }
-    } else {
-      setTrashEpisodes([]);
-    }
-  }, [selectedProject.id]);
-
-  useEffect(() => {
-    const trashKey = `novelflow_trash_${selectedProject.id}`;
-    localStorage.setItem(trashKey, JSON.stringify(trashEpisodes));
-  }, [trashEpisodes, selectedProject.id]);
-
   // Load and sync snapshots
   useEffect(() => {
-    if (selectedEpisodeId && activeEpisode) {
-      const snapKey = `novelflow_snapshots_${selectedProject.id}_${selectedEpisodeId}`;
-      const savedSnaps = localStorage.getItem(snapKey);
-      if (savedSnaps) {
-        try {
-          setHistorySnapshots(JSON.parse(savedSnaps));
-        } catch (e) {
-          console.error(e);
-        }
-      } else {
+    const loadSnapshots = async () => {
+      if (!selectedEpisodeId || !activeEpisode) {
         setHistorySnapshots([]);
+        setLastSnapshotWordCount(0);
+        return;
+      }
+      
+      const snapKey = `novelflow_snapshots_${selectedProject.id}_${selectedEpisodeId}`;
+      const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
+      
+      if (isGuest) {
+        const savedSnaps = localStorage.getItem(snapKey);
+        if (savedSnaps) {
+          try {
+            setHistorySnapshots(JSON.parse(savedSnaps));
+          } catch (e) {
+            console.error(e);
+          }
+        } else {
+          setHistorySnapshots([]);
+        }
+        const cleanText = activeEpisode.content.replace(/<[^>]*>/g, '');
+        setLastSnapshotWordCount(cleanText.length);
+        return;
+      }
+
+      // Supabase에서 가져오기
+      try {
+        const { data, error } = await supabase
+          .from('episode_versions')
+          .select('*')
+          .eq('episode_id', selectedEpisodeId)
+          .order('created_at', { ascending: false });
+
+        if (error) throw error;
+
+        if (data) {
+          const dbSnaps: Snapshot[] = data.map(d => ({
+            id: d.id,
+            timestamp: new Date(d.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            name: d.name || '스냅샷',
+            memo: d.memo || '',
+            content: d.content || '',
+            charCount: d.char_count || 0,
+            type: 'manual'
+          }));
+          setHistorySnapshots(dbSnaps);
+          localStorage.setItem(snapKey, JSON.stringify(dbSnaps));
+        }
+      } catch (err) {
+        console.error('Failed to load snapshots from Supabase:', err);
+        // Fallback to local
+        const savedSnaps = localStorage.getItem(snapKey);
+        if (savedSnaps) {
+          try {
+            setHistorySnapshots(JSON.parse(savedSnaps));
+          } catch (e) {
+            console.error(e);
+          }
+        }
       }
       const cleanText = activeEpisode.content.replace(/<[^>]*>/g, '');
       setLastSnapshotWordCount(cleanText.length);
-    } else {
-      setHistorySnapshots([]);
-      setLastSnapshotWordCount(0);
-    }
-  }, [selectedEpisodeId, selectedProject.id, activeEpisode]);
+    };
+
+    loadSnapshots();
+  }, [selectedEpisodeId, selectedProject.id, activeEpisode, user]);
 
   useEffect(() => {
     if (selectedEpisodeId) {
@@ -306,9 +232,10 @@ export default function WritingSpace(props: WritingSpaceProps) {
     };
     window.addEventListener('click', handleClosePickers);
     return () => window.removeEventListener('click', handleClosePickers);
-  }, [showColorPicker, showBgColorPicker]);
+  }, [showColorPicker, showBgColorPicker, setShowColorPicker, setShowBgColorPicker]);
 
-  // Calculations
+  // Calculations — targetWordCount는 props에서 전달받은 값 사용
+  const targetWordCount = targetWordCountProp;
   const charCountWithSpaces = activeEpisode ? activeEpisode.content.replace(/<[^>]*>/g, '').length : 0;
   const charCountWithoutSpaces = activeEpisode ? activeEpisode.content.replace(/<[^>]*>/g, '').replace(/\s/g, '').length : 0;
   const progressPercent = Math.min(100, Math.round((charCountWithSpaces / targetWordCount) * 100)) || 0;
@@ -345,7 +272,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
         name: `자동 저장 (${timestamp})`,
         memo: '10분 주기 정기 자동 저장 스냅샷',
         content: activeEpisode.content,
-        wordCount: activeEpisode.content.replace(/<[^>]*>/g, '').length,
+        charCount: activeEpisode.content.replace(/<[^>]*>/g, '').length,
         type: 'auto_time'
       };
 
@@ -376,7 +303,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
       setTotalSearchMatches(0);
       setActiveSearchIndex(0);
     }
-  }, [findQuery, episodes]);
+  }, [findQuery, episodes, editorRef]);
 
   const handleFindNext = (backwards = false) => {
     if (!findQuery) return;
@@ -415,64 +342,9 @@ export default function WritingSpace(props: WritingSpaceProps) {
     alert('일괄 교체가 완료되었습니다.');
   };
 
-  const execFormat = (command: string, value: string = '') => {
-    restoreSelection();
-    if (command === 'fontSize') {
-      const sizeNum = parseInt(value);
-      document.execCommand('fontSize', false, '7');
-      const fontElements = editorRef.current?.querySelectorAll('font[size="7"]');
-      fontElements?.forEach(font => {
-        const span = document.createElement('span');
-        span.style.fontSize = `${sizeNum}px`;
-        span.innerHTML = font.innerHTML;
-        font.parentNode?.replaceChild(span, font);
-      });
-      setEditorFontSize(sizeNum);
-    } else if (command === 'fontName') {
-      document.execCommand('fontName', false, value);
-      const fontElements = editorRef.current?.querySelectorAll(`font[face="${value}"]`);
-      fontElements?.forEach(font => {
-        const span = document.createElement('span');
-        span.style.fontFamily = value;
-        span.innerHTML = font.innerHTML;
-        font.parentNode?.replaceChild(span, font);
-      });
-      setEditorFontFamily(value);
-      const matchedFont = allFonts.find(font => font.family === value);
-      if (matchedFont) recordRecentFont(matchedFont.id);
-    } else {
-      document.execCommand(command, false, value);
-    }
-    handleContentInput();
-    saveSelection();
-  };
 
-  const handleInsertLink = () => {
-    const url = prompt('연결할 URL을 입력하세요:');
-    if (url) execFormat('createLink', url);
-  };
 
-  const handleInsertTable = () => {
-    restoreSelection();
-    const rows = prompt('행(Row) 개수를 입력하세요 (기본 3):', '3');
-    const cols = prompt('열(Column) 개수를 입력하세요 (기본 3):', '3');
-    if (rows && cols) {
-      let tableHtml = `<table style="border-collapse: collapse; width: 100%; border: 1px solid ${editorTheme === 'light' ? '#E4E4E7' : editorTheme === 'sepia' ? '#D3C2A0' : '#3F3F46'
-        }; margin: 12px 0;">`;
-      for (let r = 0; r < parseInt(rows); r++) {
-        tableHtml += '<tr>';
-        for (let c = 0; c < parseInt(cols); c++) {
-          tableHtml += `<td style="border: 1px solid ${editorTheme === 'light' ? '#E4E4E7' : editorTheme === 'sepia' ? '#D3C2A0' : '#3F3F46'
-            }; padding: 8px; min-width: 50px;">&nbsp;</td>`;
-        }
-        tableHtml += '</tr>';
-      }
-      tableHtml += '</table>';
-      document.execCommand('insertHTML', false, tableHtml);
-      handleContentInput();
-      saveSelection();
-    }
-  };
+
 
 
 
@@ -487,7 +359,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
     setEpisodes(prev =>
       prev.map(ep =>
         ep.id === selectedEpisodeId
-          ? { ...ep, content: html, wordCount: charCount, updatedAt: new Date().toISOString() }
+          ? { ...ep, content: html, charCount: charCount, updatedAt: new Date().toISOString() }
           : ep
       )
     );
@@ -495,17 +367,42 @@ export default function WritingSpace(props: WritingSpaceProps) {
     // 1000자 변동 시 자동 스냅샷 저장
     if (lastSnapshotWordCount !== 0 && Math.abs(charCount - lastSnapshotWordCount) >= 1000) {
       const timestamp = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const snapId = crypto.randomUUID();
+      const snapName = `자동 저장 (${charCount}자 달성)`;
+      const snapMemo = '1,000자 글자 수 변동 도달 자동 저장 스냅샷';
+      
       const newSnap: Snapshot = {
-        id: `snap-auto-words-${Date.now()}`,
+        id: snapId,
         timestamp,
-        name: `자동 저장 (${charCount}자 달성)`,
-        memo: '1,000자 글자 수 변동 도달 자동 저장 스냅샷',
+        name: snapName,
+        memo: snapMemo,
         content: html,
-        wordCount: charCount,
+        charCount: charCount,
         type: 'auto_words'
       };
       setHistorySnapshots(prev => [newSnap, ...prev].slice(0, 50));
       setLastSnapshotWordCount(charCount);
+
+      const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
+      if (!isGuest && selectedEpisodeId) {
+        (async () => {
+          try {
+            const { error } = await supabase
+              .from('episode_versions')
+              .insert({
+                id: snapId,
+                episode_id: selectedEpisodeId,
+                name: snapName,
+                memo: snapMemo,
+                content: html,
+                char_count: charCount
+              });
+            if (error) throw error;
+          } catch (err) {
+            console.error('Failed to auto-save snapshot to Supabase:', err);
+          }
+        })();
+      }
     }
 
     if (typewriterMode) {
@@ -528,22 +425,52 @@ export default function WritingSpace(props: WritingSpaceProps) {
 
   const handleCreateSnapshot = () => {
     if (!activeEpisode) return;
-    const name = prompt('스냅샷 이름을 입력하세요 (비워두면 타임스탬프로 지정):');
-    const memo = prompt('스냅샷 설명을 위한 간단한 메모를 입력하세요 (선택):');
-
+    // 모달을 열어 이름/메모 입력 받기
     const timestamp = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setSnapshotInputName(`스냅샷 (${timestamp})`);
+    setSnapshotInputMemo('');
+    setShowSnapshotInputModal(true);
+  };
+
+  // 모달 확인 시 스냅샷 실제 저장
+  const confirmCreateSnapshot = async () => {
+    if (!activeEpisode) return;
+    const timestamp = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const snapId = crypto.randomUUID();
+    const snapName = snapshotInputName.trim() || `스냅샷 (${timestamp})`;
+    const snapMemo = snapshotInputMemo.trim() || '수동 저장 스냅샷';
+
     const newSnap: Snapshot = {
-      id: `snap-${Date.now()}`,
+      id: snapId,
       timestamp,
-      name: name?.trim() || `스냅샷 (${timestamp})`,
-      memo: memo?.trim() || '수동 저장 스냅샷',
+      name: snapName,
+      memo: snapMemo,
       content: activeEpisode.content,
-      wordCount: charCountWithSpaces,
+      charCount: charCountWithSpaces,
       type: 'manual'
     };
     setHistorySnapshots(prev => [newSnap, ...prev]);
     setLastSnapshotWordCount(charCountWithSpaces);
-    alert('버전 스냅샷이 저장되었습니다.');
+    setShowSnapshotInputModal(false);
+
+    const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
+    if (!isGuest && selectedEpisodeId) {
+      try {
+        const { error } = await supabase
+          .from('episode_versions')
+          .insert({
+            id: snapId,
+            episode_id: selectedEpisodeId,
+            name: snapName,
+            memo: snapMemo,
+            content: activeEpisode.content,
+            char_count: charCountWithSpaces
+          });
+        if (error) throw error;
+      } catch (err) {
+        console.error('Failed to insert snapshot to Supabase:', err);
+      }
+    }
   };
 
   const handleRestoreSnapshot = (content: string) => {
@@ -552,15 +479,43 @@ export default function WritingSpace(props: WritingSpaceProps) {
     handleContentInput();
     const cleanText = content.replace(/<[^>]*>/g, '');
     setLastSnapshotWordCount(cleanText.length);
-    alert('선택한 버전으로 복원되었습니다.');
+    // DOM 업데이트 후 커서를 마지막 위치로 이동
+    requestAnimationFrame(() => {
+      if (editorRef.current) {
+        editorRef.current.focus();
+        const range = document.createRange();
+        const sel = window.getSelection();
+        range.selectNodeContents(editorRef.current);
+        range.collapse(false);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+    });
   };
 
-  const handleUpdateSnapshotInfo = (snapId: string, updates: Partial<Snapshot>) => {
+  const handleUpdateSnapshotInfo = async (snapId: string, updates: Partial<Snapshot>) => {
     setHistorySnapshots(prev =>
       prev.map(snap =>
         snap.id === snapId ? { ...snap, ...updates } : snap
       )
     );
+
+    const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
+    if (!isGuest) {
+      try {
+        const dbUpdates: any = {};
+        if (updates.name !== undefined) dbUpdates.name = updates.name;
+        if (updates.memo !== undefined) dbUpdates.memo = updates.memo;
+
+        const { error } = await supabase
+          .from('episode_versions')
+          .update(dbUpdates)
+          .eq('id', snapId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Failed to update snapshot in Supabase:', err);
+      }
+    }
   };
 
   const themeStyles = {
@@ -570,72 +525,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
     gray: { bg: 'bg-[#202124]', paper: 'bg-[#2E3033] text-gray-200 border-[#4B5563]', toolbar: 'bg-[#2E3033] border-[#4B5563]', input: 'bg-[#3D4044] border-[#4B5563] text-gray-200' }
   }[editorTheme];
 
-  const handleSidebarRestoreEpisode = (epId: string) => {
-    const toRestore = trashEpisodes.find(ep => ep.id === epId);
-    if (!toRestore) return;
 
-    const itemsToRestore = toRestore.isFolder
-      ? [toRestore, ...getRecursiveDescendants(toRestore.id, trashEpisodes)]
-      : [toRestore];
-
-    const restoreIds = itemsToRestore.map(i => i.id);
-
-    const restoredItems = itemsToRestore.map(item => {
-      const copy = { ...item };
-      delete copy.deletedAt;
-      return copy;
-    });
-
-    setEpisodes(prev => [...prev, ...restoredItems]);
-    setTrashEpisodes(prev => prev.filter(ep => !restoreIds.includes(ep.id)));
-    if (!toRestore.isFolder) {
-      setSelectedEpisodeId(toRestore.id);
-    }
-  };
-
-  const handleSidebarPermanentlyDeleteEpisode = (epId: string) => {
-    const toDelete = trashEpisodes.find(ep => ep.id === epId);
-    if (!toDelete) return;
-    if (!confirm(`${toDelete.isFolder ? '폴더와 폴더 내 모든 항목' : '이 문서'}를 영구적으로 삭제하시겠습니까? 복구할 수 없습니다.`)) return;
-
-    const itemsToDelete = toDelete.isFolder
-      ? [toDelete, ...getRecursiveDescendants(toDelete.id, trashEpisodes)]
-      : [toDelete];
-
-    const deleteIds = itemsToDelete.map(i => i.id);
-    setTrashEpisodes(prev => prev.filter(ep => !deleteIds.includes(ep.id)));
-  };
-
-  const handleMoveToTrash = (epId: string) => {
-    const toDelete = episodes.find(ep => ep.id === epId);
-    if (!toDelete) return;
-
-    const itemsToDelete = toDelete.isFolder
-      ? [toDelete, ...getRecursiveDescendants(toDelete.id, episodes)]
-      : [toDelete];
-
-    if (!confirm(`${toDelete.isFolder ? '폴더와 폴더 안의 모든 항목' : '이 문서'}를 휴지통으로 이동하시겠습니까?`)) return;
-
-    const nowStr = new Date().toISOString();
-    const deletedItems = itemsToDelete.map(item => ({
-      ...item,
-      deletedAt: nowStr
-    }));
-
-    setTrashEpisodes(prev => [...prev, ...deletedItems]);
-    const deleteIds = itemsToDelete.map(i => i.id);
-    setEpisodes(prev => prev.filter(ep => !deleteIds.includes(ep.id)));
-
-    if (selectedEpisodeId && deleteIds.includes(selectedEpisodeId)) {
-      const remaining = episodes.filter(ep => !deleteIds.includes(ep.id) && !ep.isFolder);
-      if (remaining.length > 0) {
-        setSelectedEpisodeId(remaining[0].id);
-      } else {
-        setSelectedEpisodeId(null);
-      }
-    }
-    setContextMenuId(null);
-  };
 
   const handleRenameSave = (id: string) => {
     if (!renamingValue.trim()) {
@@ -727,6 +617,8 @@ export default function WritingSpace(props: WritingSpaceProps) {
               setLineHeight={setLineHeight}
               paragraphSpacing={paragraphSpacing}
               setParagraphSpacing={setParagraphSpacing}
+              firstLineIndent={firstLineIndent}
+              setFirstLineIndent={setFirstLineIndent}
               showFindReplace={showFindReplace}
               setShowFindReplace={setShowFindReplace}
               handleCreateSnapshot={handleCreateSnapshot}
@@ -747,8 +639,8 @@ export default function WritingSpace(props: WritingSpaceProps) {
               setShowBgColorPicker={setShowBgColorPicker}
               bgColorPickerPos={bgColorPickerPos}
               setBgColorPickerPos={setBgColorPickerPos}
-              handleInsertTable={handleInsertTable}
-              handleInsertLink={handleInsertLink}
+              saveSelection={saveSelection}
+              restoreSelection={restoreSelection}
             />
 
             {/* 찾기 및 바꾸기 바 */}
@@ -788,10 +680,11 @@ export default function WritingSpace(props: WritingSpaceProps) {
                 isDark={isDark}
                 activeEpisode={activeEpisode}
                 editorFontFamily={editorFontFamily}
-                editorFontSize={editorFontSize}
                 lineHeight={lineHeight}
                 typewriterMode={typewriterMode}
                 paragraphSpacing={paragraphSpacing}
+                editorWidth={editorWidth}
+                firstLineIndent={firstLineIndent}
                 editorRef={editorRef}
                 handleContentInput={handleContentInput}
                 saveSelection={saveSelection}
@@ -843,6 +736,57 @@ export default function WritingSpace(props: WritingSpaceProps) {
         setIsDiffMode={setIsDiffMode}
         setHistorySnapshots={setHistorySnapshots}
       />
+
+      {/* 5. 버전 스냅샷 이름/메모 인라인 입력 모달 */}
+      {showSnapshotInputModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`w-96 rounded-2xl border p-6 flex flex-col gap-4 shadow-2xl ${isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'}`}>
+            <div className="flex items-center justify-between pb-2 border-b border-gray-500/10">
+              <h3 className="text-sm font-bold">📌 버전 스냅샷 저장</h3>
+              <button onClick={() => setShowSnapshotInputModal(false)} className="text-gray-400 hover:text-gray-200 text-xs font-bold">✕</button>
+            </div>
+            <div className="flex flex-col gap-3 text-xs">
+              <div className="flex flex-col gap-1.5">
+                <label className="font-semibold text-gray-400">스냅샷 이름</label>
+                <input
+                  type="text"
+                  value={snapshotInputName}
+                  onChange={e => setSnapshotInputName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') confirmCreateSnapshot(); if (e.key === 'Escape') setShowSnapshotInputModal(false); }}
+                  placeholder="예: 1화 완성본"
+                  className={`px-3 py-1.5 rounded-lg border outline-none ${isDark ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'}`}
+                  autoFocus
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="font-semibold text-gray-400">메모 (선택)</label>
+                <input
+                  type="text"
+                  value={snapshotInputMemo}
+                  onChange={e => setSnapshotInputMemo(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') confirmCreateSnapshot(); if (e.key === 'Escape') setShowSnapshotInputModal(false); }}
+                  placeholder="예: 1차 퇴고 완료 후 저장"
+                  className={`px-3 py-1.5 rounded-lg border outline-none ${isDark ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'}`}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2.5 mt-1">
+              <button
+                onClick={() => setShowSnapshotInputModal(false)}
+                className={`flex-1 py-2 rounded-xl font-bold border transition-colors ${isDark ? 'border-white/[0.06] hover:bg-white/[0.04]' : 'border-black/[0.06] hover:bg-black/[0.04]'}`}
+              >
+                취소
+              </button>
+              <button
+                onClick={confirmCreateSnapshot}
+                className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
+              >
+                저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

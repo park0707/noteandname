@@ -64,12 +64,18 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
   const [showAddMenu, setShowAddMenu] = useState(false);
 
   const renderTree = (parentId: string | null = null, depth: number = 0) => {
-    const currentItems = episodes.filter(ep => ep.parentId === parentId);
+    const currentItems = episodes.filter(ep => {
+      if (parentId === null) {
+        return !ep.parentId;
+      }
+      return ep.parentId === parentId;
+    });
 
     const sortedItems = [...currentItems].sort((a, b) => {
       if (a.isFolder && !b.isFolder) return -1;
       if (!a.isFolder && b.isFolder) return 1;
-      return a.title.localeCompare(b.title);
+      // 자연 정렬: 제목 내의 숫자를 수치로 비교 (1화 < 2화 < 10화 보장)
+      return a.title.localeCompare(b.title, 'ko', { numeric: true, sensitivity: 'base' });
     });
 
     return sortedItems.map(ep => {
@@ -216,7 +222,15 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
 
   const renderSearchResults = () => {
     const query = writingSearchQuery.trim().toLowerCase();
-    const matched = episodes.filter(ep => ep.title.toLowerCase().includes(query));
+    const matched = episodes.filter(ep => {
+      const matchesTitle = ep.title.toLowerCase().includes(query);
+      if (matchesTitle) return true;
+      if (ep.content) {
+        const cleanContent = ep.content.replace(/<[^>]*>/g, '').toLowerCase();
+        return cleanContent.includes(query);
+      }
+      return false;
+    });
 
     if (matched.length === 0) {
       return <span className="text-[10px] text-gray-500 py-4 text-center">검색된 문서나 폴더가 없습니다.</span>;

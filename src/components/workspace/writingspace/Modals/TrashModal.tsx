@@ -35,7 +35,7 @@ export default function TrashModal(props: TrashModalProps) {
             >
               <div className="flex flex-col min-w-0">
                 <span className={`font-semibold truncate ${isDark ? 'text-gray-200' : 'text-gray-800'}`}>{ep.title}</span>
-                <span className="text-[10px] text-gray-500">글자수: {ep.wordCount.toLocaleString()}자</span>
+                <span className="text-[10px] text-gray-500">글자수: {ep.charCount.toLocaleString()}자</span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                 <button

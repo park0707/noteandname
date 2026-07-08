@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Undo,
   Redo,
@@ -14,7 +14,14 @@ import {
   Maximize2,
   BookOpen,
   Grid,
-  Link
+  Link,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
+  Download,
+  Indent,
+  Outdent
 } from 'lucide-react';
 import { FONT_CATEGORY_LABELS } from '../../../lib/fonts';
 import type { FontOption } from '../../../lib/fonts';
@@ -61,8 +68,10 @@ interface EditorToolbarProps {
   setShowBgColorPicker: (show: boolean) => void;
   bgColorPickerPos: { top: number; left: number } | null;
   setBgColorPickerPos: (pos: { top: number; left: number } | null) => void;
-  handleInsertTable: () => void;
-  handleInsertLink: () => void;
+  saveSelection: () => void;
+  restoreSelection: () => void;
+  firstLineIndent: boolean;
+  setFirstLineIndent: (v: boolean) => void;
 }
 
 export default function EditorToolbar(props: EditorToolbarProps) {
@@ -107,14 +116,61 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     setShowBgColorPicker,
     bgColorPickerPos,
     setBgColorPickerPos,
-    handleInsertTable,
-    handleInsertLink,
+    saveSelection,
+    restoreSelection,
+    firstLineIndent,
+    setFirstLineIndent,
   } = props;
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const statsDropdownRef = useRef<HTMLDivElement>(null);
+  const fontDropdownRef = useRef<HTMLDivElement>(null);
+  const exportDropdownRef = useRef<HTMLDivElement>(null);
   const [showDividerDropdown, setShowDividerDropdown] = useState(false);
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [dropdownCoords, setDropdownCoords] = useState<{ top: number; left: number } | null>(null);
+  const [fontSizeInput, setFontSizeInput] = useState(editorFontSize.toString());
+
+  useEffect(() => {
+    setFontSizeInput(editorFontSize.toString());
+  }, [editorFontSize]);
+
+  // 내보내기 드롭다운 외부 클릭 감지 → 닫기
+  useEffect(() => {
+    if (!showExportDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target as Node)) {
+        setShowExportDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showExportDropdown]);
+
+  // 상세 자수 드롭다운 외부 클릭 감지 → 닫기
+  useEffect(() => {
+    if (!showStatsDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (statsDropdownRef.current && !statsDropdownRef.current.contains(e.target as Node)) {
+        setShowStatsDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showStatsDropdown, setShowStatsDropdown]);
+
+  // 폰트 드롭다운 외부 클릭 감지 → 닫기
+  useEffect(() => {
+    if (!showFontDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (fontDropdownRef.current && !fontDropdownRef.current.contains(e.target as Node)) {
+        setShowFontDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showFontDropdown, setShowFontDropdown]);
 
   const [showCreateDividerModal, setShowCreateDividerModal] = useState(false);
 
@@ -146,6 +202,228 @@ export default function EditorToolbar(props: EditorToolbarProps) {
       return [];
     }
   });
+
+  // 표 삽입 모달 상태
+  const [showTableModal, setShowTableModal] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableCols, setTableCols] = useState(3);
+  const [tableWidth, setTableWidth] = useState(100);
+  const [tableHasHeader, setTableHasHeader] = useState(true);
+
+  // 링크 삽입 모달 상태
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkText, setLinkText] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkNewTab, setLinkNewTab] = useState(true);
+
+  const openTableInsertModal = () => {
+    saveSelection();
+    setTableRows(3);
+    setTableCols(3);
+    setTableWidth(100);
+    setTableHasHeader(true);
+    setShowTableModal(true);
+  };
+
+  const openLinkInsertModal = () => {
+    saveSelection();
+    const selectedText = window.getSelection()?.toString() || '';
+    setLinkText(selectedText);
+    setLinkUrl('');
+    setLinkNewTab(true);
+    setShowLinkModal(true);
+  };
+
+  const executeInsertTable = (e: React.FormEvent) => {
+    e.preventDefault();
+    restoreSelection();
+    
+    const rows = Number(tableRows);
+    const cols = Number(tableCols);
+    if (isNaN(rows) || rows < 1 || rows > 20 || isNaN(cols) || cols < 1 || cols > 20) {
+      alert('행과 열 개수는 1에서 20 사이의 숫자여야 합니다.');
+      return;
+    }
+    
+    let tableHtml = `<table style="border-collapse: collapse; width: ${tableWidth}%; margin: 16px 0; display: table;">`;
+    
+    for (let r = 0; r < rows; r++) {
+      tableHtml += '<tr>';
+      for (let c = 0; c < cols; c++) {
+        if (r === 0 && tableHasHeader) {
+          tableHtml += `<th style="border: 1px solid rgba(128,128,128,0.3); padding: 8px; min-width: 50px; font-weight: bold; background-color: rgba(94,106,210,0.1);">&nbsp;</th>`;
+        } else {
+          tableHtml += `<td style="border: 1px solid rgba(128,128,128,0.2); padding: 8px; min-width: 50px;">&nbsp;</td>`;
+        }
+      }
+      tableHtml += '</tr>';
+    }
+    tableHtml += '</table>';
+    
+    execFormat('insertHTML', tableHtml);
+    setShowTableModal(false);
+  };
+
+  const executeInsertLink = (e: React.FormEvent) => {
+    e.preventDefault();
+    restoreSelection();
+
+    const rawUrl = linkUrl.trim();
+    if (!rawUrl) {
+      alert('URL을 입력해 주세요.');
+      return;
+    }
+
+    let testUrl = rawUrl;
+    if (!/^https?:\/\//i.test(testUrl)) {
+      testUrl = 'https://' + testUrl;
+    }
+
+    const urlPattern = /^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)$/;
+    if (!urlPattern.test(testUrl)) {
+      alert('올바른 URL 형식이 아닙니다. (예: example.com 또는 https://example.com)');
+      return;
+    }
+
+    let finalUrl = rawUrl;
+    if (!/^https?:\/\//i.test(finalUrl)) {
+      finalUrl = 'https://' + finalUrl;
+    }
+
+    const textToDisplay = linkText.trim() || finalUrl;
+    const targetAttr = linkNewTab ? '_blank' : '_self';
+    const linkHtml = `<a href="${finalUrl}" target="${targetAttr}" rel="noopener noreferrer" style="color: #5E6AD2; text-decoration: underline; font-weight: 600;">${textToDisplay}</a>`;
+
+    execFormat('insertHTML', linkHtml);
+    setShowLinkModal(false);
+  };
+
+  const convertHtmlToMarkdown = (html: string) => {
+    let md = html;
+    md = md.replace(/<blockquote>([\s\S]*?)<\/blockquote>/gi, (_, inner) => {
+      const cleanInner = inner.replace(/<[^>]*>/g, '').trim();
+      return `\n\n> ${cleanInner.split('\n').join('\n> ')}\n\n`;
+    });
+    md = md.replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (_, tableContent) => {
+      const rows: string[] = [];
+      const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+      let trMatch;
+      while ((trMatch = trRegex.exec(tableContent)) !== null) {
+        const rowCells: string[] = [];
+        const tdRegex = /<t(d|h)[^>]*>([\s\S]*?)<\/t(d|h)>/gi;
+        let tdMatch;
+        while ((tdMatch = tdRegex.exec(trMatch[1])) !== null) {
+          rowCells.push(tdMatch[2].replace(/<[^>]*>/g, '').trim());
+        }
+        if (rowCells.length > 0) {
+          rows.push(`| ${rowCells.join(' | ')} |`);
+        }
+      }
+      if (rows.length > 0) {
+        const colCount = rows[0].split('|').length - 2;
+        const separator = `| ${Array(colCount).fill('---').join(' | ')} |`;
+        rows.splice(1, 0, separator);
+        return `\n\n${rows.join('\n')}\n\n`;
+      }
+      return '';
+    });
+    md = md.replace(/<(strong|b)[^>]*>([\s\S]*?)<\/\1>/gi, '**$2**');
+    md = md.replace(/<(em|i)[^>]*>([\s\S]*?)<\/\1>/gi, '*$2*');
+    md = md.replace(/<(strike|s)[^>]*>([\s\S]*?)<\/\1>/gi, '~~$2~~');
+    md = md.replace(/<u>([\s\S]*?)<\/u>/gi, '<u>$1</u>');
+    md = md.replace(/<br\s*\/?>/gi, '\n');
+    md = md.replace(/<\/p>/gi, '\n\n');
+    md = md.replace(/<\/div>/gi, '\n\n');
+    md = md.replace(/<[^>]*>/g, '');
+    md = md.replace(/&nbsp;/g, ' ')
+           .replace(/&lt;/g, '<')
+           .replace(/&gt;/g, '>')
+           .replace(/&amp;/g, '&')
+           .replace(/&quot;/g, '"');
+    return md.trim();
+  };
+
+  const handleExportDocument = (format: 'txt' | 'md' | 'docx') => {
+    const editorCanvas = document.querySelector('.novela-editor-content');
+    if (!editorCanvas) {
+      alert('에디터 내용을 찾을 수 없습니다.');
+      return;
+    }
+    const htmlContent = editorCanvas.innerHTML;
+    const titleInput = document.querySelector('input[placeholder="제목 없음"]') as HTMLInputElement;
+    const docTitle = (titleInput?.value || 'Untitled').trim();
+    let blob: Blob;
+    let extension = '';
+    if (format === 'txt') {
+      let txt = htmlContent;
+      txt = txt.replace(/<br\s*\/?>/gi, '\n');
+      txt = txt.replace(/<\/p>/gi, '\n\n');
+      txt = txt.replace(/<\/div>/gi, '\n\n');
+      txt = txt.replace(/<[^>]*>/g, '');
+      txt = txt.replace(/&nbsp;/g, ' ')
+               .replace(/&lt;/g, '<')
+               .replace(/&gt;/g, '>')
+               .replace(/&amp;/g, '&')
+               .replace(/&quot;/g, '"');
+      blob = new Blob([txt.trim()], { type: 'text/plain;charset=utf-8' });
+      extension = 'txt';
+    } else if (format === 'md') {
+      const markdown = convertHtmlToMarkdown(htmlContent);
+      const fullMd = `# ${docTitle}\n\n${markdown}`;
+      blob = new Blob([fullMd], { type: 'text/markdown;charset=utf-8' });
+      extension = 'md';
+    } else {
+      const docHtml = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8">
+          <title>${docTitle}</title>
+          <style>
+            body { font-family: 'Nanum Gothic', 'Malgun Gothic', sans-serif; line-height: 1.8; }
+            p { margin-bottom: 12px; }
+            table { border-collapse: collapse; width: 100%; margin: 16px 0; }
+            th, td { border: 1px solid #cccccc; padding: 8px; }
+            blockquote { border-left: 4px solid #5E6AD2; background-color: #f3f4f6; padding: 10px; margin: 16px 0; }
+          </style>
+        </head>
+        <body>
+          <h1>${docTitle}</h1>
+          <div class="content">
+            ${htmlContent}
+          </div>
+        </body>
+        </html>
+      `;
+      blob = new Blob([docHtml], { type: 'application/msword;charset=utf-8' });
+      extension = 'doc';
+    }
+    const downloadLink = document.createElement('a');
+    downloadLink.href = URL.createObjectURL(blob);
+    downloadLink.download = `${docTitle}.${extension}`;
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+    document.body.removeChild(downloadLink);
+    setShowExportDropdown(false);
+  };
+
+  const handleToggleBlockquote = () => {
+    saveSelection();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    
+    let container = range.startContainer as HTMLElement;
+    if (container.nodeType === Node.TEXT_NODE) {
+      container = container.parentElement as HTMLElement;
+    }
+    
+    const blockquote = container.closest('blockquote');
+    if (blockquote) {
+      execFormat('formatBlock', '<p>');
+    } else {
+      execFormat('formatBlock', '<blockquote>');
+    }
+  };
 
   const toggleDividerDropdown = () => {
     if (!showDividerDropdown && buttonRef.current) {
@@ -264,7 +542,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     <div className="flex flex-col shrink-0 select-none">
       {/* 1. 에디터 툴바 */}
       <div className={`px-6 py-2 border-b flex items-center justify-between gap-4 shrink-0 ${themeStyles.toolbar}`}>
-        <div className="flex items-center gap-3 overflow-x-auto w-full">
+        <div className="flex items-center gap-3 overflow-visible w-full flex-wrap">
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => execFormat('undo')}
@@ -285,7 +563,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
           <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
           {/* 커스텀 폰트 선택 드롭다운 */}
-          <div className="relative shrink-0 font-sans">
+          <div className="relative shrink-0 font-sans" ref={fontDropdownRef}>
             <button
               onClick={() => setShowFontDropdown(!showFontDropdown)}
               className={`px-3 py-1.5 rounded border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${themeStyles.input}`}
@@ -391,11 +669,45 @@ export default function EditorToolbar(props: EditorToolbarProps) {
           <div className="flex items-center gap-1 shrink-0 font-sans">
             <div className={`flex items-center border rounded-lg overflow-hidden ${isDark ? 'border-white/[0.08]' : 'border-black/[0.08]'}`}>
               <input
-                type="number"
-                value={editorFontSize}
+                type="text"
+                value={fontSizeInput}
                 onChange={e => {
-                  const val = parseInt(e.target.value);
-                  if (val > 0) execFormat('fontSize', val.toString());
+                  const valStr = e.target.value;
+                  if (valStr === '' || /^[0-9]+$/.test(valStr)) {
+                    const val = parseInt(valStr);
+                    if (!isNaN(val)) {
+                      if (val > 100) {
+                        setFontSizeInput('100');
+                      } else {
+                        setFontSizeInput(valStr);
+                      }
+                    } else {
+                      setFontSizeInput('');
+                    }
+                  } else {
+                    // 이상한 문자나 값이 감지되면 즉시 직전 저장 수치로 롤백
+                    setFontSizeInput(editorFontSize.toString());
+                  }
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    const val = parseInt(fontSizeInput);
+                    if (!isNaN(val) && val > 0 && val <= 100) {
+                      execFormat('fontSize', val.toString());
+                      e.currentTarget.blur();
+                    } else {
+                      setFontSizeInput(editorFontSize.toString());
+                      e.currentTarget.blur();
+                    }
+                  }
+                }}
+                onBlur={() => {
+                  const val = parseInt(fontSizeInput);
+                  if (!isNaN(val) && val > 0 && val <= 100) {
+                    execFormat('fontSize', val.toString());
+                  } else {
+                    setFontSizeInput(editorFontSize.toString());
+                  }
                 }}
                 className={`w-10 py-1 px-1.5 text-center text-xs font-bold bg-transparent outline-none border-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${isDark ? 'text-white' : 'text-black'}`}
               />
@@ -418,34 +730,91 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
           <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
-          <button
-            onClick={() => execFormat('bold')}
-            className={`p-1.5 rounded hover:bg-white/[0.04] font-bold shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-            title="굵게 (Ctrl+B)"
-          >
-            <Bold className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => execFormat('italic')}
-            className={`p-1.5 rounded hover:bg-white/[0.04] italic shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-            title="기울임 (Ctrl+I)"
-          >
-            <Italic className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => execFormat('underline')}
-            className={`p-1.5 rounded hover:bg-white/[0.04] underline shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-            title="밑줄 (Ctrl+U)"
-          >
-            <Underline className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => execFormat('strikeThrough')}
-            className={`p-1.5 rounded hover:bg-white/[0.04] line-through shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-            title="취소선"
-          >
-            <Strikethrough className="w-3.5 h-3.5" />
-          </button>
+          {/* 서식 스타일 그룹 */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => execFormat('bold')}
+              className={`p-1.5 rounded hover:bg-white/[0.04] font-bold shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+              title="굵게 (Ctrl+B)"
+            >
+              <Bold className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => execFormat('italic')}
+              className={`p-1.5 rounded hover:bg-white/[0.04] italic shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+              title="기울임 (Ctrl+I)"
+            >
+              <Italic className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => execFormat('underline')}
+              className={`p-1.5 rounded hover:bg-white/[0.04] underline shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+              title="밑줄 (Ctrl+U)"
+            >
+              <Underline className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => execFormat('strikeThrough')}
+              className={`p-1.5 rounded hover:bg-white/[0.04] line-through shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+              title="취소선"
+            >
+              <Strikethrough className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+
+          {/* 정렬 그룹 */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => execFormat('justifyLeft')}
+              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+              title="왼쪽 정렬"
+            >
+              <AlignLeft className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => execFormat('justifyCenter')}
+              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+              title="가운데 정렬 (웹소설 시/편지용)"
+            >
+              <AlignCenter className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => execFormat('justifyRight')}
+              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+              title="오른쪽 정렬"
+            >
+              <AlignRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => execFormat('justifyFull')}
+              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+              title="양쪽 정렬"
+            >
+              <AlignJustify className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+
+          {/* 들여쓰기/내어쓰기 그룹 */}
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => execFormat('indent')}
+              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+              title="들여쓰기 적용"
+            >
+              <Indent className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => execFormat('outdent')}
+              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+              title="내어쓰기 적용"
+            >
+              <Outdent className="w-3.5 h-3.5" />
+            </button>
+          </div>
 
           <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
@@ -585,7 +954,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             {isFocusMode ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
           </button>
 
-          <div className="relative">
+          <div className="relative" ref={statsDropdownRef}>
             <button
               onClick={() => setShowStatsDropdown(!showStatsDropdown)}
               className={`px-3 py-1 rounded text-xs font-semibold border flex items-center gap-1 transition-all ${isDark
@@ -638,56 +1007,9 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
       {/* 2. 보조 설정 바 */}
       {!isFocusMode && (
-        <div className={`px-6 py-2 border-b flex items-center justify-between gap-4 text-xs overflow-x-auto scrollbar-thin ${themeStyles.toolbar}`}>
+        <div className={`px-6 py-2 border-b flex items-center justify-between gap-4 text-xs overflow-visible flex-wrap ${themeStyles.toolbar}`}>
           {/* 특수 편집 도구 */}
           <div className="flex items-center gap-3 shrink-0">
-            <button
-              onClick={() => execFormat('justifyLeft')}
-              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="왼쪽 정렬"
-            >
-              <Undo className="w-3.5 h-3.5 rotate-90" />
-            </button>
-            <button
-              onClick={() => execFormat('justifyCenter')}
-              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="가운데 정렬 (웹소설 시/편지용)"
-            >
-              <Undo className="w-3.5 h-3.5 rotate-185" />
-            </button>
-            <button
-              onClick={() => execFormat('justifyRight')}
-              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="오른쪽 정렬"
-            >
-              <Redo className="w-3.5 h-3.5 rotate-90" />
-            </button>
-            <button
-              onClick={() => execFormat('justifyFull')}
-              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="양쪽 정렬"
-            >
-              <Redo className="w-3.5 h-3.5" />
-            </button>
-
-            <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
-
-            <button
-              onClick={() => execFormat('indent')}
-              className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors shrink-0 ${isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}
-              title="들여쓰기 적용 (단락 시작)"
-            >
-              들여쓰기
-            </button>
-            <button
-              onClick={() => execFormat('outdent')}
-              className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors shrink-0 ${isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}
-              title="내어쓰기 적용"
-            >
-              내어쓰기
-            </button>
-
-            <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
             <div className="relative shrink-0">
               <button
@@ -798,26 +1120,68 @@ export default function EditorToolbar(props: EditorToolbarProps) {
               )}
             </div>
             <button
-              onClick={() => execFormat('formatBlock', '<blockquote>')}
+              onClick={handleToggleBlockquote}
               className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="인용구 블록 설정"
+              title="인용구 블록 설정/해제"
             >
               <BookOpen className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={handleInsertTable}
+              onClick={openTableInsertModal}
               className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="표 삽입"
             >
               <Grid className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={handleInsertLink}
+              onClick={openLinkInsertModal}
               className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="링크 삽입"
             >
               <Link className="w-3.5 h-3.5" />
             </button>
+
+            <div className="relative flex items-center shrink-0" ref={exportDropdownRef}>
+              <button
+                onClick={() => setShowExportDropdown(!showExportDropdown)}
+                className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'} flex items-center gap-1`}
+                title="원고 내보내기"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span className="text-[10px] font-semibold">내보내기</span>
+              </button>
+
+              {showExportDropdown && (
+                <div className={`absolute right-0 top-7 z-30 w-32 py-1 rounded-lg border shadow-xl text-xs flex flex-col ${
+                  isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+                }`}>
+                  <button
+                    onClick={() => handleExportDocument('txt')}
+                    className={`w-full text-left px-3.5 py-2 transition-colors ${
+                      isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.04]'
+                    }`}
+                  >
+                    TXT 파일
+                  </button>
+                  <button
+                    onClick={() => handleExportDocument('md')}
+                    className={`w-full text-left px-3.5 py-2 transition-colors ${
+                      isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.04]'
+                    }`}
+                  >
+                    Markdown
+                  </button>
+                  <button
+                    onClick={() => handleExportDocument('docx')}
+                    className={`w-full text-left px-3.5 py-2 transition-colors ${
+                      isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.04]'
+                    }`}
+                  >
+                    MS Word
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 줄간격, 문단간격, 타이프라이터, 스냅샷, 이력 */}
@@ -852,6 +1216,18 @@ export default function EditorToolbar(props: EditorToolbarProps) {
                 <option value="20">20px</option>
               </select>
             </div>
+
+
+
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={firstLineIndent}
+                onChange={e => setFirstLineIndent(e.target.checked)}
+                className="rounded border-gray-300 text-[#5E6AD2] focus:ring-[#5E6AD2] w-3.5 h-3.5"
+              />
+              <span className="text-[10px] text-gray-500 font-semibold">첫줄 들여쓰기</span>
+            </label>
 
             <div className={`w-[1px] h-3 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
@@ -1148,6 +1524,187 @@ export default function EditorToolbar(props: EditorToolbarProps) {
                   className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
                 >
                   저장 및 삽입
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 표 삽입 모달 */}
+      {showTableModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`w-80 rounded-2xl border p-6 flex flex-col gap-4 shadow-2xl ${
+            isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            <div className="flex items-center justify-between pb-2 border-b border-gray-500/10">
+              <h3 className="text-sm font-bold">📊 표(Table) 삽입</h3>
+              <button 
+                onClick={() => setShowTableModal(false)}
+                className="text-gray-400 hover:text-gray-200 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={executeInsertTable} className="flex flex-col gap-3.5 text-xs">
+              <div className="flex gap-3">
+                {/* 행 */}
+                <div className="flex-1 flex flex-col gap-1">
+                  <span className="font-semibold text-gray-400">행 (Rows)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    required
+                    value={tableRows}
+                    onChange={(e) => setTableRows(parseInt(e.target.value) || 1)}
+                    className={`w-full px-3 py-1.5 rounded-lg border outline-none ${
+                      isDark ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'
+                    }`}
+                  />
+                </div>
+                {/* 열 */}
+                <div className="flex-1 flex flex-col gap-1">
+                  <span className="font-semibold text-gray-400">열 (Cols)</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    required
+                    value={tableCols}
+                    onChange={(e) => setTableCols(parseInt(e.target.value) || 1)}
+                    className={`w-full px-3 py-1.5 rounded-lg border outline-none ${
+                      isDark ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'
+                    }`}
+                  />
+                </div>
+              </div>
+
+              {/* 너비 선택 */}
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold text-gray-400">가로폭 너비 (%)</span>
+                <select
+                  value={tableWidth}
+                  onChange={(e) => setTableWidth(parseInt(e.target.value) || 100)}
+                  className={`px-3 py-1.5 rounded-lg border outline-none cursor-pointer ${
+                    isDark ? 'bg-[#1E1F22] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-black'
+                  }`}
+                >
+                  <option value="100">100% (전체)</option>
+                  <option value="80">80% (보통)</option>
+                  <option value="50">50% (절반)</option>
+                  <option value="30">30% (좁게)</option>
+                </select>
+              </div>
+
+              {/* 첫 줄 헤더 행 여부 */}
+              <label className="flex items-center gap-2 cursor-pointer mt-1 select-none">
+                <input
+                  type="checkbox"
+                  checked={tableHasHeader}
+                  onChange={(e) => setTableHasHeader(e.target.checked)}
+                  className="rounded border-gray-300 text-[#5E6AD2] focus:ring-[#5E6AD2] w-4 h-4"
+                />
+                <span className="font-semibold text-gray-400">첫 행을 제목 열(Header)로 지정</span>
+              </label>
+
+              {/* 버튼 그룹 */}
+              <div className="flex gap-2.5 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTableModal(false)}
+                  className={`flex-1 py-2 rounded-xl font-bold border transition-colors ${
+                    isDark ? 'border-white/[0.06] hover:bg-white/[0.04]' : 'border-black/[0.06] hover:bg-black/[0.04]'
+                  }`}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all"
+                >
+                  표 삽입
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 링크 삽입 모달 */}
+      {showLinkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`w-80 rounded-2xl border p-6 flex flex-col gap-4 shadow-2xl ${
+            isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            <div className="flex items-center justify-between pb-2 border-b border-gray-500/10">
+              <h3 className="text-sm font-bold">🔗 링크(Link) 삽입</h3>
+              <button 
+                onClick={() => setShowLinkModal(false)}
+                className="text-gray-400 hover:text-gray-200 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={executeInsertLink} className="flex flex-col gap-3.5 text-xs">
+              {/* 표시할 글자 */}
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold text-gray-400">표시할 텍스트</span>
+                <input
+                  type="text"
+                  placeholder="미입력 시 URL이 그대로 노출됩니다"
+                  value={linkText}
+                  onChange={(e) => setLinkText(e.target.value)}
+                  className={`px-3 py-1.5 rounded-lg border outline-none ${
+                    isDark ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'
+                  }`}
+                />
+              </div>
+
+              {/* URL 주소 */}
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold text-gray-400">링크 주소 (URL)</span>
+                <input
+                  type="text"
+                  required
+                  placeholder="예: naver.com 또는 google.com"
+                  value={linkUrl}
+                  onChange={(e) => setLinkUrl(e.target.value)}
+                  className={`px-3 py-1.5 rounded-lg border outline-none ${
+                    isDark ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'
+                  }`}
+                />
+              </div>
+
+              {/* 새 창에서 열기 */}
+              <label className="flex items-center gap-2 cursor-pointer mt-1 select-none">
+                <input
+                  type="checkbox"
+                  checked={linkNewTab}
+                  onChange={(e) => setLinkNewTab(e.target.checked)}
+                  className="rounded border-gray-300 text-[#5E6AD2] focus:ring-[#5E6AD2] w-4 h-4"
+                />
+                <span className="font-semibold text-gray-400">새 탭에서 링크 열기 (target="_blank")</span>
+              </label>
+
+              {/* 버튼 그룹 */}
+              <div className="flex gap-2.5 mt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowLinkModal(false)}
+                  className={`flex-1 py-2 rounded-xl font-bold border transition-colors ${
+                    isDark ? 'border-white/[0.06] hover:bg-white/[0.04]' : 'border-black/[0.06] hover:bg-black/[0.04]'
+                  }`}
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all"
+                >
+                  링크 삽입
                 </button>
               </div>
             </form>

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Columns, Rows, X, Plus, ChevronDown } from 'lucide-react';
 import type { LayoutNode, PanelNode } from './layoutUtils';
-import type { Project, Episode, Node } from './types';
+import type { Project, Episode, Node, Foreshadowing } from './types';
 
 // Import modular components
 import ProjectDashboard from './ProjectDashboard';
@@ -32,6 +32,8 @@ interface WorkspaceLayoutManagerProps {
   editorSaveStatus: 'saved' | 'saving';
   relationNodes: Node[];
   setRelationNodes: React.Dispatch<React.SetStateAction<Node[]>>;
+  foreshadowings: Foreshadowing[];
+  setForeshadowings: React.Dispatch<React.SetStateAction<Foreshadowing[]>>;
   notes: string;
   setNotes: (n: string) => void;
   saveStatus: string;
@@ -39,6 +41,8 @@ interface WorkspaceLayoutManagerProps {
   onUpdateProjectDetails: (newName: string, newDescription: string) => Promise<void>;
   isDark: boolean;
   themeMode: 'dark' | 'light';
+  targetWordCount: number;
+  setTargetWordCount: (v: number) => void;
 }
 
 export default function WorkspaceLayoutManager(props: WorkspaceLayoutManagerProps) {
@@ -176,6 +180,8 @@ function PanelRenderer(props: PanelRendererProps) {
     editorSaveStatus,
     relationNodes,
     setRelationNodes,
+    foreshadowings,
+    setForeshadowings,
     notes,
     setNotes,
     saveStatus,
@@ -184,6 +190,8 @@ function PanelRenderer(props: PanelRendererProps) {
     isDark,
     themeMode,
     showCloseButton,
+    targetWordCount,
+    setTargetWordCount,
   } = props;
 
   const isFocused = focusedPanelId === panel.id;
@@ -423,6 +431,8 @@ function PanelRenderer(props: PanelRendererProps) {
             episodes={episodes}
             relationNodes={relationNodes}
             setSelectedEpisodeId={handleSetSelectedEpisodeId}
+            targetWordCount={targetWordCount}
+            onTargetWordCountChange={setTargetWordCount}
           />
         )}
         {panel.activeFeature === 'editor' && (
@@ -437,6 +447,7 @@ function PanelRenderer(props: PanelRendererProps) {
             editorSaveStatus={editorSaveStatus}
             relationNodes={relationNodes}
             isDark={isDark}
+            targetWordCount={targetWordCount}
           />
         )}
         {panel.activeFeature === 'naming' && (
@@ -461,6 +472,8 @@ function PanelRenderer(props: PanelRendererProps) {
         {panel.activeFeature === 'timeline' && (
           <ForeshadowingTimeline
             isDark={isDark}
+            foreshadowings={foreshadowings}
+            setForeshadowings={setForeshadowings}
           />
         )}
         {panel.activeFeature === 'history' && (
