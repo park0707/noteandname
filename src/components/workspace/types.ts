@@ -58,6 +58,7 @@ export interface Snapshot {
   content: string;
   charCount: number;
   type: 'manual' | 'auto_words' | 'auto_time';
+  createdAt?: string;
 }
 
 export interface Foreshadowing {

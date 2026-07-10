@@ -21,7 +21,8 @@ import {
   AlignJustify,
   Download,
   Indent,
-  Outdent
+  Outdent,
+  Eraser
 } from 'lucide-react';
 import { FONT_CATEGORY_LABELS } from '../../../lib/fonts';
 import type { FontOption } from '../../../lib/fonts';
@@ -34,6 +35,8 @@ interface EditorToolbarProps {
   editorFontSize: number;
   setEditorFontSize: Dispatch<SetStateAction<number>>;
   editorFontFamily: string;
+  currentFontFamily: string | 'mixed';
+  currentFontSize: number | 'mixed';
   recentFontIds: string[];
   allFonts: FontOption[];
   groupedFonts: Record<string, FontOption[]>;
@@ -81,7 +84,8 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     setIsFocusMode,
     execFormat,
     editorFontSize,
-    editorFontFamily,
+    currentFontFamily,
+    currentFontSize,
     recentFontIds,
     allFonts,
     groupedFonts,
@@ -130,11 +134,13 @@ export default function EditorToolbar(props: EditorToolbarProps) {
   const [showDividerDropdown, setShowDividerDropdown] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [dropdownCoords, setDropdownCoords] = useState<{ top: number; left: number } | null>(null);
-  const [fontSizeInput, setFontSizeInput] = useState(editorFontSize.toString());
+  const [fontSizeInput, setFontSizeInput] = useState(
+    currentFontSize === 'mixed' ? '' : currentFontSize.toString()
+  );
 
   useEffect(() => {
-    setFontSizeInput(editorFontSize.toString());
-  }, [editorFontSize]);
+    setFontSizeInput(currentFontSize === 'mixed' ? '' : currentFontSize.toString());
+  }, [currentFontSize]);
 
   // 내보내기 드롭다운 외부 클릭 감지 → 닫기
   useEffect(() => {
@@ -453,14 +459,90 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     });
   };
 
+  const getLineText = (style: string, widthPercent: number) => {
+    let char = '─'; // solid default
+    if (style === 'dashed') {
+      char = '┄';
+    } else if (style === 'double') {
+      char = '═';
+    }
+    
+    // Calculate count based on width percent
+    const maxChars = 40;
+    const count = Math.max(5, Math.round((widthPercent / 100) * maxChars));
+    return char.repeat(count);
+  };
+
+  const convertDividerHtmlToText = (html: string): string => {
+    if (html.includes('class="novela-divider-text"') || html.includes('class=\'novela-divider-text\'')) {
+      return html;
+    }
+
+    if (html.includes('<hr') || html.includes('novela-divider-line')) {
+      let style = 'solid';
+      if (html.includes('dashed')) {
+        style = 'dashed';
+      } else if (html.includes('double')) {
+        style = 'double';
+      }
+      
+      let widthPercent = 100;
+      const widthMatch = html.match(/width:\s*(\d+)%/);
+      if (widthMatch) {
+        widthPercent = parseInt(widthMatch[1]) || 100;
+      }
+      
+      let thickness = '2';
+      const borderTopMatch = html.match(/border-top:\s*(\d+)px/);
+      if (borderTopMatch) {
+        thickness = borderTopMatch[1];
+      }
+      
+      let align = 'center';
+      if (html.includes('margin: 24px auto 24px 0') || html.includes('margin: 24px 0 24px 0') || html.includes('margin: 24px auto 24px 0;')) {
+        align = 'left';
+      } else if (html.includes('margin: 24px 0 24px auto') || html.includes('margin: 24px 0 24px auto;')) {
+        align = 'right';
+      }
+
+      const lineText = getLineText(style, widthPercent);
+      return `<p class="novela-divider-text" style="text-align: ${align}; margin: 24px 0; color: #888888; font-size: ${thickness === '2' ? '16' : thickness}px; font-weight: bold; letter-spacing: 2px;">${lineText}</p>`;
+    }
+    
+    if (html.includes('<div') || html.includes('novela-divider-text')) {
+      const textMatch = html.match(/>([^<]+)<\/div>/);
+      let symbol = '◆ ◆ ◆';
+      if (textMatch) {
+        symbol = textMatch[1].trim();
+      }
+      
+      let align = 'center';
+      const alignMatch = html.match(/text-align:\s*(\w+)/);
+      if (alignMatch) {
+        align = alignMatch[1];
+      }
+      
+      let size = '16';
+      const sizeMatch = html.match(/font-size:\s*(\d+)px/);
+      if (sizeMatch) {
+        size = sizeMatch[1];
+      }
+
+      return `<p class="novela-divider-text" style="text-align: ${align}; margin: 24px 0; color: #888888; font-size: ${size}px; letter-spacing: 6px; font-weight: bold; font-family: sans-serif;">${symbol}</p>`;
+    }
+
+    return html;
+  };
+
   const handleInsertDividerWithRecent = (name: string, html: string) => {
-    execFormat('insertHTML', html);
+    const textHtml = convertDividerHtmlToText(html);
+    execFormat('insertHTML', textHtml);
     setShowDividerDropdown(false);
     
     const tempDivider = {
       id: `temp_${Date.now()}`,
       name,
-      html
+      html: textHtml
     };
     addToRecentDividers(tempDivider);
   };
@@ -469,22 +551,17 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     e.preventDefault();
     if (!activeDividerConfig) return;
 
-    let marginStyle = 'margin: 24px auto;'; // center
-    if (dividerAlign === 'left') {
-      marginStyle = 'margin: 24px auto 24px 0;';
-    } else if (dividerAlign === 'right') {
-      marginStyle = 'margin: 24px 0 24px auto;';
-    }
-
     let html = '';
     const styleOrSymbol = activeDividerConfig.type === 'line' 
       ? activeDividerConfig.style 
       : activeDividerConfig.symbol;
 
     if (activeDividerConfig.type === 'line') {
-      html = `<hr class="novela-divider-custom novela-divider-line" style="border: 0; border-top: ${dividerSize}px ${styleOrSymbol} #888888; ${marginStyle} width: ${dividerWidth}%; display: block; clear: both;" />`;
+      const widthNum = parseInt(dividerWidth) || 100;
+      const lineText = getLineText(styleOrSymbol, widthNum);
+      html = `<p class="novela-divider-text" style="text-align: ${dividerAlign}; margin: 24px 0; color: #888888; font-size: ${dividerSize === '2' ? '16' : dividerSize}px; font-weight: bold; letter-spacing: 2px;">${lineText}</p>`;
     } else {
-      html = `<div class="novela-divider-custom novela-divider-text" style="display: block; text-align: ${dividerAlign}; ${marginStyle} color: #888888; font-size: ${dividerSize}px; letter-spacing: 6px; font-weight: bold; width: 100%; clear: both; font-family: sans-serif;">${styleOrSymbol}</div>`;
+      html = `<p class="novela-divider-text" style="text-align: ${dividerAlign}; margin: 24px 0; color: #888888; font-size: ${dividerSize}px; letter-spacing: 6px; font-weight: bold; font-family: sans-serif;">${styleOrSymbol}</p>`;
     }
 
     const typeLabel = activeDividerConfig.type === 'line' 
@@ -510,9 +587,10 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
     let html = '';
     if (newDividerType === 'line') {
-      html = `<hr class="novela-divider-custom novela-divider-line" style="border: 0; border-top: ${newDividerSize}px ${newDividerStyle} #888888; margin: 24px 0; width: 100%;" />`;
+      const lineText = getLineText(newDividerStyle, 100);
+      html = `<p class="novela-divider-text" style="text-align: center; margin: 24px 0; color: #888888; font-size: ${newDividerSize === '2' ? '16' : newDividerSize}px; font-weight: bold; letter-spacing: 2px;">${lineText}</p>`;
     } else {
-      html = `<div class="novela-divider-custom novela-divider-text" style="text-align: center; margin: 24px 0; color: #888888; font-size: ${newDividerSize}px; letter-spacing: 6px; font-weight: bold; width: 100%;">${newDividerSymbol}</div>`;
+      html = `<p class="novela-divider-text" style="text-align: center; margin: 24px 0; color: #888888; font-size: ${newDividerSize}px; letter-spacing: 6px; font-weight: bold;">${newDividerSymbol}</p>`;
     }
 
     const newDivider = {
@@ -541,11 +619,12 @@ export default function EditorToolbar(props: EditorToolbarProps) {
   return (
     <div className="flex flex-col shrink-0 select-none">
       {/* 1. 에디터 툴바 */}
-      <div className={`px-6 py-2 border-b flex items-center justify-between gap-4 shrink-0 ${themeStyles.toolbar}`}>
-        <div className="flex items-center gap-3 overflow-visible w-full flex-wrap">
+      <div className={`px-4 py-2 border-b flex items-center justify-between gap-3 shrink-0 ${themeStyles.toolbar}`}>
+        <div className="flex items-center gap-2 overflow-x-auto flex-nowrap min-w-0 flex-1 pr-2">
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => execFormat('undo')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] transition-colors ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="실행 취소 (Ctrl+Z)"
             >
@@ -553,6 +632,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             </button>
             <button
               onClick={() => execFormat('redo')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] transition-colors ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="다시 실행 (Ctrl+Y)"
             >
@@ -566,10 +646,11 @@ export default function EditorToolbar(props: EditorToolbarProps) {
           <div className="relative shrink-0 font-sans" ref={fontDropdownRef}>
             <button
               onClick={() => setShowFontDropdown(!showFontDropdown)}
+              onMouseDown={e => e.preventDefault()}
               className={`px-3 py-1.5 rounded border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${themeStyles.input}`}
             >
               <span className="truncate max-w-[120px]">
-                {allFonts.find(f => f.family === editorFontFamily)?.label || editorFontFamily}
+                {currentFontFamily === 'mixed' ? '여러 폰트' : (allFonts.find(f => f.family === currentFontFamily)?.label || currentFontFamily)}
               </span>
               <ChevronDown className="w-3 h-3 text-gray-500" />
             </button>
@@ -608,8 +689,9 @@ export default function EditorToolbar(props: EditorToolbarProps) {
                               execFormat('fontName', font.family);
                               setShowFontDropdown(false);
                             }}
+                            onMouseDown={e => e.preventDefault()}
                             className={`w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-white/[0.04] transition-colors ${
-                              editorFontFamily === font.family ? 'text-[#7480E2] font-bold' : ''
+                              currentFontFamily === font.family ? 'text-[#7480E2] font-bold' : ''
                             }`}
                           >
                             {font.label}
@@ -636,8 +718,9 @@ export default function EditorToolbar(props: EditorToolbarProps) {
                               execFormat('fontName', font.family);
                               setShowFontDropdown(false);
                             }}
+                            onMouseDown={e => e.preventDefault()}
                             className={`w-full text-left px-2 py-1.5 rounded-lg text-xs hover:bg-white/[0.04] transition-colors ${
-                              editorFontFamily === font.family ? 'text-[#7480E2] font-bold' : ''
+                              currentFontFamily === font.family ? 'text-[#7480E2] font-bold' : ''
                             }`}
                           >
                             {font.label}
@@ -671,6 +754,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
               <input
                 type="text"
                 value={fontSizeInput}
+                onMouseDown={() => saveSelection()}
                 onChange={e => {
                   const valStr = e.target.value;
                   if (valStr === '' || /^[0-9]+$/.test(valStr)) {
@@ -685,41 +769,47 @@ export default function EditorToolbar(props: EditorToolbarProps) {
                       setFontSizeInput('');
                     }
                   } else {
-                    // 이상한 문자나 값이 감지되면 즉시 직전 저장 수치로 롤백
-                    setFontSizeInput(editorFontSize.toString());
+                    const defaultSize = currentFontSize === 'mixed' ? editorFontSize : currentFontSize;
+                    setFontSizeInput(defaultSize.toString());
                   }
                 }}
                 onKeyDown={e => {
                   if (e.key === 'Enter') {
-                    const val = parseInt(fontSizeInput);
-                    if (!isNaN(val) && val > 0 && val <= 100) {
-                      execFormat('fontSize', val.toString());
-                      e.currentTarget.blur();
-                    } else {
-                      setFontSizeInput(editorFontSize.toString());
-                      e.currentTarget.blur();
-                    }
+                    e.preventDefault();
+                    e.stopPropagation();
+                    e.currentTarget.blur();
                   }
                 }}
                 onBlur={() => {
                   const val = parseInt(fontSizeInput);
+                  const defaultSize = currentFontSize === 'mixed' ? editorFontSize : currentFontSize;
                   if (!isNaN(val) && val > 0 && val <= 100) {
                     execFormat('fontSize', val.toString());
                   } else {
-                    setFontSizeInput(editorFontSize.toString());
+                    setFontSizeInput(defaultSize.toString());
                   }
                 }}
                 className={`w-10 py-1 px-1.5 text-center text-xs font-bold bg-transparent outline-none border-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${isDark ? 'text-white' : 'text-black'}`}
               />
               <div className={`flex flex-col border-l shrink-0 ${isDark ? 'border-white/[0.08]' : 'border-black/[0.08]'}`}>
                 <button
-                  onClick={() => execFormat('fontSize', (editorFontSize + 1).toString())}
+                  onClick={() => {
+                    const baseSize = currentFontSize === 'mixed' ? editorFontSize : currentFontSize;
+                    const nextSize = Math.min(100, baseSize + 1);
+                    execFormat('fontSize', nextSize.toString());
+                  }}
+                  onMouseDown={e => e.preventDefault()}
                   className={`p-0.5 hover:bg-white/[0.04] border-b text-gray-500 hover:text-white shrink-0 ${isDark ? 'border-white/[0.08]' : 'border-black/[0.08]'}`}
                 >
                   <ChevronUp className="w-2.5 h-2.5" />
                 </button>
                 <button
-                  onClick={() => execFormat('fontSize', Math.max(1, editorFontSize - 1).toString())}
+                  onClick={() => {
+                    const baseSize = currentFontSize === 'mixed' ? editorFontSize : currentFontSize;
+                    const nextSize = Math.max(1, baseSize - 1);
+                    execFormat('fontSize', nextSize.toString());
+                  }}
+                  onMouseDown={e => e.preventDefault()}
                   className="p-0.5 hover:bg-white/[0.04] text-gray-500 hover:text-white shrink-0"
                 >
                   <ChevronDown className="w-2.5 h-2.5" />
@@ -734,6 +824,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => execFormat('bold')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] font-bold shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="굵게 (Ctrl+B)"
             >
@@ -741,6 +832,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             </button>
             <button
               onClick={() => execFormat('italic')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] italic shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="기울임 (Ctrl+I)"
             >
@@ -748,6 +840,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             </button>
             <button
               onClick={() => execFormat('underline')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] underline shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="밑줄 (Ctrl+U)"
             >
@@ -755,6 +848,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             </button>
             <button
               onClick={() => execFormat('strikeThrough')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] line-through shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="취소선"
             >
@@ -768,6 +862,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => execFormat('justifyLeft')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="왼쪽 정렬"
             >
@@ -775,6 +870,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             </button>
             <button
               onClick={() => execFormat('justifyCenter')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="가운데 정렬 (웹소설 시/편지용)"
             >
@@ -782,6 +878,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             </button>
             <button
               onClick={() => execFormat('justifyRight')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="오른쪽 정렬"
             >
@@ -789,6 +886,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             </button>
             <button
               onClick={() => execFormat('justifyFull')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="양쪽 정렬"
             >
@@ -798,10 +896,11 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
           <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
-          {/* 들여쓰기/내어쓰기 그룹 */}
+          {/* 들여쓰기/내어쓰기 및 서식 지우기 그룹 */}
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => execFormat('indent')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="들여쓰기 적용"
             >
@@ -809,115 +908,127 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             </button>
             <button
               onClick={() => execFormat('outdent')}
+              onMouseDown={e => e.preventDefault()}
               className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
               title="내어쓰기 적용"
             >
               <Outdent className="w-3.5 h-3.5" />
             </button>
+            <button
+              onClick={() => execFormat('clearFormat')}
+              onMouseDown={e => e.preventDefault()}
+              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+              title="서식 지우기 (초기화)"
+            >
+              <Eraser className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
-          {/* 글자 색상 */}
-          <div className="relative shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                if (showColorPicker) {
-                  setShowColorPicker(false);
-                } else {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setColorPickerPos({
-                    top: rect.bottom + window.scrollY + 6,
-                    left: rect.left + window.scrollX
-                  });
-                  setShowColorPicker(true);
-                  setShowBgColorPicker(false);
-                }
-              }}
-              className={`p-1.5 rounded hover:bg-white/[0.04] flex items-center font-bold text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="글자 색상"
-            >
-              A
-              <ChevronDown className="w-2.5 h-2.5 ml-0.5" />
-            </button>
-            {showColorPicker && colorPickerPos && (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  position: 'fixed',
-                  top: `${colorPickerPos.top}px`,
-                  left: `${colorPickerPos.left}px`,
+          {/* 색상 및 서식 제거 그룹 */}
+          <div className="flex items-center gap-1 shrink-0">
+            {/* 글자 색상 */}
+            <div className="relative shrink-0">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  if (showColorPicker) {
+                    setShowColorPicker(false);
+                  } else {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setColorPickerPos({
+                      top: rect.bottom + window.scrollY + 6,
+                      left: rect.left + window.scrollX
+                    });
+                    setShowColorPicker(true);
+                    setShowBgColorPicker(false);
+                  }
                 }}
-                className={`z-[9999] p-2 rounded-lg border shadow-xl flex gap-1 ${isDark ? 'bg-[#1E1F22] border-white/[0.06]' : 'bg-white border-black/[0.06]'}`}
+                className={`p-1.5 rounded hover:bg-white/[0.04] flex items-center font-bold text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                title="글자 색상"
               >
-                {['#EDEDEF', '#EF4444', '#F97316', '#FACC15', '#22C55E', '#3B82F6', '#A855F7', '#121316'].map(color => (
-                  <div
-                    key={color}
-                    onClick={() => { execFormat('foreColor', color); setShowColorPicker(false); }}
-                    className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 transition-transform border border-black/20"
-                    style={{ backgroundColor: color }}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+                A
+                <ChevronDown className="w-2.5 h-2.5 ml-0.5" />
+              </button>
+              {showColorPicker && colorPickerPos && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: 'fixed',
+                    top: `${colorPickerPos.top}px`,
+                    left: `${colorPickerPos.left}px`,
+                  }}
+                  className={`z-[9999] p-2 rounded-lg border shadow-xl flex gap-1 ${isDark ? 'bg-[#1E1F22] border-white/[0.06]' : 'bg-white border-black/[0.06]'}`}
+                >
+                  {['#EDEDEF', '#EF4444', '#F97316', '#FACC15', '#22C55E', '#3B82F6', '#A855F7', '#121316'].map(color => (
+                    <div
+                      key={color}
+                      onClick={() => { execFormat('foreColor', color); setShowColorPicker(false); }}
+                      className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 transition-transform border border-black/20"
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
 
-          {/* 형광펜 효과 */}
-          <div className="relative shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                if (showBgColorPicker) {
-                  setShowBgColorPicker(false);
-                } else {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  setBgColorPickerPos({
-                    top: rect.bottom + window.scrollY + 6,
-                    left: rect.left + window.scrollX
-                  });
-                  setShowBgColorPicker(true);
-                  setShowColorPicker(false);
-                }
-              }}
-              className={`p-1.5 rounded hover:bg-white/[0.04] flex items-center text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="형광펜 효과"
-            >
-              <span className="bg-yellow-500 text-black px-0.5 rounded text-[10px]">ab</span>
-              <ChevronDown className="w-2.5 h-2.5 ml-0.5" />
-            </button>
-            {showBgColorPicker && bgColorPickerPos && (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                style={{
-                  position: 'fixed',
-                  top: `${bgColorPickerPos.top}px`,
-                  left: `${bgColorPickerPos.left}px`,
+            {/* 형광펜 효과 */}
+            <div className="relative shrink-0">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  if (showBgColorPicker) {
+                    setShowBgColorPicker(false);
+                  } else {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setBgColorPickerPos({
+                      top: rect.bottom + window.scrollY + 6,
+                      left: rect.left + window.scrollX
+                    });
+                    setShowBgColorPicker(true);
+                    setShowColorPicker(false);
+                  }
                 }}
-                className={`z-[9999] p-2 rounded-lg border shadow-xl flex gap-1 ${isDark ? 'bg-[#1E1F22] border-white/[0.06]' : 'bg-white border-black/[0.06]'}`}
+                className={`p-1.5 rounded hover:bg-white/[0.04] flex items-center text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                title="형광펜 효과"
               >
-                {['transparent', '#3F3F46', '#FCA5A5', '#FED7AA', '#FEF08A', '#86EFAC', '#93C5FD', '#C084FC'].map(color => (
-                  <div
-                    key={color}
-                    onClick={() => { execFormat('hiliteColor', color); setShowBgColorPicker(false); }}
-                    className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 transition-transform border border-black/20"
-                    style={{ backgroundColor: color }}
-                    title={color === 'transparent' ? '지우기' : undefined}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+                <span className="bg-yellow-500 text-black px-0.5 rounded text-[10px]">ab</span>
+                <ChevronDown className="w-2.5 h-2.5 ml-0.5" />
+              </button>
+              {showBgColorPicker && bgColorPickerPos && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    position: 'fixed',
+                    top: `${bgColorPickerPos.top}px`,
+                    left: `${bgColorPickerPos.left}px`,
+                  }}
+                  className={`z-[9999] p-2 rounded-lg border shadow-xl flex gap-1 ${isDark ? 'bg-[#1E1F22] border-white/[0.06]' : 'bg-white border-black/[0.06]'}`}
+                >
+                  {['transparent', '#3F3F46', '#FCA5A5', '#FED7AA', '#FEF08A', '#86EFAC', '#93C5FD', '#C084FC'].map(color => (
+                    <div
+                      key={color}
+                      onClick={() => { execFormat('hiliteColor', color); setShowBgColorPicker(false); }}
+                      className="w-4 h-4 rounded-full cursor-pointer hover:scale-110 transition-transform border border-black/20"
+                      style={{ backgroundColor: color }}
+                      title={color === 'transparent' ? '지우기' : undefined}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
 
-          <button
-            onClick={() => execFormat('removeFormat')}
-            className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors shrink-0 ${isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}
-            title="모든 스타일 서식 제거"
-          >
-            서식지우기
-          </button>
+            <button
+              onClick={() => execFormat('removeFormat')}
+              className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors shrink-0 ${isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}
+              title="모든 스타일 서식 제거"
+            >
+              서식지우기
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-3 shrink-0 pl-2">

@@ -63,6 +63,7 @@ export function useEditorFormat() {
 
   const editorRef = useRef<HTMLDivElement | null>(null);
   const savedRangeRef = useRef<Range | null>(null);
+  const historyRef = useRef<{ past: string[]; future: string[] }>({ past: [], future: [] });
 
   const saveSelection = () => {
     const sel = window.getSelection();
@@ -79,6 +80,135 @@ export function useEditorFormat() {
       sel.addRange(savedRangeRef.current);
       editorRef.current?.focus();
     }
+  };
+
+  const pushHistory = () => {
+    if (!editorRef.current) return;
+    historyRef.current.past.push(editorRef.current.innerHTML);
+    historyRef.current.future = [];
+  };
+
+  const undo = (handleContentInput?: () => void) => {
+    const { past, future } = historyRef.current;
+    if (past.length === 0 || !editorRef.current) return;
+    future.push(editorRef.current.innerHTML);
+    editorRef.current.innerHTML = past.pop()!;
+    if (handleContentInput) handleContentInput();
+  };
+
+  const redo = (handleContentInput?: () => void) => {
+    const { past, future } = historyRef.current;
+    if (future.length === 0 || !editorRef.current) return;
+    past.push(editorRef.current.innerHTML);
+    editorRef.current.innerHTML = future.pop()!;
+    if (handleContentInput) handleContentInput();
+  };
+
+  const getSelectionFontState = (): string | 'mixed' | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !editorRef.current) return null;
+    const range = sel.getRangeAt(0);
+    
+    // 에디터 밖의 선택 영역인 경우 제외
+    if (!editorRef.current.contains(range.commonAncestorContainer)) return null;
+
+    if (range.collapsed) {
+      const node = range.startContainer;
+      const parent = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement);
+      if (parent) {
+        return window.getComputedStyle(parent).fontFamily.replace(/['"]/g, '');
+      }
+      return null;
+    }
+
+    const container = range.commonAncestorContainer;
+    const walker = document.createTreeWalker(
+      container.nodeType === Node.TEXT_NODE ? container.parentNode! : container,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: (node) => {
+          const nodeRange = document.createRange();
+          nodeRange.selectNodeContents(node);
+          return range.compareBoundaryPoints(Range.END_TO_START, nodeRange) < 0 &&
+                 range.compareBoundaryPoints(Range.START_TO_END, nodeRange) > 0
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_REJECT;
+        }
+      }
+    );
+
+    const fonts = new Set<string>();
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      if (node.textContent?.replace(/\u200B/g, '').trim() === '') continue;
+      const parent = node.parentElement;
+      if (parent) {
+        const family = window.getComputedStyle(parent).fontFamily.replace(/['"]/g, '');
+        fonts.add(family);
+      }
+    }
+
+    if (fonts.size === 0) {
+      const parent = container.nodeType === Node.TEXT_NODE ? container.parentElement : (container as HTMLElement);
+      if (parent) return window.getComputedStyle(parent).fontFamily.replace(/['"]/g, '');
+      return null;
+    }
+    if (fonts.size > 1) return 'mixed';
+    return Array.from(fonts)[0];
+  };
+
+  const getSelectionSizeState = (): number | 'mixed' | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !editorRef.current) return null;
+    const range = sel.getRangeAt(0);
+
+    // 에디터 밖의 선택 영역인 경우 제외
+    if (!editorRef.current.contains(range.commonAncestorContainer)) return null;
+
+    if (range.collapsed) {
+      const node = range.startContainer;
+      const parent = node.nodeType === Node.TEXT_NODE ? node.parentElement : (node as HTMLElement);
+      if (parent) {
+        const sizeStr = window.getComputedStyle(parent).fontSize;
+        return parseInt(sizeStr, 10);
+      }
+      return null;
+    }
+
+    const container = range.commonAncestorContainer;
+    const walker = document.createTreeWalker(
+      container.nodeType === Node.TEXT_NODE ? container.parentNode! : container,
+      NodeFilter.SHOW_TEXT,
+      {
+        acceptNode: (node) => {
+          const nodeRange = document.createRange();
+          nodeRange.selectNodeContents(node);
+          return range.compareBoundaryPoints(Range.END_TO_START, nodeRange) < 0 &&
+                 range.compareBoundaryPoints(Range.START_TO_END, nodeRange) > 0
+            ? NodeFilter.FILTER_ACCEPT
+            : NodeFilter.FILTER_REJECT;
+        }
+      }
+    );
+
+    const sizes = new Set<number>();
+    let node: Node | null;
+    while ((node = walker.nextNode())) {
+      if (node.textContent?.replace(/\u200B/g, '').trim() === '') continue;
+      const parent = node.parentElement;
+      if (parent) {
+        const sizeStr = window.getComputedStyle(parent).fontSize;
+        sizes.add(parseInt(sizeStr, 10));
+      }
+    }
+
+    if (sizes.size === 0) {
+      const parent = container.nodeType === Node.TEXT_NODE ? container.parentElement : (container as HTMLElement);
+      if (parent) return parseInt(window.getComputedStyle(parent).fontSize, 10);
+      return null;
+    }
+    if (sizes.size > 1) return 'mixed';
+    return Array.from(sizes)[0];
   };
 
   // localStorage 저장을 위한 useEffect들
@@ -204,47 +334,97 @@ export function useEditorFormat() {
     }
   };
 
+  const applyStyleToSelection = (styleName: 'fontSize' | 'fontFamily', styleValue: string) => {
+    pushHistory();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+
+    if (range.collapsed) {
+      const span = document.createElement('span');
+      if (styleName === 'fontSize') {
+        span.style.fontSize = `${styleValue}px`;
+      } else {
+        span.style.fontFamily = styleValue;
+      }
+      span.appendChild(document.createTextNode('\u200B'));
+      range.insertNode(span);
+      
+      range.setStartAfter(span.firstChild!);
+      range.setEndAfter(span.firstChild!);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } else {
+      const content = range.extractContents();
+      const span = document.createElement('span');
+      if (styleName === 'fontSize') {
+        span.style.fontSize = `${styleValue}px`;
+      } else {
+        span.style.fontFamily = styleValue;
+      }
+      span.appendChild(content);
+
+      span.querySelectorAll('span').forEach(child => {
+        if (styleName === 'fontSize') {
+          child.style.fontSize = '';
+        } else {
+          child.style.fontFamily = '';
+        }
+        if (!child.style.cssText || child.style.cssText.trim() === '') {
+          const parent = child.parentNode;
+          if (parent) {
+            while (child.firstChild) {
+              parent.insertBefore(child.firstChild, child);
+            }
+            parent.removeChild(child);
+          }
+        }
+      });
+
+      range.insertNode(span);
+
+      const newRange = document.createRange();
+      newRange.selectNode(span);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    }
+  };
+
+  const clearFormat = (handleContentInput?: () => void) => {
+    pushHistory();
+    restoreSelection();
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !editorRef.current) return;
+    const range = sel.getRangeAt(0);
+    if (range.collapsed) return;
+
+    document.execCommand('removeFormat', false, undefined);
+
+    if (handleContentInput) handleContentInput();
+    saveSelection();
+  };
+
   const execFormat = (command: string, value: string = '', handleContentInput?: () => void) => {
     restoreSelection();
     if (command === 'fontSize') {
       const sizeNum = parseInt(value);
-      const sel = window.getSelection();
-      
-      if (sel && sel.rangeCount > 0 && !sel.getRangeAt(0).collapsed) {
-        document.execCommand('fontSize', false, '7');
-        const fontElements = editorRef.current?.querySelectorAll('font[size="7"]');
-        fontElements?.forEach(font => {
-          const span = document.createElement('span');
-          span.style.fontSize = `${sizeNum}px`;
-          span.innerHTML = font.innerHTML;
-          font.parentNode?.replaceChild(span, font);
-        });
-      } else if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        const span = document.createElement('span');
-        span.style.fontSize = `${sizeNum}px`;
-        span.appendChild(document.createTextNode('\u200B'));
-        
-        range.insertNode(span);
-        range.setStartAfter(span.firstChild!);
-        range.setEndAfter(span.firstChild!);
-        sel.removeAllRanges();
-        sel.addRange(range);
+      if (!isNaN(sizeNum)) {
+        applyStyleToSelection('fontSize', sizeNum.toString());
+        setEditorFontSize(sizeNum);
       }
-      setEditorFontSize(sizeNum);
     } else if (command === 'fontName') {
-      document.execCommand('fontName', false, value);
-      const fontElements = editorRef.current?.querySelectorAll(`font[face="${value}"]`);
-      fontElements?.forEach(font => {
-        const span = document.createElement('span');
-        span.style.fontFamily = value;
-        span.innerHTML = font.innerHTML;
-        font.parentNode?.replaceChild(span, font);
-      });
+      applyStyleToSelection('fontFamily', value);
       setEditorFontFamily(value);
       const matchedFont = allFonts.find(font => font.family === value);
       if (matchedFont) recordRecentFont(matchedFont.id);
+    } else if (command === 'undo') {
+      undo(handleContentInput);
+    } else if (command === 'redo') {
+      redo(handleContentInput);
+    } else if (command === 'clearFormat') {
+      clearFormat(handleContentInput);
     } else {
+      pushHistory();
       document.execCommand(command, false, value);
     }
     if (handleContentInput) {
@@ -293,6 +473,12 @@ export function useEditorFormat() {
     allFonts,
     groupedFonts,
     recordRecentFont,
-    handleFontUpload
+    handleFontUpload,
+    pushHistory,
+    undo,
+    redo,
+    clearFormat,
+    getSelectionFontState,
+    getSelectionSizeState
   };
 }

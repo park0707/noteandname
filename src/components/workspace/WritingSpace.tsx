@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { FileText } from 'lucide-react';
 import type { Project, Episode, Node, Snapshot } from './types';
@@ -102,7 +102,11 @@ export default function WritingSpace(props: WritingSpaceProps) {
     execFormat,
     allFonts,
     groupedFonts,
-    handleFontUpload
+    handleFontUpload,
+    undo,
+    redo,
+    getSelectionFontState,
+    getSelectionSizeState
   } = useEditorFormat();
 
   // 에디터 테마는 에디터 전용 오버라이드가 있으면 적용, 없으면(system) 메인 화면의 다크/라이트 모드에서 파생
@@ -123,6 +127,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
   const [historySnapshots, setHistorySnapshots] = useState<Snapshot[]>([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [lastSnapshotWordCount, setLastSnapshotWordCount] = useState(0);
+  const loadedEpisodeIdRef = useRef<string | null>(null);
 
   // 간편 스냅샷 이름/메모 입력 모달 상태
   const [showSnapshotInputModal, setShowSnapshotInputModal] = useState(false);
@@ -132,12 +137,39 @@ export default function WritingSpace(props: WritingSpaceProps) {
   // Snapshot visual comparison states
   const [isDiffMode, setIsDiffMode] = useState(false);
   const [diffTargetSnapshot, setDiffTargetSnapshot] = useState<Snapshot | null>(null);
+
+  const [currentFontFamily, setCurrentFontFamily] = useState<string | 'mixed'>(editorFontFamily);
+  const [currentFontSize, setCurrentFontSize] = useState<number | 'mixed'>(editorFontSize);
+
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      if (!editorRef.current) return;
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      if (!editorRef.current.contains(range.commonAncestorContainer)) return;
+
+      const activeFont = getSelectionFontState();
+      const activeSize = getSelectionSizeState();
+
+      if (activeFont) {
+        setCurrentFontFamily(activeFont);
+      }
+      if (activeSize) {
+        setCurrentFontSize(activeSize);
+      }
+    };
+
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+  }, [getSelectionFontState, getSelectionSizeState, editorRef]);
+
   const [snapshotNameEditId, setSnapshotNameEditId] = useState<string | null>(null);
   const [snapshotNameEditValue, setSnapshotNameEditValue] = useState('');
   const [snapshotMemoEditId, setSnapshotMemoEditId] = useState<string | null>(null);
   const [snapshotMemoEditValue, setSnapshotMemoEditValue] = useState('');
 
-  // Sync editorRef.innerHTML when selectedEpisodeId changes
+  // Sync editorRef.innerHTML when selectedEpisodeId or activeEpisode.content changes
   useEffect(() => {
     if (editorRef.current && activeEpisode) {
       if (editorRef.current.innerHTML !== activeEpisode.content) {
@@ -145,7 +177,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEpisodeId]);
+  }, [selectedEpisodeId, activeEpisode?.content]);
 
   // Load and sync snapshots
   useEffect(() => {
@@ -153,17 +185,28 @@ export default function WritingSpace(props: WritingSpaceProps) {
       if (!selectedEpisodeId || !activeEpisode) {
         setHistorySnapshots([]);
         setLastSnapshotWordCount(0);
+        loadedEpisodeIdRef.current = selectedEpisodeId;
         return;
       }
       
       const snapKey = `novelflow_snapshots_${selectedProject.id}_${selectedEpisodeId}`;
       const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
       if (isGuest) {
         const savedSnaps = localStorage.getItem(snapKey);
         if (savedSnaps) {
           try {
-            setHistorySnapshots(JSON.parse(savedSnaps));
+            const parsed: Snapshot[] = JSON.parse(savedSnaps);
+            const filtered = parsed.filter(s => {
+              if (!s.createdAt) return true; // Keep legacy snapshots
+              return new Date(s.createdAt) >= thirtyDaysAgo;
+            });
+            setHistorySnapshots(filtered);
+            if (filtered.length !== parsed.length) {
+              localStorage.setItem(snapKey, JSON.stringify(filtered));
+            }
           } catch (e) {
             console.error(e);
           }
@@ -172,6 +215,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
         }
         const cleanText = activeEpisode.content.replace(/<[^>]*>/g, '');
         setLastSnapshotWordCount(cleanText.length);
+        loadedEpisodeIdRef.current = selectedEpisodeId;
         return;
       }
 
@@ -193,10 +237,31 @@ export default function WritingSpace(props: WritingSpaceProps) {
             memo: d.memo || '',
             content: d.content || '',
             charCount: d.char_count || 0,
-            type: 'manual'
+            type: 'manual',
+            createdAt: d.created_at
           }));
-          setHistorySnapshots(dbSnaps);
-          localStorage.setItem(snapKey, JSON.stringify(dbSnaps));
+
+          const filtered = dbSnaps.filter(s => {
+            if (!s.createdAt) return true;
+            return new Date(s.createdAt) >= thirtyDaysAgo;
+          });
+
+          setHistorySnapshots(filtered);
+          localStorage.setItem(snapKey, JSON.stringify(filtered));
+
+          // Background cleanup: Delete versions older than 30 days from database for this episode
+          const cleanupDateString = thirtyDaysAgo.toISOString();
+          (async () => {
+            try {
+              await supabase
+                .from('episode_versions')
+                .delete()
+                .eq('episode_id', selectedEpisodeId)
+                .lt('created_at', cleanupDateString);
+            } catch (err) {
+              console.error('Failed to clean up old snapshots in Supabase:', err);
+            }
+          })();
         }
       } catch (err) {
         console.error('Failed to load snapshots from Supabase:', err);
@@ -204,21 +269,28 @@ export default function WritingSpace(props: WritingSpaceProps) {
         const savedSnaps = localStorage.getItem(snapKey);
         if (savedSnaps) {
           try {
-            setHistorySnapshots(JSON.parse(savedSnaps));
+            const parsed: Snapshot[] = JSON.parse(savedSnaps);
+            const filtered = parsed.filter(s => {
+              if (!s.createdAt) return true;
+              return new Date(s.createdAt) >= thirtyDaysAgo;
+            });
+            setHistorySnapshots(filtered);
           } catch (e) {
             console.error(e);
           }
         }
+      } finally {
+        const cleanText = activeEpisode.content.replace(/<[^>]*>/g, '');
+        setLastSnapshotWordCount(cleanText.length);
+        loadedEpisodeIdRef.current = selectedEpisodeId;
       }
-      const cleanText = activeEpisode.content.replace(/<[^>]*>/g, '');
-      setLastSnapshotWordCount(cleanText.length);
     };
 
     loadSnapshots();
   }, [selectedEpisodeId, selectedProject.id, activeEpisode, user]);
 
   useEffect(() => {
-    if (selectedEpisodeId) {
+    if (selectedEpisodeId && loadedEpisodeIdRef.current === selectedEpisodeId) {
       const snapKey = `novelflow_snapshots_${selectedProject.id}_${selectedEpisodeId}`;
       localStorage.setItem(snapKey, JSON.stringify(historySnapshots));
     }
@@ -241,7 +313,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
   const progressPercent = Math.min(100, Math.round((charCountWithSpaces / targetWordCount) * 100)) || 0;
   const manuscriptPages = Math.ceil(charCountWithSpaces / 200) || 0;
 
-  // Ctrl+F / Ctrl+H 글로벌 단축키 핸들러
+  // Ctrl+F / Ctrl+H / Ctrl+Z / Ctrl+Y 글로벌 단축키 핸들러
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
@@ -252,10 +324,17 @@ export default function WritingSpace(props: WritingSpaceProps) {
         e.preventDefault();
         setShowFindReplace(true);
         setIsReplaceMode(true);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        undo(handleContentInput);
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo(handleContentInput);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // 10분 주기 자동 스냅샷
@@ -273,7 +352,8 @@ export default function WritingSpace(props: WritingSpaceProps) {
         memo: '10분 주기 정기 자동 저장 스냅샷',
         content: activeEpisode.content,
         charCount: activeEpisode.content.replace(/<[^>]*>/g, '').length,
-        type: 'auto_time'
+        type: 'auto_time',
+        createdAt: new Date().toISOString()
       };
 
       setHistorySnapshots(prev => {
@@ -350,6 +430,61 @@ export default function WritingSpace(props: WritingSpaceProps) {
 
 
 
+  const centerTypewriterCaret = () => {
+    if (!typewriterMode) return;
+    setTimeout(() => {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        let rect = range.getBoundingClientRect();
+        
+        // If range is collapsed and returned zero/empty rect, insert a temporary span to get coordinates
+        if (range.collapsed && (!rect || rect.top === 0 || rect.height === 0)) {
+          const tempSpan = document.createElement('span');
+          tempSpan.appendChild(document.createTextNode('\u200B'));
+          try {
+            const clone = range.cloneRange();
+            clone.insertNode(tempSpan);
+            rect = tempSpan.getBoundingClientRect();
+            
+            const parent = tempSpan.parentNode;
+            if (parent) {
+              parent.removeChild(tempSpan);
+            }
+            
+            // Restore selection range
+            selection.removeAllRanges();
+            selection.addRange(range);
+          } catch (e) {
+            console.error('Failed to get typewriter position:', e);
+          }
+        }
+
+        if (rect && rect.top !== 0) {
+          const scrollContainer = editorRef.current?.closest('.editor-scroll-container');
+          if (scrollContainer) {
+            const containerRect = scrollContainer.getBoundingClientRect();
+            const caretRelativeY = rect.top - containerRect.top;
+            const centerY = containerRect.height / 2;
+            
+            const targetScrollTop = scrollContainer.scrollTop + (caretRelativeY - centerY);
+            scrollContainer.scrollTo({
+              top: targetScrollTop,
+              behavior: 'auto'
+            });
+          }
+        }
+      }
+    }, 10);
+  };
+
+  const handleSelectionChange = () => {
+    saveSelection();
+    if (typewriterMode) {
+      centerTypewriterCaret();
+    }
+  };
+
   const handleContentInput = () => {
     if (!editorRef.current || !selectedEpisodeId) return;
     const html = editorRef.current.innerHTML;
@@ -378,7 +513,8 @@ export default function WritingSpace(props: WritingSpaceProps) {
         memo: snapMemo,
         content: html,
         charCount: charCount,
-        type: 'auto_words'
+        type: 'auto_words',
+        createdAt: new Date().toISOString()
       };
       setHistorySnapshots(prev => [newSnap, ...prev].slice(0, 50));
       setLastSnapshotWordCount(charCount);
@@ -406,20 +542,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
     }
 
     if (typewriterMode) {
-      setTimeout(() => {
-        const selection = window.getSelection();
-        if (selection && selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          const rect = range.getBoundingClientRect();
-          const scrollContainer = editorRef.current?.closest('.editor-scroll-container');
-          if (scrollContainer) {
-            const containerRect = scrollContainer.getBoundingClientRect();
-            const caretRelativeY = rect.top - containerRect.top;
-            const centerY = containerRect.height / 2;
-            scrollContainer.scrollTop += (caretRelativeY - centerY);
-          }
-        }
-      }, 10);
+      centerTypewriterCaret();
     }
   };
 
@@ -447,7 +570,8 @@ export default function WritingSpace(props: WritingSpaceProps) {
       memo: snapMemo,
       content: activeEpisode.content,
       charCount: charCountWithSpaces,
-      type: 'manual'
+      type: 'manual',
+      createdAt: new Date().toISOString()
     };
     setHistorySnapshots(prev => [newSnap, ...prev]);
     setLastSnapshotWordCount(charCountWithSpaces);
@@ -474,23 +598,35 @@ export default function WritingSpace(props: WritingSpaceProps) {
   };
 
   const handleRestoreSnapshot = (content: string) => {
-    if (!editorRef.current || !activeEpisode) return;
-    editorRef.current.innerHTML = content;
-    handleContentInput();
+    if (!activeEpisode) return;
+
     const cleanText = content.replace(/<[^>]*>/g, '');
-    setLastSnapshotWordCount(cleanText.length);
-    // DOM 업데이트 후 커서를 마지막 위치로 이동
-    requestAnimationFrame(() => {
-      if (editorRef.current) {
-        editorRef.current.focus();
-        const range = document.createRange();
-        const sel = window.getSelection();
-        range.selectNodeContents(editorRef.current);
-        range.collapse(false);
-        sel?.removeAllRanges();
-        sel?.addRange(range);
-      }
-    });
+    const charCount = cleanText.length;
+
+    setEpisodes(prev =>
+      prev.map(ep =>
+        ep.id === selectedEpisodeId
+          ? { ...ep, content: content, charCount: charCount, updatedAt: new Date().toISOString() }
+          : ep
+      )
+    );
+
+    setLastSnapshotWordCount(charCount);
+
+    if (editorRef.current) {
+      editorRef.current.innerHTML = content;
+      requestAnimationFrame(() => {
+        if (editorRef.current) {
+          editorRef.current.focus();
+          const range = document.createRange();
+          const sel = window.getSelection();
+          range.selectNodeContents(editorRef.current);
+          range.collapse(false);
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+        }
+      });
+    }
   };
 
   const handleUpdateSnapshotInfo = async (snapId: string, updates: Partial<Snapshot>) => {
@@ -514,6 +650,23 @@ export default function WritingSpace(props: WritingSpaceProps) {
         if (error) throw error;
       } catch (err) {
         console.error('Failed to update snapshot in Supabase:', err);
+      }
+    }
+  };
+
+  const handleDeleteSnapshot = async (snapId: string) => {
+    setHistorySnapshots(prev => prev.filter(snap => snap.id !== snapId));
+
+    const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
+    if (!isGuest) {
+      try {
+        const { error } = await supabase
+          .from('episode_versions')
+          .delete()
+          .eq('id', snapId);
+        if (error) throw error;
+      } catch (err) {
+        console.error('Failed to delete snapshot from Supabase:', err);
       }
     }
   };
@@ -603,6 +756,8 @@ export default function WritingSpace(props: WritingSpaceProps) {
               editorFontSize={editorFontSize}
               setEditorFontSize={setEditorFontSize}
               editorFontFamily={editorFontFamily}
+              currentFontFamily={currentFontFamily}
+              currentFontSize={currentFontSize}
               recentFontIds={recentFontIds}
               allFonts={allFonts}
               groupedFonts={groupedFonts}
@@ -687,7 +842,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
                 firstLineIndent={firstLineIndent}
                 editorRef={editorRef}
                 handleContentInput={handleContentInput}
-                saveSelection={saveSelection}
+                saveSelection={handleSelectionChange}
                 handleTitleChange={handleTitleChange}
                 editorTheme={editorTheme}
               />
@@ -734,7 +889,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
         setSnapshotMemoEditValue={setSnapshotMemoEditValue}
         setDiffTargetSnapshot={setDiffTargetSnapshot}
         setIsDiffMode={setIsDiffMode}
-        setHistorySnapshots={setHistorySnapshots}
+        handleDeleteSnapshot={handleDeleteSnapshot}
       />
 
       {/* 5. 버전 스냅샷 이름/메모 인라인 입력 모달 */}
