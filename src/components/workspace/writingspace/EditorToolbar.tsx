@@ -459,7 +459,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     });
   };
 
-  const getLineText = (style: string, widthPercent: number) => {
+  const getLineText = (style: string) => {
     let char = '─'; // solid default
     if (style === 'dashed') {
       char = '┄';
@@ -467,10 +467,8 @@ export default function EditorToolbar(props: EditorToolbarProps) {
       char = '═';
     }
     
-    // Calculate count based on width percent
-    const maxChars = 40;
-    const count = Math.max(5, Math.round((widthPercent / 100) * maxChars));
-    return char.repeat(count);
+    // Always use 150 characters to cover any editor width, clipped by overflow: hidden
+    return char.repeat(150);
   };
 
   const convertDividerHtmlToText = (html: string): string => {
@@ -505,8 +503,15 @@ export default function EditorToolbar(props: EditorToolbarProps) {
         align = 'right';
       }
 
-      const lineText = getLineText(style, widthPercent);
-      return `<p class="novela-divider-text" style="text-align: ${align}; margin: 24px 0; color: #888888; font-size: ${thickness === '2' ? '16' : thickness}px; font-weight: bold; letter-spacing: 2px;">${lineText}</p>`;
+      let marginStyle = 'margin: 24px auto;';
+      if (align === 'left') {
+        marginStyle = 'margin: 24px auto 24px 0;';
+      } else if (align === 'right') {
+        marginStyle = 'margin: 24px 0 24px auto;';
+      }
+
+      const lineText = getLineText(style);
+      return `<p class="novela-divider-text" style="text-align: ${align}; ${marginStyle} color: #888888; font-size: ${thickness === '2' ? '16' : thickness}px; font-weight: bold; letter-spacing: 2px; overflow: hidden; white-space: nowrap; width: ${widthPercent}%; display: block;">${lineText}</p>`;
     }
     
     if (html.includes('<div') || html.includes('novela-divider-text')) {
@@ -528,7 +533,14 @@ export default function EditorToolbar(props: EditorToolbarProps) {
         size = sizeMatch[1];
       }
 
-      return `<p class="novela-divider-text" style="text-align: ${align}; margin: 24px 0; color: #888888; font-size: ${size}px; letter-spacing: 6px; font-weight: bold; font-family: sans-serif;">${symbol}</p>`;
+      let marginStyle = 'margin: 24px auto;';
+      if (align === 'left') {
+        marginStyle = 'margin: 24px auto 24px 0;';
+      } else if (align === 'right') {
+        marginStyle = 'margin: 24px 0 24px auto;';
+      }
+
+      return `<p class="novela-divider-text" style="text-align: ${align}; ${marginStyle} color: #888888; font-size: ${size}px; letter-spacing: 6px; font-weight: bold; font-family: sans-serif; display: block;">${symbol}</p>`;
     }
 
     return html;
@@ -551,17 +563,23 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     e.preventDefault();
     if (!activeDividerConfig) return;
 
+    let marginStyle = 'margin: 24px auto;'; // center
+    if (dividerAlign === 'left') {
+      marginStyle = 'margin: 24px auto 24px 0;';
+    } else if (dividerAlign === 'right') {
+      marginStyle = 'margin: 24px 0 24px auto;';
+    }
+
     let html = '';
     const styleOrSymbol = activeDividerConfig.type === 'line' 
       ? activeDividerConfig.style 
       : activeDividerConfig.symbol;
 
     if (activeDividerConfig.type === 'line') {
-      const widthNum = parseInt(dividerWidth) || 100;
-      const lineText = getLineText(styleOrSymbol, widthNum);
-      html = `<p class="novela-divider-text" style="text-align: ${dividerAlign}; margin: 24px 0; color: #888888; font-size: ${dividerSize === '2' ? '16' : dividerSize}px; font-weight: bold; letter-spacing: 2px;">${lineText}</p>`;
+      const lineText = getLineText(styleOrSymbol);
+      html = `<p class="novela-divider-text" style="text-align: ${dividerAlign}; ${marginStyle} color: #888888; font-size: ${dividerSize === '2' ? '16' : dividerSize}px; font-weight: bold; letter-spacing: 2px; overflow: hidden; white-space: nowrap; width: ${dividerWidth}%; display: block;">${lineText}</p>`;
     } else {
-      html = `<p class="novela-divider-text" style="text-align: ${dividerAlign}; margin: 24px 0; color: #888888; font-size: ${dividerSize}px; letter-spacing: 6px; font-weight: bold; font-family: sans-serif;">${styleOrSymbol}</p>`;
+      html = `<p class="novela-divider-text" style="text-align: ${dividerAlign}; ${marginStyle} color: #888888; font-size: ${dividerSize}px; letter-spacing: 6px; font-weight: bold; font-family: sans-serif; display: block;">${styleOrSymbol}</p>`;
     }
 
     const typeLabel = activeDividerConfig.type === 'line' 
@@ -587,10 +605,10 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
     let html = '';
     if (newDividerType === 'line') {
-      const lineText = getLineText(newDividerStyle, 100);
-      html = `<p class="novela-divider-text" style="text-align: center; margin: 24px 0; color: #888888; font-size: ${newDividerSize === '2' ? '16' : newDividerSize}px; font-weight: bold; letter-spacing: 2px;">${lineText}</p>`;
+      const lineText = getLineText(newDividerStyle);
+      html = `<p class="novela-divider-text" style="text-align: center; margin: 24px auto; color: #888888; font-size: ${newDividerSize === '2' ? '16' : newDividerSize}px; font-weight: bold; letter-spacing: 2px; overflow: hidden; white-space: nowrap; width: 100%; display: block;">${lineText}</p>`;
     } else {
-      html = `<p class="novela-divider-text" style="text-align: center; margin: 24px 0; color: #888888; font-size: ${newDividerSize}px; letter-spacing: 6px; font-weight: bold;">${newDividerSymbol}</p>`;
+      html = `<p class="novela-divider-text" style="text-align: center; margin: 24px auto; color: #888888; font-size: ${newDividerSize}px; letter-spacing: 6px; font-weight: bold; display: block;">${newDividerSymbol}</p>`;
     }
 
     const newDivider = {
