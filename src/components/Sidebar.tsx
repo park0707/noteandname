@@ -9,7 +9,6 @@ import {
   Network,
   GitCommit,
   BookOpen,
-  Link2,
   Info,
   PanelLeftClose,
   PanelLeftOpen,
@@ -56,7 +55,6 @@ export default function Sidebar({
     { id: 'timeline', icon: GitCommit, label: '복선 타임라인', badge: selectedProject ? undefined : '선택 필요' },
     { id: 'history', icon: BookOpen, label: '캐릭터 히스토리', badge: selectedProject ? undefined : '선택 필요' },
     ...(selectedProject ? [{ id: 'worldmap', icon: Compass, label: '세계관 지도' }] : []),
-    { id: 'notion', icon: Link2, label: '노션 동기화', badge: selectedProject ? undefined : '선택 필요' },
   ];
 
   return (
