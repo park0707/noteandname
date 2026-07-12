@@ -22,7 +22,8 @@ import {
   Download,
   Indent,
   Outdent,
-  Eraser
+  Eraser,
+  Sparkles
 } from 'lucide-react';
 import { FONT_CATEGORY_LABELS } from '../../../lib/fonts';
 import type { FontOption } from '../../../lib/fonts';
@@ -54,6 +55,9 @@ interface EditorToolbarProps {
   showFindReplace: boolean;
   setShowFindReplace: (show: boolean) => void;
   handleCreateSnapshot: () => void;
+  handleOpenAutoSaveModal: () => void;
+  showInspector: boolean;
+  setShowInspector: (show: boolean) => void;
   setShowHistoryModal: (show: boolean) => void;
   historySnapshotsCount: number;
   editorSaveStatus: 'saved' | 'saving';
@@ -103,6 +107,9 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     showFindReplace,
     setShowFindReplace,
     handleCreateSnapshot,
+    handleOpenAutoSaveModal,
+    showInspector,
+    setShowInspector,
     setShowHistoryModal,
     historySnapshotsCount,
     editorSaveStatus,
@@ -131,9 +138,13 @@ export default function EditorToolbar(props: EditorToolbarProps) {
   const statsDropdownRef = useRef<HTMLDivElement>(null);
   const fontDropdownRef = useRef<HTMLDivElement>(null);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
+  const snapshotDropdownRef = useRef<HTMLDivElement>(null);
   const [showDividerDropdown, setShowDividerDropdown] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
+  const [showSnapshotDropdown, setShowSnapshotDropdown] = useState(false);
   const [dropdownCoords, setDropdownCoords] = useState<{ top: number; left: number } | null>(null);
+  const [fontDropdownCoords, setFontDropdownCoords] = useState<{ top: number; left: number } | null>(null);
+  const [snapshotDropdownCoords, setSnapshotDropdownCoords] = useState<{ top: number; left: number } | null>(null);
   const [fontSizeInput, setFontSizeInput] = useState(
     currentFontSize === 'mixed' ? '' : currentFontSize.toString()
   );
@@ -177,6 +188,18 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showFontDropdown, setShowFontDropdown]);
+
+  // 스냅샷 드롭다운 외부 클릭 감지 → 닫기
+  useEffect(() => {
+    if (!showSnapshotDropdown) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (snapshotDropdownRef.current && !snapshotDropdownRef.current.contains(e.target as Node)) {
+        setShowSnapshotDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSnapshotDropdown]);
 
   const [showCreateDividerModal, setShowCreateDividerModal] = useState(false);
 
@@ -663,7 +686,16 @@ export default function EditorToolbar(props: EditorToolbarProps) {
           {/* 커스텀 폰트 선택 드롭다운 */}
           <div className="relative shrink-0 font-sans" ref={fontDropdownRef}>
             <button
-              onClick={() => setShowFontDropdown(!showFontDropdown)}
+              onClick={() => {
+                if (!showFontDropdown && fontDropdownRef.current) {
+                  const rect = fontDropdownRef.current.getBoundingClientRect();
+                  setFontDropdownCoords({
+                    top: rect.bottom + 4,
+                    left: rect.left
+                  });
+                }
+                setShowFontDropdown(!showFontDropdown);
+              }}
               onMouseDown={e => e.preventDefault()}
               className={`px-3 py-1.5 rounded border text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors ${themeStyles.input}`}
             >
@@ -674,9 +706,11 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             </button>
 
             {showFontDropdown && (
-              <div className={`absolute left-0 mt-1 z-50 py-2 w-64 rounded-xl border shadow-2xl flex flex-col ${
-                isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
-              }`}>
+              <div
+                style={fontDropdownCoords ? { top: `${fontDropdownCoords.top}px`, left: `${fontDropdownCoords.left}px` } : undefined}
+                className={`fixed z-50 py-2 w-64 rounded-xl border shadow-2xl flex flex-col ${
+                  isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200 shadow-black/80' : 'bg-white border-black/[0.08] text-gray-800 shadow-black/10'
+                }`}>
                 {/* 폰트 업로드 */}
                 <div className="px-2 pb-1.5 border-b border-gray-500/10">
                   <button
@@ -1071,6 +1105,20 @@ export default function EditorToolbar(props: EditorToolbarProps) {
           </button>
 
           <button
+            onClick={() => setShowInspector(!showInspector)}
+            title="맞춤법 검사기"
+            className={`p-1.5 rounded-lg border transition-all duration-150 ${
+              showInspector
+                ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]'
+                : isDark
+                  ? 'border-white/[0.08] text-gray-400 hover:bg-white/[0.04]'
+                  : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+          </button>
+
+          <button
             onClick={() => setIsFocusMode(!isFocusMode)}
             title={isFocusMode ? "집중 모드 종료" : "집중 모드 시작"}
             className={`p-1.5 rounded-lg border transition-all duration-150 ${isFocusMode
@@ -1372,13 +1420,54 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
             <div className={`w-[1px] h-3 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
-            <button
-              onClick={handleCreateSnapshot}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-700'}`}
-              title="스냅샷 저장"
-            >
-              버전 스냅샷
-            </button>
+            <div className="relative" ref={snapshotDropdownRef}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!showSnapshotDropdown && snapshotDropdownRef.current) {
+                    const rect = snapshotDropdownRef.current.getBoundingClientRect();
+                    setSnapshotDropdownCoords({
+                      top: rect.bottom + 4,
+                      left: rect.left
+                    });
+                  }
+                  setShowSnapshotDropdown(!showSnapshotDropdown);
+                }}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-700'}`}
+                title="스냅샷 관리"
+              >
+                버전 스냅샷
+              </button>
+
+              {showSnapshotDropdown && (
+                <div
+                  style={snapshotDropdownCoords ? { top: `${snapshotDropdownCoords.top}px`, left: `${snapshotDropdownCoords.left}px` } : undefined}
+                  className={`fixed z-50 py-1 w-32 rounded-xl border shadow-2xl flex flex-col gap-0.5 backdrop-blur-md ${
+                    isDark ? 'bg-[#1E1F22]/95 border-white/[0.08] text-gray-200 shadow-black/80' : 'bg-white/95 border-black/[0.08] text-gray-800 shadow-black/10'
+                  }`}
+                  onMouseLeave={() => setShowSnapshotDropdown(false)}
+                >
+                  <button
+                    onClick={() => {
+                      setShowSnapshotDropdown(false);
+                      handleCreateSnapshot();
+                    }}
+                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal ${isDark ? 'text-gray-200' : 'text-gray-800'}`}
+                  >
+                    💾 수동 저장
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSnapshotDropdown(false);
+                      handleOpenAutoSaveModal();
+                    }}
+                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal ${isDark ? 'text-gray-200' : 'text-gray-800'}`}
+                  >
+                    ⚙️ 자동 저장 설정
+                  </button>
+                </div>
+              )}
+            </div>
 
             {historySnapshotsCount > 0 && (
               <button

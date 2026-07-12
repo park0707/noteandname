@@ -59,6 +59,7 @@ export interface Snapshot {
   charCount: number;
   type: 'manual' | 'auto_words' | 'auto_time';
   createdAt?: string;
+  isBookmarked?: boolean;
 }
 
 export interface Foreshadowing {

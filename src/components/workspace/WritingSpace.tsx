@@ -17,6 +17,16 @@ import DiffViewPane from './writingspace/DiffViewPane';
 import MainEditorCanvas from './writingspace/MainEditorCanvas';
 import TrashModal from './writingspace/Modals/TrashModal';
 import SnapshotHistoryModal from './writingspace/Modals/SnapshotHistoryModal';
+import EditorInspector from './writingspace/EditorInspector';
+
+const formatSnapshotTimestamp = (date: Date = new Date()): string => {
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}-${hh}-${min}`;
+};
 
 interface WritingSpaceProps {
   selectedProject: Project;
@@ -116,6 +126,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
   // Local editor configurations & layout states
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [innerSidebarCollapsed, setInnerSidebarCollapsed] = useState(false);
+  const [showInspector, setShowInspector] = useState(false);
 
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [isReplaceMode, setIsReplaceMode] = useState(false);
@@ -133,6 +144,23 @@ export default function WritingSpace(props: WritingSpaceProps) {
   const [showSnapshotInputModal, setShowSnapshotInputModal] = useState(false);
   const [snapshotInputName, setSnapshotInputName] = useState('');
   const [snapshotInputMemo, setSnapshotInputMemo] = useState('');
+
+  // 자동 스냅샷 설정 상태 및 참조 변수
+  const [autoSaveWordsEnabled, setAutoSaveWordsEnabled] = useState(true);
+  const [autoSaveWordsThreshold, setAutoSaveWordsThreshold] = useState(1000);
+  const [autoSaveTimeEnabled, setAutoSaveTimeEnabled] = useState(false);
+  const [autoSaveTimeInterval, setAutoSaveTimeInterval] = useState(15); // in minutes
+  const [showAutoSaveModal, setShowAutoSaveModal] = useState(false);
+
+  const [tempWordsEnabled, setTempWordsEnabled] = useState(true);
+  const [tempWordsThreshold, setTempWordsThreshold] = useState(1000);
+  const [tempTimeEnabled, setTempTimeEnabled] = useState(false);
+  const [tempTimeInterval, setTempTimeInterval] = useState(15);
+
+  const lastTimeSavedTimeRef = useRef<number>(Date.now());
+  const lastContentChangedTimeRef = useRef<number>(Date.now());
+  const lastTimeSavedContentRef = useRef<string>('');
+  const lastTimeSavedEpisodeIdRef = useRef<string | null>(null);
 
   // Snapshot visual comparison states
   const [isDiffMode, setIsDiffMode] = useState(false);
@@ -232,13 +260,14 @@ export default function WritingSpace(props: WritingSpaceProps) {
         if (data) {
           const dbSnaps: Snapshot[] = data.map(d => ({
             id: d.id,
-            timestamp: new Date(d.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            timestamp: formatSnapshotTimestamp(new Date(d.created_at)),
             name: d.name || '스냅샷',
             memo: d.memo || '',
             content: d.content || '',
             charCount: d.char_count || 0,
             type: 'manual',
-            createdAt: d.created_at
+            createdAt: d.created_at,
+            isBookmarked: !!d.is_bookmarked
           }));
 
           const filtered = dbSnaps.filter(s => {
@@ -296,6 +325,115 @@ export default function WritingSpace(props: WritingSpaceProps) {
     }
   }, [historySnapshots, selectedEpisodeId, selectedProject.id]);
 
+  // Load configuration from localStorage
+  useEffect(() => {
+    if (!selectedProject.id) return;
+    const configKey = `novelflow_autosave_config_${selectedProject.id}`;
+    const saved = localStorage.getItem(configKey);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setAutoSaveWordsEnabled(parsed.wordsEnabled ?? true);
+        setAutoSaveWordsThreshold(parsed.wordsThreshold ?? 1000);
+        setAutoSaveTimeEnabled(parsed.timeEnabled ?? false);
+        setAutoSaveTimeInterval(parsed.timeInterval ?? 15);
+      } catch (e) {
+        console.error('Failed to parse autosave config:', e);
+      }
+    } else {
+      setAutoSaveWordsEnabled(true);
+      setAutoSaveWordsThreshold(1000);
+      setAutoSaveTimeEnabled(false);
+      setAutoSaveTimeInterval(15);
+    }
+  }, [selectedProject.id]);
+
+  // Sync temporary states when opening the auto-save config modal
+  useEffect(() => {
+    if (showAutoSaveModal) {
+      setTempWordsEnabled(autoSaveWordsEnabled);
+      setTempWordsThreshold(autoSaveWordsThreshold);
+      setTempTimeEnabled(autoSaveTimeEnabled);
+      setTempTimeInterval(autoSaveTimeInterval);
+    }
+  }, [showAutoSaveModal, autoSaveWordsEnabled, autoSaveWordsThreshold, autoSaveTimeEnabled, autoSaveTimeInterval]);
+
+  // Initialize refs for time-based auto-save
+  useEffect(() => {
+    if (activeEpisode && lastTimeSavedEpisodeIdRef.current !== selectedEpisodeId) {
+      lastTimeSavedContentRef.current = activeEpisode.content;
+      lastTimeSavedTimeRef.current = Date.now();
+      lastContentChangedTimeRef.current = Date.now();
+      lastTimeSavedEpisodeIdRef.current = selectedEpisodeId;
+    }
+  }, [selectedEpisodeId, activeEpisode]);
+
+  // Background timer for time-based auto-save
+  useEffect(() => {
+    if (!autoSaveTimeEnabled || !selectedEpisodeId || !activeEpisode) return;
+
+    const intervalMs = autoSaveTimeInterval * 60 * 1000;
+    
+    const checkTimer = setInterval(async () => {
+      const now = Date.now();
+      const timeSinceLastSave = now - lastTimeSavedTimeRef.current;
+      const timeSinceLastChange = now - lastContentChangedTimeRef.current;
+
+      if (timeSinceLastSave >= intervalMs) {
+        const currentContent = editorRef.current?.innerHTML || '';
+        if (currentContent !== lastTimeSavedContentRef.current) {
+          const oneHourMs = 60 * 60 * 1000;
+          if (timeSinceLastChange < oneHourMs) {
+            const text = editorRef.current?.innerText || '';
+            const charCount = text.length;
+            const timestamp = formatSnapshotTimestamp();
+            const snapId = crypto.randomUUID();
+            const snapName = `자동 저장 (${autoSaveTimeInterval}분 경과)`;
+            const snapMemo = `${autoSaveTimeInterval}분 간격 시간 조건 도달 자동 저장 스냅샷`;
+
+            const newSnap: Snapshot = {
+              id: snapId,
+              timestamp,
+              name: snapName,
+              memo: snapMemo,
+              content: currentContent,
+              charCount: charCount,
+              type: 'auto_time',
+              createdAt: new Date().toISOString()
+            };
+
+            setHistorySnapshots(prev => [newSnap, ...prev].slice(0, 50));
+            setLastSnapshotWordCount(charCount);
+            
+            lastTimeSavedTimeRef.current = now;
+            lastTimeSavedContentRef.current = currentContent;
+
+            const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
+            if (!isGuest) {
+              try {
+                const { error } = await supabase
+                  .from('episode_versions')
+                  .insert({
+                    id: snapId,
+                    episode_id: selectedEpisodeId,
+                    name: snapName,
+                    memo: snapMemo,
+                    content: currentContent,
+                    char_count: charCount
+                  });
+                if (error) throw error;
+              } catch (err) {
+                console.error('Failed to auto-save time snapshot to Supabase:', err);
+              }
+            }
+          }
+        }
+      }
+    }, 15000);
+
+    return () => clearInterval(checkTimer);
+  }, [autoSaveTimeEnabled, autoSaveTimeInterval, selectedEpisodeId, activeEpisode, user, selectedProject.id, editorRef]);
+
   useEffect(() => {
     if (!showColorPicker && !showBgColorPicker) return;
     const handleClosePickers = () => {
@@ -344,7 +482,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
     const interval = setInterval(() => {
       if (!activeEpisode.content.trim()) return;
 
-      const timestamp = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const timestamp = formatSnapshotTimestamp();
       const newSnap: Snapshot = {
         id: `snap-auto-time-${Date.now()}`,
         timestamp,
@@ -478,6 +616,24 @@ export default function WritingSpace(props: WritingSpaceProps) {
     }, 10);
   };
 
+  const saveAutoSaveConfig = (wordsOn: boolean, threshold: number, timeOn: boolean, interval: number) => {
+    setAutoSaveWordsEnabled(wordsOn);
+    setAutoSaveWordsThreshold(threshold);
+    setAutoSaveTimeEnabled(timeOn);
+    setAutoSaveTimeInterval(interval);
+    
+    if (selectedProject.id) {
+      const configKey = `novelflow_autosave_config_${selectedProject.id}`;
+      localStorage.setItem(configKey, JSON.stringify({
+        wordsEnabled: wordsOn,
+        wordsThreshold: threshold,
+        timeEnabled: timeOn,
+        timeInterval: interval
+      }));
+    }
+    setShowAutoSaveModal(false);
+  };
+
   const handleSelectionChange = () => {
     saveSelection();
     if (typewriterMode) {
@@ -491,6 +647,9 @@ export default function WritingSpace(props: WritingSpaceProps) {
     const text = editorRef.current.innerText || '';
     const charCount = text.length;
 
+    // Update content change time ref for time-based auto-save checks
+    lastContentChangedTimeRef.current = Date.now();
+
     setEpisodes(prev =>
       prev.map(ep =>
         ep.id === selectedEpisodeId
@@ -499,12 +658,12 @@ export default function WritingSpace(props: WritingSpaceProps) {
       )
     );
 
-    // 1000자 변동 시 자동 스냅샷 저장
-    if (lastSnapshotWordCount !== 0 && Math.abs(charCount - lastSnapshotWordCount) >= 1000) {
-      const timestamp = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    // 글자 수 조건부에 따른 자동 스냅샷 저장
+    if (autoSaveWordsEnabled && lastSnapshotWordCount !== 0 && Math.abs(charCount - lastSnapshotWordCount) >= autoSaveWordsThreshold) {
+      const timestamp = formatSnapshotTimestamp();
       const snapId = crypto.randomUUID();
       const snapName = `자동 저장 (${charCount}자 달성)`;
-      const snapMemo = '1,000자 글자 수 변동 도달 자동 저장 스냅샷';
+      const snapMemo = `${autoSaveWordsThreshold.toLocaleString()}자 글자 수 변동 도달 자동 저장 스냅샷`;
       
       const newSnap: Snapshot = {
         id: snapId,
@@ -549,7 +708,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
   const handleCreateSnapshot = () => {
     if (!activeEpisode) return;
     // 모달을 열어 이름/메모 입력 받기
-    const timestamp = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const timestamp = formatSnapshotTimestamp();
     setSnapshotInputName(`스냅샷 (${timestamp})`);
     setSnapshotInputMemo('');
     setShowSnapshotInputModal(true);
@@ -558,7 +717,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
   // 모달 확인 시 스냅샷 실제 저장
   const confirmCreateSnapshot = async () => {
     if (!activeEpisode) return;
-    const timestamp = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const timestamp = formatSnapshotTimestamp();
     const snapId = crypto.randomUUID();
     const snapName = snapshotInputName.trim() || `스냅샷 (${timestamp})`;
     const snapMemo = snapshotInputMemo.trim() || '수동 저장 스냅샷';
@@ -642,6 +801,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
         const dbUpdates: any = {};
         if (updates.name !== undefined) dbUpdates.name = updates.name;
         if (updates.memo !== undefined) dbUpdates.memo = updates.memo;
+        if (updates.isBookmarked !== undefined) dbUpdates.is_bookmarked = updates.isBookmarked;
 
         const { error } = await supabase
           .from('episode_versions')
@@ -776,7 +936,10 @@ export default function WritingSpace(props: WritingSpaceProps) {
               setFirstLineIndent={setFirstLineIndent}
               showFindReplace={showFindReplace}
               setShowFindReplace={setShowFindReplace}
+              showInspector={showInspector}
+              setShowInspector={setShowInspector}
               handleCreateSnapshot={handleCreateSnapshot}
+              handleOpenAutoSaveModal={() => setShowAutoSaveModal(true)}
               setShowHistoryModal={setShowHistoryModal}
               historySnapshotsCount={historySnapshots.length}
               editorSaveStatus={editorSaveStatus}
@@ -818,35 +981,48 @@ export default function WritingSpace(props: WritingSpaceProps) {
               />
             )}
 
-            {isDiffMode && diffTargetSnapshot ? (
-              /* 좌우 분할 Diff 비교 뷰 */
-              <DiffViewPane
-                isDark={isDark}
-                diffTargetSnapshot={diffTargetSnapshot}
-                activeEpisode={activeEpisode}
-                setIsDiffMode={setIsDiffMode}
-                setDiffTargetSnapshot={setDiffTargetSnapshot}
-                handleRestoreSnapshot={handleRestoreSnapshot}
-                themeStyles={themeStyles}
-              />
-            ) : (
-              /* 단일 화면 모드 (Centered Paper WYSIWYG) */
-              <MainEditorCanvas
-                isDark={isDark}
-                activeEpisode={activeEpisode}
-                editorFontFamily={editorFontFamily}
-                lineHeight={lineHeight}
-                typewriterMode={typewriterMode}
-                paragraphSpacing={paragraphSpacing}
-                editorWidth={editorWidth}
-                firstLineIndent={firstLineIndent}
-                editorRef={editorRef}
-                handleContentInput={handleContentInput}
-                saveSelection={handleSelectionChange}
-                handleTitleChange={handleTitleChange}
-                editorTheme={editorTheme}
-              />
-            )}
+            <div className="flex-1 flex overflow-hidden">
+              {isDiffMode && diffTargetSnapshot ? (
+                /* 좌우 분할 Diff 비교 뷰 */
+                <DiffViewPane
+                  isDark={isDark}
+                  diffTargetSnapshot={diffTargetSnapshot}
+                  activeEpisode={activeEpisode}
+                  setIsDiffMode={setIsDiffMode}
+                  setDiffTargetSnapshot={setDiffTargetSnapshot}
+                  handleRestoreSnapshot={handleRestoreSnapshot}
+                  themeStyles={themeStyles}
+                />
+              ) : (
+                /* 단일 화면 모드 (Centered Paper WYSIWYG) */
+                <MainEditorCanvas
+                  isDark={isDark}
+                  activeEpisode={activeEpisode}
+                  editorFontFamily={editorFontFamily}
+                  lineHeight={lineHeight}
+                  typewriterMode={typewriterMode}
+                  paragraphSpacing={paragraphSpacing}
+                  editorWidth={editorWidth}
+                  firstLineIndent={firstLineIndent}
+                  editorRef={editorRef}
+                  handleContentInput={handleContentInput}
+                  saveSelection={handleSelectionChange}
+                  handleTitleChange={handleTitleChange}
+                  editorTheme={editorTheme}
+                />
+              )}
+
+              {/* 맞춤법 검사기 우측 패널 */}
+              {showInspector && (
+                <EditorInspector
+                  isDark={isDark}
+                  themeStyles={themeStyles}
+                  editorRef={editorRef}
+                  onClose={() => setShowInspector(false)}
+                  handleContentInput={handleContentInput}
+                />
+              )}
+            </div>
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-3">
@@ -937,6 +1113,93 @@ export default function WritingSpace(props: WritingSpaceProps) {
                 className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
               >
                 저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 6. 자동 스냅샷 저장 설정 모달 */}
+      {showAutoSaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`w-96 rounded-2xl border p-6 flex flex-col gap-4 shadow-2xl ${isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'}`}>
+            <div className="flex items-center justify-between pb-2 border-b border-gray-500/10">
+              <h3 className="text-sm font-bold">⚙️ 자동 저장 설정</h3>
+              <button onClick={() => setShowAutoSaveModal(false)} className="text-gray-400 hover:text-gray-200 text-xs font-bold">✕</button>
+            </div>
+            
+            <div className="flex flex-col gap-4 text-xs">
+              {/* 글자 수 기준 */}
+              <div className={`p-3 rounded-lg border flex flex-col gap-2.5 ${isDark ? 'bg-white/[0.01] border-white/[0.06]' : 'bg-black/[0.01] border-black/[0.06]'}`}>
+                <label className="flex items-center justify-between font-semibold cursor-pointer">
+                  <span>글자 수 기준 자동 저장</span>
+                  <input
+                    type="checkbox"
+                    checked={tempWordsEnabled}
+                    onChange={e => setTempWordsEnabled(e.target.checked)}
+                    className="rounded border-gray-300 text-[#5E6AD2] focus:ring-[#5E6AD2] w-4 h-4 cursor-pointer"
+                  />
+                </label>
+                {tempWordsEnabled && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-gray-400">조건: </span>
+                    <input
+                      type="number"
+                      value={tempWordsThreshold}
+                      onChange={e => setTempWordsThreshold(Math.max(10, parseInt(e.target.value) || 0))}
+                      className={`w-28 px-2.5 py-1 rounded border outline-none text-right ${isDark ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'}`}
+                    />
+                    <span className="text-gray-400">자 변동 시 저장</span>
+                  </div>
+                )}
+              </div>
+
+              {/* 시간 기준 */}
+              <div className={`p-3 rounded-lg border flex flex-col gap-2.5 ${isDark ? 'bg-white/[0.01] border-white/[0.06]' : 'bg-black/[0.01] border-black/[0.06]'}`}>
+                <label className="flex items-center justify-between font-semibold cursor-pointer">
+                  <span>시간 간격 기준 자동 저장</span>
+                  <input
+                    type="checkbox"
+                    checked={tempTimeEnabled}
+                    onChange={e => setTempTimeEnabled(e.target.checked)}
+                    className="rounded border-gray-300 text-[#5E6AD2] focus:ring-[#5E6AD2] w-4 h-4 cursor-pointer"
+                  />
+                </label>
+                {tempTimeEnabled && (
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-gray-400">간격: </span>
+                    <select
+                      value={tempTimeInterval}
+                      onChange={e => setTempTimeInterval(parseInt(e.target.value))}
+                      className={`px-2.5 py-1 rounded border outline-none ${isDark ? 'bg-[#1E1F22] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-white border-black/[0.08] text-black focus:border-[#5E6AD2]'}`}
+                    >
+                      <option value={1}>1분 (테스트용)</option>
+                      <option value={5}>5분</option>
+                      <option value={10}>10분</option>
+                      <option value={15}>15분</option>
+                      <option value={30}>30분</option>
+                      <option value={60}>60분</option>
+                    </select>
+                  </div>
+                )}
+                <p className="text-[10px] text-gray-500 mt-1 select-none">
+                  ※ 1시간 이상 글의 변화가 없으면 자동으로 저장하지 않습니다.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 mt-2">
+              <button
+                onClick={() => setShowAutoSaveModal(false)}
+                className={`flex-1 py-2 rounded-xl font-bold border transition-colors ${isDark ? 'border-white/[0.06] hover:bg-white/[0.04]' : 'border-black/[0.06] hover:bg-black/[0.04]'}`}
+              >
+                취소
+              </button>
+              <button
+                onClick={() => saveAutoSaveConfig(tempWordsEnabled, tempWordsThreshold, tempTimeEnabled, tempTimeInterval)}
+                className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
+              >
+                적용
               </button>
             </div>
           </div>
