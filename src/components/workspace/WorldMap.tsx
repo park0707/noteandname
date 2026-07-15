@@ -693,7 +693,8 @@ export default function WorldMap({
     const list: FlatTreeNode[] = [];
     
     const traverse = (mapId: string, currentPath: Array<{ id: string; name: string }>, depth: number) => {
-      const mapElements = elements.filter(el => el.parentMapId === mapId);
+      // 하부 세부 지도가 정의된 요소만 필터링하여 레이아웃 폴더로 취급
+      const mapElements = elements.filter(el => el.parentMapId === mapId && el.childMapId);
       
       for (const el of mapElements) {
         list.push({
@@ -708,7 +709,7 @@ export default function WorldMap({
         });
         
         // 이 폴더가 열려있는(expanded) 경우에만 하위 요소들을 빌드
-        if (el.childMapId && mapExpandedFolderIds.includes(el.id)) {
+        if (mapExpandedFolderIds.includes(el.id) && el.childMapId) {
           const nextPath = [...currentPath, { id: el.childMapId, name: el.name }];
           traverse(el.childMapId, nextPath, depth + 1);
         }
@@ -744,16 +745,6 @@ export default function WorldMap({
       setMapPath([...node.path, { id: node.childMapId, name: node.name }]);
       setSelectedElementId(null);
       setIsDetailOpen(false);
-    } else {
-      setMapPath(node.path);
-      setSelectedElementId(node.id);
-      if (node.element) {
-        loadElementToEdit(node.element);
-        setIsDetailOpen(true);
-        setTimeout(() => {
-          if (node.element) focusOnElement(node.element);
-        }, 50);
-      }
     }
   };
 
@@ -1156,25 +1147,11 @@ export default function WorldMap({
               isDark ? 'bg-black/20 border border-white/[0.06]' : 'bg-black/[0.02] border border-black/[0.06]'
             }`}>
               {buildFlatTree().map(node => {
-                const isFolder = node.type === 'root' || node.childMapId !== undefined;
                 const isExpanded = mapExpandedFolderIds.includes(node.id);
                 const isCurrentMap = (node.id === 'root' && currentMapId === 'root') || (node.childMapId !== undefined && node.childMapId === currentMapId);
                 const isSelectedElement = selectedElementId === node.id;
                 
-                let icon = '📍';
-                if (node.type === 'root') {
-                  icon = isExpanded ? '📂' : '📁';
-                } else if (node.childMapId) {
-                  icon = isExpanded ? '📂' : '📁';
-                } else if (node.type === 'polygon') {
-                  icon = '▰';
-                } else if (node.type === 'route') {
-                  icon = '⏂';
-                } else if (node.type === 'border_rect') {
-                  icon = '□';
-                } else if (node.type === 'border_circle') {
-                  icon = '○';
-                }
+                const icon = isExpanded ? '📂' : '📁';
 
                 return (
                   <div
@@ -1190,28 +1167,24 @@ export default function WorldMap({
                     }`}
                   >
                     <div className="flex items-center gap-1 min-w-0 flex-1">
-                      {isFolder ? (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMapExpandedFolderIds(prev => 
-                              prev.includes(node.id) ? prev.filter(item => item !== node.id) : [...prev, node.id]
-                            );
-                          }}
-                          className="p-0.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors shrink-0"
-                        >
-                          <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
-                        </button>
-                      ) : (
-                        <div className="w-4.5 h-4.5 shrink-0" />
-                      )}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMapExpandedFolderIds(prev => 
+                            prev.includes(node.id) ? prev.filter(item => item !== node.id) : [...prev, node.id]
+                          );
+                        }}
+                        className="p-0.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors shrink-0"
+                      >
+                        <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
+                      </button>
                       
                       <span className="shrink-0 text-[11px] ml-0.5">{icon}</span>
                       <span className={`truncate ${isCurrentMap ? 'font-bold' : ''}`}>
                         {node.name || '이름 없음'}
                       </span>
                     </div>
-                    {node.childMapId && (
+                    {node.id !== 'root' && (
                       <span className="text-[9px] text-[#7480E2] opacity-60 font-semibold uppercase shrink-0">
                         지도
                       </span>
@@ -1452,6 +1425,7 @@ export default function WorldMap({
                           setSelectedElementId(el.id);
                           loadElementToEdit(el);
                           setIsDetailOpen(true);
+                          focusOnElement(el);
                         }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
@@ -1497,6 +1471,7 @@ export default function WorldMap({
                         setSelectedElementId(el.id);
                         loadElementToEdit(el);
                         setIsDetailOpen(true);
+                        focusOnElement(el);
                       }}
                       className="cursor-pointer hover:stroke-white transition-all duration-200"
                     />
@@ -1537,6 +1512,7 @@ export default function WorldMap({
                           setSelectedElementId(el.id);
                           loadElementToEdit(el);
                           setIsDetailOpen(true);
+                          focusOnElement(el);
                         }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
@@ -1563,6 +1539,7 @@ export default function WorldMap({
                           setSelectedElementId(el.id);
                           loadElementToEdit(el);
                           setIsDetailOpen(true);
+                          focusOnElement(el);
                         }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
