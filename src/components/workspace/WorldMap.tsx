@@ -161,6 +161,8 @@ export default function WorldMap({
 
   // --- 사이드바 접기/펼치기 ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // --- 타임라인 슬라이더 접기/펼치기 ---
+  const [timelineCollapsed, setTimelineCollapsed] = useState(false);
 
   // --- 캐릭터 마커 연동 상태 ---
   // 캐릭터 마커는 (Snapshot ID -> CharacterPositionMap) 형태로 관리
@@ -1005,6 +1007,70 @@ export default function WorldMap({
           </div>
         </div>
 
+        {/* 상단 시점 타임라인 슬라이더 바 */}
+        <div className={`border-b shrink-0 select-none transition-all ${isDark ? 'bg-[#0E0F12] border-white/[0.08]' : 'bg-white border-black/[0.08]'}`}>
+          {/* 헤더 행: 항상 표시 */}
+          <div
+            className={`px-4 py-2 flex items-center justify-between text-xs cursor-pointer hover:${isDark ? 'bg-white/[0.02]' : 'bg-black/[0.02]'} transition-colors`}
+            onClick={() => setTimelineCollapsed(!timelineCollapsed)}
+          >
+            <div className="flex items-center gap-2">
+              <ChevronRight className={`w-3.5 h-3.5 text-gray-500 transition-transform shrink-0 ${timelineCollapsed ? '' : 'rotate-90'}`} />
+              <span className={`font-semibold ${isDark ? 'text-[#EDEDEF]' : 'text-[#121316]'}`}>역사적 사건 / 회차 변천사 슬라이더</span>
+              <span className="text-[#5E6AD2] font-bold">({currentSnapshot.date})</span>
+            </div>
+            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+              <button
+                onClick={() => setShowNewSnapshotModal(true)}
+                className="p-1 px-2 rounded bg-[#5E6AD2]/10 hover:bg-[#5E6AD2]/20 text-[#7480E2] text-[10px] font-bold flex items-center gap-1 transition-colors"
+              >
+                <Plus className="w-3 h-3" /> 새 사건 시점 추가
+              </button>
+            </div>
+          </div>
+
+          {/* 펼쳐진 상태의 슬라이더 본체 */}
+          {!timelineCollapsed && (
+            <div className="px-4 pb-3 flex flex-col gap-2">
+              <div className="relative">
+                <input
+                  type="range"
+                  min="0"
+                  max={snapshots.length - 1}
+                  step="1"
+                  value={activeSnapshotIdx}
+                  onChange={e => {
+                    const idx = parseInt(e.target.value);
+                    const nextSnap = snapshots[idx];
+                    if (nextSnap) setActiveSnapshotId(nextSnap.id);
+                  }}
+                  className="w-full h-2 bg-[#5E6AD2]/20 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
+                />
+                <div className="flex justify-between text-[9px] font-bold mt-1.5 text-gray-500">
+                  {snapshots.map((snap) => (
+                    <span
+                      key={snap.id}
+                      className={`cursor-pointer hover:text-[#7480E2] transition-colors ${
+                        snap.id === activeSnapshotId ? 'text-[#7480E2] underline' : ''
+                      }`}
+                      onClick={() => setActiveSnapshotId(snap.id)}
+                    >
+                      {snap.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className={`px-3 py-2 rounded-xl border text-xs flex items-center gap-3 ${
+                isDark ? 'bg-black/25 border-white/[0.06]' : 'bg-black/[0.02] border-black/[0.06]'
+              }`}>
+                <span className="text-[#7480E2] font-bold shrink-0">🎬 시점 요약</span>
+                <span className={`font-semibold shrink-0 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{currentSnapshot.name}</span>
+                <span className={`truncate ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{currentSnapshot.description}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* 캔버스 드로잉 물리 보드 */}
         <div 
           ref={canvasContainerRef}
@@ -1365,64 +1431,6 @@ export default function WorldMap({
           )}
         </div>
 
-        {/* 하단 시점 타임라인 스냅샷 제어 바 (History Timeline) */}
-        <div className={`p-4 border-t flex flex-col gap-3 shrink-0 select-none ${
-          isDark ? 'bg-[#0E0F12] border-white/[0.08]' : 'bg-white border-black/[0.08]'
-        }`}>
-          <div className="flex items-center justify-between text-xs">
-            <div className="flex items-center gap-2">
-              <span className={`font-semibold ${isDark ? 'text-[#EDEDEF]' : 'text-[#121316]'}`}>역사적 사건 / 회차 변천사 슬라이더</span>
-              <span className="text-[#5E6AD2] font-bold">({currentSnapshot.date})</span>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {/* 스냅샷 추가 버튼 */}
-              <button 
-                onClick={() => setShowNewSnapshotModal(true)}
-                className="p-1 px-2 rounded bg-[#5E6AD2]/10 hover:bg-[#5E6AD2]/20 text-[#7480E2] text-[10px] font-bold flex items-center gap-1 transition-colors"
-              >
-                <Plus className="w-3 h-3" /> 새 사건 시점 추가
-              </button>
-            </div>
-          </div>
-
-          <div className="relative pt-2">
-            <input
-              type="range"
-              min="0"
-              max={snapshots.length - 1}
-              step="1"
-              value={activeSnapshotIdx}
-              onChange={e => {
-                const idx = parseInt(e.target.value);
-                const nextSnap = snapshots[idx];
-                if (nextSnap) setActiveSnapshotId(nextSnap.id);
-              }}
-              className="w-full h-2 bg-[#5E6AD2]/20 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
-            />
-            <div className="flex justify-between text-[9px] font-bold mt-2 text-gray-500">
-              {snapshots.map((snap) => (
-                <span 
-                  key={snap.id} 
-                  className={`cursor-pointer hover:text-white ${
-                    snap.id === activeSnapshotId ? 'text-[#7480E2] underline' : ''
-                  }`}
-                  onClick={() => setActiveSnapshotId(snap.id)}
-                >
-                  {snap.name}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-3.5 rounded-xl bg-black/25 border border-white/[0.06] text-xs flex flex-col gap-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[#7480E2] font-bold">🎬 시점 상세 요약</span>
-              <p className="text-gray-400 text-[10px]">{currentSnapshot.name}</p>
-            </div>
-            <p className="text-gray-200 mt-1 select-text leading-relaxed">{currentSnapshot.description}</p>
-          </div>
-        </div>
       </div>
 
       {/* 우측 세부 설정 편집 정보창 (width 320px) */}
