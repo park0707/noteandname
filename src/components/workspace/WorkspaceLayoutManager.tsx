@@ -10,7 +10,6 @@ import JamoFilter from './JamoFilter';
 import RelationsMap from './RelationsMap';
 import ForeshadowingTimeline from './ForeshadowingTimeline';
 import CharacterHistory from './CharacterHistory';
-import NotionSync from './NotionSync';
 import WorldMap from './WorldMap';
 import WritingSpace from './WritingSpace';
 import InfoPage from '../../pages/InfoPage';
@@ -231,8 +230,7 @@ function PanelRenderer(props: PanelRendererProps) {
         return '복선 타임라인';
       case 'history':
         return '캐릭터 히스토리';
-      case 'notion':
-        return '노션 동기화';
+
       case 'worldmap':
         return '세계관 지도';
       case 'info':
@@ -481,14 +479,13 @@ function PanelRenderer(props: PanelRendererProps) {
             isDark={isDark}
           />
         )}
-        {panel.activeFeature === 'notion' && (
-          <NotionSync
-            isDark={isDark}
-          />
-        )}
         {panel.activeFeature === 'worldmap' && (
           <WorldMap
             isDark={isDark}
+            selectedProject={selectedProject}
+            episodes={episodes}
+            relationNodes={relationNodes}
+            foreshadowings={foreshadowings}
           />
         )}
         {panel.activeFeature === 'info' && (

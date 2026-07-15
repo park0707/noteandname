@@ -11,7 +11,6 @@ import {
   ChevronRight
 } from 'lucide-react';
 import type { Episode } from '../types';
-import ExternalImportModal from './Modals/ExternalImportModal';
 import LocalImportModal from './Modals/LocalImportModal';
 import type { FileEntry } from './Modals/LocalImportModal';
 import { useAlertConfirm } from '../../../context/AlertConfirmContext';
@@ -69,8 +68,6 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
   const [showAddMenu, setShowAddMenu] = useState(false);
 
   // External Import States
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importType, setImportType] = useState<'notion' | 'google' | null>(null);
   const [showLocalImportModal, setShowLocalImportModal] = useState(false);
 
   // Plain Text를 에디터용 HTML 단락 구조로 이스케이프 및 안전 변환하는 헬퍼
@@ -179,71 +176,7 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
     showAlert(`로컬 가져오기 완료: 총 ${files.length}개의 파일이 성공적으로 임포트되었습니다!`);
   };
 
-  const handleImport = (selectedItems: { title: string; content: string }[]) => {
-    if (selectedItems.length === 0 || !importType) return;
 
-    const folderTitleMatched = importType === 'notion' ? '노션' : '구글 드라이브';
-
-    // 1. Check if folder already exists at root
-    let folder = episodes.find(ep => ep.isFolder && ep.title === folderTitleMatched && !ep.parentId);
-    let folderId = folder?.id;
-
-    const newEpisodesList = [...episodes];
-
-    if (!folder) {
-      folderId = crypto.randomUUID();
-      const newFolder: Episode = {
-        id: folderId,
-        projectId: selectedEpisodeId ? episodes.find(e => e.id === selectedEpisodeId)?.projectId || '' : '',
-        title: folderTitleMatched,
-        content: '',
-        charCount: 0,
-        updatedAt: new Date().toISOString(),
-        isFolder: true,
-        parentId: null
-      };
-
-      if (!newFolder.projectId && episodes.length > 0) {
-        newFolder.projectId = episodes[0].projectId;
-      }
-
-      newEpisodesList.push(newFolder);
-    }
-
-    // 2. Add imported docs inside this folder
-    const createdEpisodeIds: string[] = [];
-    selectedItems.forEach(item => {
-      const docId = crypto.randomUUID();
-      const cleanText = item.content.replace(/<[^>]*>/g, '');
-      const newDoc: Episode = {
-        id: docId,
-        projectId: episodes.length > 0 ? episodes[0].projectId : '',
-        title: item.title,
-        content: item.content,
-        charCount: cleanText.length,
-        updatedAt: new Date().toISOString(),
-        isFolder: false,
-        parentId: folderId
-      };
-      newEpisodesList.push(newDoc);
-      createdEpisodeIds.push(docId);
-    });
-
-    // 3. Update episodes
-    props.setEpisodes(newEpisodesList);
-
-    // 4. Expand folder
-    if (folderId) {
-      setExpandedFolderIds(prev => prev.includes(folderId!) ? prev : [...prev, folderId!]);
-    }
-
-    // 5. Select first document
-    if (createdEpisodeIds.length > 0) {
-      setSelectedEpisodeId(createdEpisodeIds[0]);
-    }
-
-    showAlert(`${folderTitleMatched} 폴더가 생성되었으며, ${selectedItems.length}개의 작업물이 성공적으로 연동 완료되어 가져와졌습니다!`);
-  };
 
   const renderTree = (parentId: string | null = null, depth: number = 0) => {
     const currentItems = episodes.filter(ep => {
@@ -374,28 +307,7 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
                             새 폴더
                           </button>
                           <div className={`border-t my-1 ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}`} />
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setImportType('notion');
-                              setShowImportModal(true);
-                              setContextMenuId(null);
-                            }}
-                            className={`w-full text-left px-3 py-1.5 transition-colors ${isDark ? 'hover:bg-white/[0.04] text-gray-200' : 'hover:bg-black/[0.04] text-gray-800'}`}
-                          >
-                            🔗 노션 가져오기
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setImportType('google');
-                              setShowImportModal(true);
-                              setContextMenuId(null);
-                            }}
-                            className={`w-full text-left px-3 py-1.5 transition-colors ${isDark ? 'hover:bg-white/[0.04] text-gray-200' : 'hover:bg-black/[0.04] text-gray-800'}`}
-                          >
-                            📁 구글 드라이브 가져오기
-                          </button>
+
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -547,26 +459,6 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
                          <div className={`border-t my-1 ${isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'}`} />
                         <button
                           onClick={() => {
-                            setImportType('notion');
-                            setShowImportModal(true);
-                            setShowAddMenu(false);
-                          }}
-                          className={`w-full text-left px-3 py-1.5 transition-colors ${isDark ? 'hover:bg-white/[0.04] text-gray-200' : 'hover:bg-black/[0.04] text-gray-800'}`}
-                        >
-                          🔗 노션 가져오기
-                        </button>
-                        <button
-                          onClick={() => {
-                            setImportType('google');
-                            setShowImportModal(true);
-                            setShowAddMenu(false);
-                          }}
-                          className={`w-full text-left px-3 py-1.5 transition-colors ${isDark ? 'hover:bg-white/[0.04] text-gray-200' : 'hover:bg-black/[0.04] text-gray-800'}`}
-                        >
-                          📁 구글 드라이브 가져오기
-                        </button>
-                        <button
-                          onClick={() => {
                             setShowLocalImportModal(true);
                             setShowAddMenu(false);
                           }}
@@ -609,16 +501,6 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
           <ChevronRight className={`w-3 h-3 transition-transform ${innerSidebarCollapsed ? '' : 'rotate-180'}`} />
         </button>
       )}
-      <ExternalImportModal
-        isDark={isDark}
-        isOpen={showImportModal}
-        onClose={() => {
-          setShowImportModal(false);
-          setImportType(null);
-        }}
-        type={importType}
-        onImport={handleImport}
-      />
       <LocalImportModal
         isDark={isDark}
         isOpen={showLocalImportModal}

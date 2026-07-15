@@ -25,9 +25,9 @@
 *   **GPT-4o-mini**: $0.15 / 1M input. 일반 작명 및 단순 엑스트라 작명 제안용.
 *   **Claude 3.5 Sonnet**: $3.00 / 1M input. 주요 캐릭터 묘사 및 문장 보완 전용.
 
-### 1-4. Notion API 양방향 동기화 규격
-*   **인증 보관**: OAuth 2.0으로 취득한 Access Token은 Supabase Vault 암호화 저장소에 격리 보관.
-*   **Rate Limit 제어**: Supabase Edge Functions 단에서 Redis Queue 버퍼를 구축하여 Notion API 제한 규격인 **초당 2회(2 rps)** 속도를 지연(Jitter) 및 지수 백오프와 연계하여 준수함.
+### 1-4. Notion API 양방향 동기화 규격 (폐기)
+*   **히스토리**: 클라이언트 설정 데이터와 노션 데이터베이스의 양방향 동기화를 위한 OAuth 인증 및 Redis Queue 기반 초당 2회 Rate Limit 제어 엔진을 기획했습니다.
+*   **폐기 사유**: 브라우저 직접 요청 CORS 제한 및 클라이언트 샌드박스의 리다이렉트 서버 미비, 자격증명 노출 취약성의 한계로 인해 최종 폐기 조치되었습니다.
 
 ---
 
@@ -415,7 +415,7 @@ CREATE POLICY "Users can manage character positions" ON character_positions FOR 
 
 | 함수명 | 트리거 | 역할 및 상세 설명 |
 | :--- | :--- | :--- |
-| **`notion-oauth`** | Notion OAuth Callback | Notion integration 인증 갱신 및 토큰 보존 |
-| **`notion-sync`** | Webhook / Event Queue | Notion 3 rps 리밋 버퍼 관리 및 양방향 동기화 |
+| **`notion-oauth`** | Notion OAuth Callback | (폐기) Notion integration 인증 갱신 및 토큰 보존 |
+| **`notion-sync`** | Webhook / Event Queue | (폐기) Notion 3 rps 리밋 버퍼 관리 및 양방향 동기화 |
 | **`ai-assistant`** | client invocation | pgvector RAG 데이터 매핑 조립 및 AI 작명 제안 |
 | **`billing-webhook`** | Portone Webhook | 정기 구독 및 멤버십 해지 웹훅 수령 처리 |

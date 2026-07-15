@@ -31,20 +31,20 @@ c:/project/noteandname/Documents/
     *   **프로젝트 비전**: Always-on-Top Tauri 위젯, Levenshtein 유사도 필터, 스포일러 프리 도감 웹 공유, 노션 양방향 동기화, 계층형 지도 편집기 등 5대 코어 기능 정의.
     *   **작가 페인 포인트 분석**: 설정 붕괴(설붕), 캐릭터 관계도 분리, 작명 단절 문제, 지리적 불일치 고충 및 극복 대안 수립.
     *   **에디터 기능 벤치마킹**: Scrivener, 노벨라, 뮤블 등 주요 툴 분석 및 한국 웹소설 연재 환경의 요구사항 도출.
-    *   **외부 임포트 규격**: Google Drive(txt, docx) 및 Notion 데이터베이스 임포트 사양서.
+    *   **외부 임포트 규격**: (구현 시도 후 폐기) Google Drive(txt, docx) 및 Notion 데이터베이스 임포트 사양서. (로컬 폴더/파일 가져오기는 구현 완료)
     *   **버전 관리 아키텍처**: 10분/1,000자 자동 스냅샷 수집 및 LCS(최장 공통 부분 수열) 기반 Split Diff 비교 메커니즘.
     *   **집필실 평가 및 로드맵**: 현재 에디터 분석 평가 및 Split-pane 분할 뷰어, Edge Function 맞춤법 검사기, 금칙어 필터링 등 5대 개선 로드맵 탑재.
 
 ### 3. [2_system_architecture.md](file:///c:/project/noteandname/Documents/2_system_architecture.md)
-*   **엔지니어링 및 개발 사양 총괄 문서**
+*   **기획 및 개발 사양 총괄 문서**
 *   **수록 내용**:
     *   **기술 스택 사양**: 클라이언트(Tauri, React, Tailwind v4, Leaflet.js, Zustand) 및 백엔드(Supabase Database, Auth, Realtime, Edge Functions) 정의.
-    *   **Notion API 동기화 스펙**: OAuth 2.0 및 Deno Edge Function의 2 rps 레이트 리밋 분산 Queue 설계.
+    *   **Notion API 동기화 스펙**: (폐기) OAuth 2.0 및 Deno Edge Function의 2 rps 레이트 리밋 분산 Queue 설계.
     *   **프로젝트 디렉터리 구조**: src/ 하위 소스 파일들의 역할 정의 및 컴포넌트 간 Props/State 데이터 흐름도.
     *   **Mermaid 아키텍처 다이어그램**: 인프라-라우팅-워크스페이스-서브 모듈 간 의존 구조 시각화.
     *   **PostgreSQL DDL 스키마 DDL**: 인물, 관계도, 에피소드, 복선 링크, 동기화 매핑, RAG 벡터 청크 및 지도/스냅샷 등 PostgreSQL DDL 전체 쿼리문.
     *   **Supabase RLS 보안 정책**: Row Level Security 활성화 및 본인 데이터 소유 체크 SELECT 쿼리 정책 예시 DDL.
-    *   **Edge Functions 서버리스 스펙**: `notion-oauth`, `notion-sync`, `ai-assistant`, `billing-webhook` 함수의 역할 정리.
+    *   **Edge Functions 서버리스 스펙**: `notion-oauth` 및 `notion-sync` (폐기), `ai-assistant` 및 `billing-webhook` 함수의 역할 정리.
 
 ### 4. [specs/ui_design_spec.md](file:///c:/project/noteandname/Documents/specs/ui_design_spec.md)
 *   **디자인 시스템 및 스타일 가이드**
