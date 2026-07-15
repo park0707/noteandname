@@ -5,6 +5,7 @@ import {
   ZoomIn, ZoomOut, Image, Check, X, Download
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
+import { useAlertConfirm } from '../../context/AlertConfirmContext';
 
 // --- Types for WorldMap ---
 export interface MapSnapshot {
@@ -77,7 +78,8 @@ export default function WorldMap({
   relationNodes, 
   foreshadowings: _foreshadowings 
 }: WorldMapProps) {
-  
+  const { showAlert } = useAlertConfirm();
+
   // --- 계층형 뎁스 상태 ---
   const [mapPath, setMapPath] = useState<Array<{ id: string; name: string }>>([
     { id: 'root', name: '세계 지도' }
@@ -156,6 +158,9 @@ export default function WorldMap({
   const [newSnapshotName, setNewSnapshotName] = useState('');
   const [newSnapshotDate, setNewSnapshotDate] = useState('');
   const [newSnapshotDesc, setNewSnapshotDesc] = useState('');
+
+  // --- 사이드바 접기/펼치기 ---
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   // --- 캐릭터 마커 연동 상태 ---
   // 캐릭터 마커는 (Snapshot ID -> CharacterPositionMap) 형태로 관리
@@ -687,7 +692,7 @@ export default function WorldMap({
 
   // --- 지도 이미지 내보내기 ---
   const handleExportMap = () => {
-    alert('고해상도 세계관 지도 PNG 캡처 기능이 작동되었습니다. (임시 동작: 브라우저 기본 화면 캡처 및 지리 데이터 백업 완료)');
+    showAlert('고해상도 세계관 지도 PNG 캡처 기능이 작동되었습니다. (임시 동작: 브라우저 기본 화면 캡처 및 지리 데이터 백업 완료)');
   };
 
   return (
@@ -712,11 +717,12 @@ export default function WorldMap({
         </defs>
       </svg>
 
-      {/* 좌측 레이어 관리 바 (280px) */}
-      <div className={`w-72 shrink-0 border-r flex flex-col justify-between ${
-        isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
-      }`}>
-        <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1">
+      {/* 좌측 레이어 관리 바 (접기/펼치기 포함) */}
+      <div className="relative shrink-0 h-full flex">
+        <div className={`${sidebarCollapsed ? 'w-0 overflow-hidden' : 'w-72'} shrink-0 border-r flex flex-col justify-between transition-all duration-200 ${
+          isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+        }`}>
+          <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1">
           <div>
             <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500">계층 네비게이션</span>
             <div className="flex items-center flex-wrap gap-1 mt-1 text-xs">
@@ -933,7 +939,18 @@ export default function WorldMap({
               className="hidden" 
             />
           </div>
+          </div>
         </div>
+        {/* 사이드바 접기/펼치기 토글 버튼 */}
+        <button
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className={`absolute top-1/2 -translate-y-1/2 z-20 w-5 h-10 border rounded-r-md flex items-center justify-center transition-all ${
+            sidebarCollapsed ? 'left-0' : 'left-72'
+          } ${isDark ? 'bg-[#0E0F12] border-white/[0.08] hover:bg-[#1A1B1F] text-gray-500' : 'bg-white border-black/[0.08] hover:bg-[#F3F4F6] text-gray-400'}`}
+          title={sidebarCollapsed ? '사이드바 열기' : '사이드바 닫기'}
+        >
+          <ChevronRight className={`w-3 h-3 transition-transform ${sidebarCollapsed ? '' : 'rotate-180'}`} />
+        </button>
       </div>
 
       {/* 중앙 메인 캔버스 뷰 (flex-1) */}
