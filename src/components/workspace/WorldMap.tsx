@@ -177,6 +177,11 @@ export default function WorldMap({
   const [newSnapshotDate, setNewSnapshotDate] = useState('');
   const [newSnapshotDesc, setNewSnapshotDesc] = useState('');
 
+  // --- 신규 세부 지도 레이아웃 추가 모달 상태 ---
+  const [showNewLayoutModal, setShowNewLayoutModal] = useState(false);
+  const [newLayoutName, setNewLayoutName] = useState('');
+  const [newLayoutParentMapId, setNewLayoutParentMapId] = useState<string | null>(null);
+
   // --- 사이드바 접기/펼치기 ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // --- 타임라인 슬라이더 표시 여부 (사이드바 버튼으로 제어) ---
@@ -846,6 +851,60 @@ export default function WorldMap({
     }
   };
 
+  // --- 신규 세부 지도 레이아웃 생성 ---
+  const handleCreateLayout = () => {
+    if (!newLayoutName.trim() || !newLayoutParentMapId) return;
+    pushHistory();
+
+    const parentId = newLayoutParentMapId;
+    const isRoot = parentId === 'root';
+    const nextChildId = `map-child-${Date.now()}`;
+
+    // 새로운 자식 지도를 갖는 부모 요소를 임시 핀 형태로 캔버스 중앙 부근(500, 500)에 생성
+    const newElementId = `layout-pin-${Date.now()}`;
+    const newLayoutElement: MapElement = {
+      id: newElementId,
+      name: newLayoutName,
+      type: 'pin',
+      parentMapId: parentId,
+      x: 500,
+      y: 500,
+      icon: 'mappin',
+      category: 'city',
+      summary: `${newLayoutName} 세부 지도 진입점 구역입니다.`,
+      description: '세부 설정 내용을 기입하고 지도를 꾸며보세요.',
+      tags: [],
+      childMapId: nextChildId
+    };
+
+    setElements(prev => [...prev, newLayoutElement]);
+    
+    // 트리 계층 펼침 상태에 부모 노드 추가
+    setMapExpandedFolderIds(prev => prev.includes(parentId) ? prev : [...prev, parentId]);
+    
+    // 생성된 세부 지도 레이아웃으로 즉시 이동
+    setMapPath(prev => {
+      if (isRoot) {
+        return [{ id: 'root', name: '세계 지도' }, { id: nextChildId, name: newLayoutName }];
+      } else {
+        const parentIdx = prev.findIndex(item => item.id === parentId);
+        if (parentIdx !== -1) {
+          return [...prev.slice(0, parentIdx + 1), { id: nextChildId, name: newLayoutName }];
+        }
+        return [...prev, { id: nextChildId, name: newLayoutName }];
+      }
+    });
+
+    setSelectedElementId(newElementId);
+    loadElementToEdit(newLayoutElement);
+    setIsDetailOpen(true);
+
+    // 모달 상태 초기화 및 닫기
+    setShowNewLayoutModal(false);
+    setNewLayoutName('');
+    setNewLayoutParentMapId(null);
+  };
+
   // --- 요소 선택 시 상세 폼 필드 로딩 ---
   const loadElementToEdit = (el: MapElement) => {
     // 현재 스냅샷별 오버라이드가 있으면 적용
@@ -1303,6 +1362,19 @@ export default function WorldMap({
                         {node.name || '이름 없음'}
                       </span>
                     </div>
+                    {isFolder && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setNewLayoutParentMapId(node.id === 'root' ? 'root' : node.childMapId!);
+                          setShowNewLayoutModal(true);
+                        }}
+                        className="p-1 rounded text-gray-500 hover:text-[#7480E2] hover:bg-[#5E6AD2]/10 transition-colors shrink-0 mr-1"
+                        title="새 하위 레이아웃 추가"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                     {node.childMapId && node.childMapId !== '' && (
                       <span className="text-[9px] text-[#7480E2] opacity-60 font-semibold uppercase shrink-0">
                         지도
@@ -2347,6 +2419,61 @@ export default function WorldMap({
                 className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
               >
                 추가 및 저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 새 레이아웃 추가 모달 창 */}
+      {showNewLayoutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`w-96 rounded-2xl border p-6 flex flex-col gap-4 shadow-2xl ${
+            isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            <div className="flex items-center justify-between pb-2 border-b border-gray-500/10">
+              <h3 className="text-sm font-bold">📂 신규 세부 지도 레이아웃 추가</h3>
+              <button 
+                onClick={() => setShowNewLayoutModal(false)}
+                className="text-gray-400 hover:text-gray-200 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="flex flex-col gap-3 text-xs">
+              <div className="flex flex-col gap-1">
+                <label className="font-semibold text-gray-400">세부 지도(레이아웃) 이름</label>
+                <input 
+                  type="text" 
+                  value={newLayoutName} 
+                  onChange={e => setNewLayoutName(e.target.value)}
+                  placeholder="예: 아이론 왕국 수도, 왕궁 내부 등"
+                  className={`px-3 py-1.5 rounded-lg border outline-none ${
+                    isDark ? 'bg-white/[0.02] border-white/[0.08] text-white' : 'bg-black/[0.01] border-black/[0.08] text-black'
+                  }`}
+                  autoFocus
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleCreateLayout();
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 mt-2">
+              <button 
+                onClick={() => setShowNewLayoutModal(false)}
+                className={`flex-1 py-2 rounded-xl font-bold border transition-colors ${
+                  isDark ? 'border-white/[0.06] hover:bg-[#1E1F22]' : 'border-black/[0.06] hover:bg-gray-100'
+                }`}
+              >
+                취소
+              </button>
+              <button 
+                onClick={handleCreateLayout}
+                className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
+              >
+                레이아웃 추가
               </button>
             </div>
           </div>
