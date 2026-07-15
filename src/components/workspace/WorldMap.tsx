@@ -181,6 +181,8 @@ export default function WorldMap({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // --- 타임라인 슬라이더 표시 여부 (사이드바 버튼으로 제어) ---
   const [showTimeline, setShowTimeline] = useState(false);
+  // --- 지도 계층 트리 폴더 접기/펼치기 상태 ---
+  const [mapExpandedFolderIds, setMapExpandedFolderIds] = useState<string[]>(['root']);
 
   // --- 캐릭터 마커 연동 상태 ---
   // 캐릭터 마커는 (Snapshot ID -> CharacterPositionMap) 형태로 관리
@@ -705,7 +707,8 @@ export default function WorldMap({
           path: currentPath
         });
         
-        if (el.childMapId) {
+        // 이 폴더가 열려있는(expanded) 경우에만 하위 요소들을 빌드
+        if (el.childMapId && mapExpandedFolderIds.includes(el.id)) {
           const nextPath = [...currentPath, { id: el.childMapId, name: el.name }];
           traverse(el.childMapId, nextPath, depth + 1);
         }
@@ -721,7 +724,10 @@ export default function WorldMap({
       path: rootPath
     });
     
-    traverse('root', rootPath, 1);
+    // 루트 폴더가 열려있는 경우에만 하위 요소들을 빌드
+    if (mapExpandedFolderIds.includes('root')) {
+      traverse('root', rootPath, 1);
+    }
     return list;
   };
 
@@ -1150,16 +1156,25 @@ export default function WorldMap({
               isDark ? 'bg-black/20 border border-white/[0.06]' : 'bg-black/[0.02] border border-black/[0.06]'
             }`}>
               {buildFlatTree().map(node => {
+                const isFolder = node.type === 'root' || node.childMapId !== undefined;
+                const isExpanded = mapExpandedFolderIds.includes(node.id);
                 const isCurrentMap = (node.id === 'root' && currentMapId === 'root') || (node.childMapId !== undefined && node.childMapId === currentMapId);
                 const isSelectedElement = selectedElementId === node.id;
                 
                 let icon = '📍';
-                if (node.type === 'root') icon = '🗺️';
-                else if (node.childMapId) icon = '📁'; 
-                else if (node.type === 'polygon') icon = '▰';
-                else if (node.type === 'route') icon = '⏂';
-                else if (node.type === 'border_rect') icon = '□';
-                else if (node.type === 'border_circle') icon = '○';
+                if (node.type === 'root') {
+                  icon = isExpanded ? '📂' : '📁';
+                } else if (node.childMapId) {
+                  icon = isExpanded ? '📂' : '📁';
+                } else if (node.type === 'polygon') {
+                  icon = '▰';
+                } else if (node.type === 'route') {
+                  icon = '⏂';
+                } else if (node.type === 'border_rect') {
+                  icon = '□';
+                } else if (node.type === 'border_circle') {
+                  icon = '○';
+                }
 
                 return (
                   <div
@@ -1174,8 +1189,24 @@ export default function WorldMap({
                           : isDark ? 'hover:bg-white/[0.04] text-gray-300' : 'hover:bg-black/[0.04] text-gray-700'
                     }`}
                   >
-                    <div className="flex items-center gap-1.5 truncate">
-                      <span className="shrink-0 text-[11px]">{icon}</span>
+                    <div className="flex items-center gap-1 min-w-0 flex-1">
+                      {isFolder ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMapExpandedFolderIds(prev => 
+                              prev.includes(node.id) ? prev.filter(item => item !== node.id) : [...prev, node.id]
+                            );
+                          }}
+                          className="p-0.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors shrink-0"
+                        >
+                          <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
+                      ) : (
+                        <div className="w-4.5 h-4.5 shrink-0" />
+                      )}
+                      
+                      <span className="shrink-0 text-[11px] ml-0.5">{icon}</span>
                       <span className={`truncate ${isCurrentMap ? 'font-bold' : ''}`}>
                         {node.name || '이름 없음'}
                       </span>
