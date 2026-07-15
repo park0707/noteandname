@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Columns, Rows, X, Plus, ChevronDown } from 'lucide-react';
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { LayoutNode, PanelNode } from './layoutUtils';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 
@@ -73,86 +74,42 @@ interface LayoutNodeRendererProps extends WorkspaceLayoutManagerProps {
 
 function LayoutNodeRenderer(props: LayoutNodeRendererProps) {
   const { node, onRatioChange } = props;
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  useEffect(() => {
-    if (!isDragging || node.type !== 'split') return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!containerRef.current) return;
-      const rect = containerRef.current.getBoundingClientRect();
-      let percentage = 50;
-      if (node.direction === 'row') {
-        percentage = ((e.clientX - rect.left) / rect.width) * 100;
-      } else {
-        percentage = ((e.clientY - rect.top) / rect.height) * 100;
-      }
-      // 패널이 너무 찌그러지는 것을 막기 위해 최소/최대 크기를 15%~85%로 제한
-      percentage = Math.max(15, Math.min(85, percentage));
-      onRatioChange(node.id, percentage);
-    };
-
-    const handleMouseUp = () => {
-      setIsDragging(false);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isDragging, node, onRatioChange]);
 
   if (node.type === 'split') {
     const direction = node.direction;
-    const ratio = node.ratio;
-
-    const styleChild1 = direction === 'row' ? { width: `${ratio}%` } : { height: `${ratio}%` };
-    const styleChild2 = direction === 'row' ? { width: `${100 - ratio}%` } : { height: `${100 - ratio}%` };
 
     return (
-      <div
-        ref={containerRef}
-        className={`w-full h-full flex overflow-hidden relative ${
-          direction === 'row' ? 'flex-row' : 'flex-col'
-        }`}
+      <PanelGroup
+        orientation={direction === 'row' ? 'horizontal' : 'vertical'}
+        className="w-full h-full"
       >
-        <div style={styleChild1} className="overflow-hidden flex relative">
-          <LayoutNodeRenderer {...props} node={node.children[0]} />
-        </div>
-
-        {/* Resizer Line */}
-        <div
-          onMouseDown={handleMouseDown}
-          className={`relative z-20 shrink-0 select-none transition-colors duration-150 ${
-            direction === 'row'
-              ? 'w-1.5 cursor-col-resize hover:bg-[#5E6AD2]/50'
-              : 'h-1.5 cursor-row-resize hover:bg-[#5E6AD2]/50'
-          } ${
-            isDragging
-              ? 'bg-[#5E6AD2]'
-              : props.isDark
-              ? 'bg-white/[0.04]'
-              : 'bg-black/[0.04]'
-          }`}
+        <Panel
+          defaultSize={node.ratio}
+          minSize={15}
+          onResize={(size) => {
+            // 미세 조절 시 무한 루프 예방 및 최적화
+            if (Math.abs(node.ratio - size.asPercentage) > 0.5) {
+              onRatioChange(node.id, size.asPercentage);
+            }
+          }}
+          className="overflow-hidden flex relative"
         >
-          {/* 드래그 도중 하위 요소(특히 iframe, map, editor 등)의 마우스 간섭 방지 오버레이 */}
-          {isDragging && (
-            <div className="fixed inset-0 z-50 cursor-inherit select-none" />
-          )}
-        </div>
+          <LayoutNodeRenderer {...props} node={node.children[0]} />
+        </Panel>
 
-        <div style={styleChild2} className="overflow-hidden flex relative">
+        <PanelResizeHandle
+          className={`relative z-20 shrink-0 select-none transition-colors duration-150 hover:bg-[#5E6AD2]/50 ${
+            direction === 'row' ? 'w-1.5 cursor-col-resize' : 'h-1.5 cursor-row-resize'
+          } ${props.isDark ? 'bg-white/[0.04]' : 'bg-black/[0.04]'}`}
+        />
+
+        <Panel
+          minSize={15}
+          className="overflow-hidden flex relative"
+        >
           <LayoutNodeRenderer {...props} node={node.children[1]} />
-        </div>
-      </div>
+        </Panel>
+      </PanelGroup>
     );
   }
 

@@ -638,6 +638,50 @@ export default function WorldMap({
     setEditMode('select');
   };
 
+  // --- 특정 지도 요소로 화면 포커스 이동 ---
+  const focusOnElement = (el: MapElement) => {
+    if (!canvasContainerRef.current) return;
+    const rect = canvasContainerRef.current.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+
+    let targetX = 0;
+    let targetY = 0;
+
+    if (el.type === 'pin' && el.x !== undefined && el.y !== undefined) {
+      targetX = el.x;
+      targetY = el.y;
+    } else if ((el.type === 'polygon' || el.type === 'route') && el.points && el.points.length > 0) {
+      const sum = el.points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
+      targetX = sum.x / el.points.length;
+      targetY = sum.y / el.points.length;
+    } else if ((el.type === 'border_rect' || el.type === 'border_circle') && el.bx !== undefined && el.by !== undefined) {
+      if (el.type === 'border_rect') {
+        targetX = el.bx + (el.bw ?? 0) / 2;
+        targetY = el.by + (el.bh ?? 0) / 2;
+      } else {
+        targetX = el.bx;
+        targetY = el.by;
+      }
+    } else {
+      return;
+    }
+
+    setPan({
+      x: centerX - targetX * zoom,
+      y: centerY - targetY * zoom
+    });
+  };
+
+  // --- 하위 세부 지도로 레이아웃 진입 ---
+  const handleNavigateToChild = (el: MapElement) => {
+    if (el.childMapId) {
+      setMapPath(prev => [...prev, { id: el.childMapId || '', name: el.name }]);
+      setSelectedElementId(null);
+      setIsDetailOpen(false);
+    }
+  };
+
   // --- 요소 선택 시 상세 폼 필드 로딩 ---
   const loadElementToEdit = (el: MapElement) => {
     // 현재 스냅샷별 오버라이드가 있으면 적용
@@ -1025,6 +1069,65 @@ export default function WorldMap({
                   className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
                 />
               </label>
+            </div>
+          </div>
+
+          <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
+
+          {/* 현재 생성된 지도 요소 목록 (레이아웃) */}
+          <div>
+            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-2">지도 요소 레이아웃 목록</span>
+            <div className={`flex flex-col gap-1 max-h-48 overflow-y-auto rounded-lg p-1.5 ${
+              isDark ? 'bg-black/20 border border-white/[0.06]' : 'bg-black/[0.02] border border-black/[0.06]'
+            }`}>
+              {elements.filter(el => el.parentMapId === currentMapId).length === 0 ? (
+                <span className="text-[11px] text-gray-500 italic p-1 block text-center">등록된 지도 요소가 없습니다.</span>
+              ) : (
+                elements
+                  .filter(el => el.parentMapId === currentMapId)
+                  .map(el => {
+                    const isSelected = selectedElementId === el.id;
+                    let typeIcon = '📍';
+                    if (el.type === 'polygon') typeIcon = '▰';
+                    if (el.type === 'route') typeIcon = '⏂';
+                    if (el.type === 'border_rect') typeIcon = '□';
+                    if (el.type === 'border_circle') typeIcon = '○';
+
+                    return (
+                      <div
+                        key={el.id}
+                        onClick={() => {
+                          setSelectedElementId(el.id);
+                          loadElementToEdit(el);
+                          setIsDetailOpen(true);
+                          focusOnElement(el);
+                        }}
+                        className={`flex items-center justify-between p-1.5 rounded text-xs cursor-pointer transition-all duration-150 ${
+                          isSelected
+                            ? 'bg-[#5E6AD2]/20 text-[#7480E2] font-semibold'
+                            : isDark ? 'hover:bg-white/[0.04] text-gray-300' : 'hover:bg-black/[0.04] text-gray-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 truncate">
+                          <span className="text-[#7480E2] shrink-0">{typeIcon}</span>
+                          <span className="truncate">{el.name || '이름 없음'}</span>
+                        </div>
+                        {el.childMapId && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleNavigateToChild(el);
+                            }}
+                            className="px-1.5 py-0.5 rounded bg-[#5E6AD2]/10 hover:bg-[#5E6AD2]/20 text-[#7480E2] text-[9px] font-bold transition-colors shrink-0"
+                            title="세부 지도로 진입"
+                          >
+                            진입 ➔
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+              )}
             </div>
           </div>
 
