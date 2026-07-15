@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ChevronRight, Layers, Plus, Move, Trash2, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
-  ZoomIn, ZoomOut, Check, X, Download
+  ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
@@ -797,7 +797,8 @@ export default function WorldMap({
         });
         
         // 하위 지도가 연결된 폴더이고, 해당 폴더가 펼쳐져 있을 때만 재귀 순회
-        if (el.childMapId && mapExpandedFolderIds.includes(el.id)) {
+        // 하위 지도가 연결된 폴더이고, 해당 폴더가 펼쳐져 있을 때만 재귀 순회
+        if (el.childMapId && el.childMapId !== '' && mapExpandedFolderIds.includes(el.id)) {
           const nextPath = [...currentPath, { id: el.childMapId, name: el.name }];
           traverse(el.childMapId, nextPath, depth + 1);
         }
@@ -828,7 +829,7 @@ export default function WorldMap({
       return;
     }
 
-    if (node.childMapId) {
+    if (node.childMapId && node.childMapId !== '') {
       setMapPath([...node.path, { id: node.childMapId, name: node.name }]);
       setSelectedElementId(null);
       setIsDetailOpen(false);
@@ -870,6 +871,7 @@ export default function WorldMap({
   const handleSaveProperties = () => {
     if (!selectedElementId) return;
 
+    pushHistory();
     setElements(prev => prev.map(el => {
       if (el.id === selectedElementId) {
         // 스냅샷 방식 키프레임 상태 제어 분기
@@ -914,6 +916,7 @@ export default function WorldMap({
   const handleDeleteElement = async (id: string) => {
     const ok = await showConfirm('이 세계관 지도 요소를 완전히 삭제하시겠습니까?');
     if (ok) {
+      pushHistory();
       setElements(prev => prev.filter(el => el.id !== id));
       if (selectedElementId === id) {
         setSelectedElementId(null);
@@ -940,6 +943,7 @@ export default function WorldMap({
       const newChildId = `map-child-${el.id}`;
       const ok = await showConfirm(`'${el.name}' 하위에 연결된 세부 지도가 없습니다. 새로운 세부 지도 레이어를 연결하고 진입하시겠습니까?`);
       if (ok) {
+        pushHistory();
         setElements(prev => prev.map(item => item.id === el.id ? { ...item, childMapId: newChildId } : item));
         setMapPath(prev => [...prev, { id: newChildId, name: el.name }]);
         setSelectedElementId(null);
@@ -1244,15 +1248,15 @@ export default function WorldMap({
               isDark ? 'bg-black/20 border border-white/[0.06]' : 'bg-black/[0.02] border border-black/[0.06]'
             }`}>
               {buildFlatTree().map(node => {
-                const isFolder = node.type === 'root' || node.childMapId !== undefined;
+                const isFolder = node.type === 'root' || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '');
                 const isExpanded = mapExpandedFolderIds.includes(node.id);
-                const isCurrentMap = (node.id === 'root' && currentMapId === 'root') || (node.childMapId !== undefined && node.childMapId === currentMapId);
+                const isCurrentMap = (node.id === 'root' && currentMapId === 'root') || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '' && node.childMapId === currentMapId);
                 const isSelectedElement = selectedElementId === node.id;
                 
                 let icon = '📍';
                 if (node.type === 'root') {
                   icon = isExpanded ? '📂' : '📁';
-                } else if (node.childMapId) {
+                } else if (node.childMapId && node.childMapId !== '') {
                   icon = isExpanded ? '📂' : '📁';
                 } else if (node.type === 'polygon') {
                   icon = '▰';
@@ -1299,7 +1303,7 @@ export default function WorldMap({
                         {node.name || '이름 없음'}
                       </span>
                     </div>
-                    {node.childMapId && (
+                    {node.childMapId && node.childMapId !== '' && (
                       <span className="text-[9px] text-[#7480E2] opacity-60 font-semibold uppercase shrink-0">
                         지도
                       </span>
@@ -1390,6 +1394,30 @@ export default function WorldMap({
                 <ZoomIn className="w-3.5 h-3.5" />
               </button>
             </div>
+            <button 
+              onClick={handleUndo}
+              disabled={undoStack.length === 0}
+              className={`p-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
+                undoStack.length === 0 
+                  ? 'opacity-40 cursor-not-allowed border-gray-500/20 text-gray-500' 
+                  : (isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-200' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-700')
+              }`}
+              title="실행 취소 (Ctrl+Z)"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+            <button 
+              onClick={handleRedo}
+              disabled={redoStack.length === 0}
+              className={`p-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
+                redoStack.length === 0 
+                  ? 'opacity-40 cursor-not-allowed border-gray-500/20 text-gray-500' 
+                  : (isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-200' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-700')
+              }`}
+              title="다시 실행 (Ctrl+Y)"
+            >
+              <RotateCw className="w-3.5 h-3.5" />
+            </button>
             <button 
               onClick={handleExportMap}
               className="p-1.5 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-bold flex items-center gap-1 transition-colors"
@@ -1772,6 +1800,7 @@ export default function WorldMap({
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
+                          pushHistory();
                           setActiveAnchorPointIdx(idx);
                         }}
                       />
@@ -1874,6 +1903,7 @@ export default function WorldMap({
                       onMouseDown={(e) => {
                         // 캐릭터 이동을 드래그로 조작하기 위해
                         e.stopPropagation();
+                        pushHistory();
                         setSelectedCharacterId(node.id);
                         
                         const handleDragMove = (moveEvent: MouseEvent) => {
