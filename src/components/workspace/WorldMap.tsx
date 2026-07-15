@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ChevronRight, Layers, Plus, Move, Trash2, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
-  ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw
+  ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
@@ -181,6 +181,7 @@ export default function WorldMap({
   const [showNewLayoutModal, setShowNewLayoutModal] = useState(false);
   const [newLayoutName, setNewLayoutName] = useState('');
   const [newLayoutParentMapId, setNewLayoutParentMapId] = useState<string | null>(null);
+  const [layoutSearchQuery, setLayoutSearchQuery] = useState('');
 
   // --- 사이드바 접기/펼치기 ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -816,12 +817,34 @@ export default function WorldMap({
       name: '세계 지도',
       type: 'root',
       depth: 0,
+      childMapId: 'root',
       path: rootPath
     });
     
     if (mapExpandedFolderIds.includes('root')) {
       traverse('root', rootPath, 1);
     }
+
+    // parentMapId가 'layout-root'인 신규 최상위 독립 레이아웃들 추가
+    const extraRootElements = elements.filter(el => el.parentMapId === 'layout-root');
+    for (const el of extraRootElements) {
+      const extraPath = [{ id: el.childMapId || '', name: el.name }];
+      list.push({
+        id: el.id,
+        name: el.name,
+        type: el.type,
+        depth: 0,
+        childMapId: el.childMapId,
+        parentMapId: el.parentMapId,
+        element: el,
+        path: extraPath
+      });
+
+      if (el.childMapId && el.childMapId !== '' && mapExpandedFolderIds.includes(el.id)) {
+        traverse(el.childMapId, extraPath, 1);
+      }
+    }
+
     return list;
   };
 
@@ -857,6 +880,7 @@ export default function WorldMap({
     pushHistory();
 
     const parentId = newLayoutParentMapId;
+    const isLayoutRoot = parentId === 'layout-root';
     const isRoot = parentId === 'root';
     const nextChildId = `map-child-${Date.now()}`;
 
@@ -884,7 +908,9 @@ export default function WorldMap({
     
     // 생성된 세부 지도 레이아웃으로 즉시 이동
     setMapPath(prev => {
-      if (isRoot) {
+      if (isLayoutRoot) {
+        return [{ id: nextChildId, name: newLayoutName }];
+      } else if (isRoot) {
         return [{ id: 'root', name: '세계 지도' }, { id: nextChildId, name: newLayoutName }];
       } else {
         const parentIdx = prev.findIndex(item => item.id === parentId);
@@ -1302,11 +1328,42 @@ export default function WorldMap({
 
           {/* 전체 지도 레이아웃 계층 트리 뷰 */}
           <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-2">지도 계층 구조 및 레이아웃</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block">레이아웃</span>
+              <button
+                onClick={() => {
+                  setNewLayoutParentMapId('layout-root');
+                  setShowNewLayoutModal(true);
+                }}
+                className="p-1 rounded text-gray-500 hover:text-[#7480E2] hover:bg-[#5E6AD2]/10 transition-colors shrink-0"
+                title="새 최상위 레이아웃 추가"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* 검색창 */}
+            <div className="relative mb-2">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input 
+                type="text"
+                value={layoutSearchQuery}
+                onChange={e => setLayoutSearchQuery(e.target.value)}
+                placeholder="레이아웃/요소 이름 검색..."
+                className={`w-full pl-8 pr-3 py-1.5 rounded-lg text-xs outline-none border transition-all ${
+                  isDark 
+                    ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' 
+                    : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'
+                }`}
+              />
+            </div>
+
             <div className={`flex flex-col gap-0.5 max-h-64 overflow-y-auto rounded-lg p-1.5 ${
               isDark ? 'bg-black/20 border border-white/[0.06]' : 'bg-black/[0.02] border border-black/[0.06]'
             }`}>
-              {buildFlatTree().map(node => {
+              {buildFlatTree()
+                .filter(node => !layoutSearchQuery || node.name.toLowerCase().includes(layoutSearchQuery.toLowerCase()))
+                .map(node => {
                 const isFolder = node.type === 'root' || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '');
                 const isExpanded = mapExpandedFolderIds.includes(node.id);
                 const isCurrentMap = (node.id === 'root' && currentMapId === 'root') || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '' && node.childMapId === currentMapId);
