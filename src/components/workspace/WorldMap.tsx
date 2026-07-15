@@ -673,12 +673,81 @@ export default function WorldMap({
     });
   };
 
-  // --- 하위 세부 지도로 레이아웃 진입 ---
-  const handleNavigateToChild = (el: MapElement) => {
-    if (el.childMapId) {
-      setMapPath(prev => [...prev, { id: el.childMapId || '', name: el.name }]);
+
+
+  // --- 전체 지도 레이아웃 계층 트리 뷰 빌드 ---
+  interface FlatTreeNode {
+    id: string;
+    name: string;
+    type: 'root' | 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle';
+    depth: number;
+    childMapId?: string;
+    parentMapId?: string;
+    element?: MapElement;
+    path: Array<{ id: string; name: string }>;
+  }
+
+  const buildFlatTree = (): FlatTreeNode[] => {
+    const list: FlatTreeNode[] = [];
+    
+    const traverse = (mapId: string, currentPath: Array<{ id: string; name: string }>, depth: number) => {
+      const mapElements = elements.filter(el => el.parentMapId === mapId);
+      
+      for (const el of mapElements) {
+        list.push({
+          id: el.id,
+          name: el.name,
+          type: el.type,
+          depth,
+          childMapId: el.childMapId,
+          parentMapId: el.parentMapId,
+          element: el,
+          path: currentPath
+        });
+        
+        if (el.childMapId) {
+          const nextPath = [...currentPath, { id: el.childMapId, name: el.name }];
+          traverse(el.childMapId, nextPath, depth + 1);
+        }
+      }
+    };
+    
+    const rootPath = [{ id: 'root', name: '세계 지도' }];
+    list.push({
+      id: 'root',
+      name: '세계 지도',
+      type: 'root',
+      depth: 0,
+      path: rootPath
+    });
+    
+    traverse('root', rootPath, 1);
+    return list;
+  };
+
+  // --- 트리 노드 클릭 시 해당 지도/요소로 이동 ---
+  const handleTreeNodeClick = (node: FlatTreeNode) => {
+    if (node.id === 'root') {
+      setMapPath([{ id: 'root', name: '세계 지도' }]);
       setSelectedElementId(null);
       setIsDetailOpen(false);
+      return;
+    }
+
+    if (node.childMapId) {
+      setMapPath([...node.path, { id: node.childMapId, name: node.name }]);
+      setSelectedElementId(null);
+      setIsDetailOpen(false);
+    } else {
+      setMapPath(node.path);
+      setSelectedElementId(node.id);
+      if (node.element) {
+        loadElementToEdit(node.element);
+        setIsDetailOpen(true);
+        setTimeout(() => {
+          if (node.element) focusOnElement(node.element);
+        }, 50);
+      }
     }
   };
 
@@ -1074,60 +1143,51 @@ export default function WorldMap({
 
           <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
 
-          {/* 현재 생성된 지도 요소 목록 (레이아웃) */}
+          {/* 전체 지도 레이아웃 계층 트리 뷰 */}
           <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-2">지도 요소 레이아웃 목록</span>
-            <div className={`flex flex-col gap-1 max-h-48 overflow-y-auto rounded-lg p-1.5 ${
+            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-2">지도 계층 구조 및 레이아웃</span>
+            <div className={`flex flex-col gap-0.5 max-h-64 overflow-y-auto rounded-lg p-1.5 ${
               isDark ? 'bg-black/20 border border-white/[0.06]' : 'bg-black/[0.02] border border-black/[0.06]'
             }`}>
-              {elements.filter(el => el.parentMapId === currentMapId).length === 0 ? (
-                <span className="text-[11px] text-gray-500 italic p-1 block text-center">등록된 지도 요소가 없습니다.</span>
-              ) : (
-                elements
-                  .filter(el => el.parentMapId === currentMapId)
-                  .map(el => {
-                    const isSelected = selectedElementId === el.id;
-                    let typeIcon = '📍';
-                    if (el.type === 'polygon') typeIcon = '▰';
-                    if (el.type === 'route') typeIcon = '⏂';
-                    if (el.type === 'border_rect') typeIcon = '□';
-                    if (el.type === 'border_circle') typeIcon = '○';
+              {buildFlatTree().map(node => {
+                const isCurrentMap = (node.id === 'root' && currentMapId === 'root') || (node.childMapId !== undefined && node.childMapId === currentMapId);
+                const isSelectedElement = selectedElementId === node.id;
+                
+                let icon = '📍';
+                if (node.type === 'root') icon = '🗺️';
+                else if (node.childMapId) icon = '📁'; 
+                else if (node.type === 'polygon') icon = '▰';
+                else if (node.type === 'route') icon = '⏂';
+                else if (node.type === 'border_rect') icon = '□';
+                else if (node.type === 'border_circle') icon = '○';
 
-                    return (
-                      <div
-                        key={el.id}
-                        onClick={() => {
-                          setSelectedElementId(el.id);
-                          loadElementToEdit(el);
-                          setIsDetailOpen(true);
-                          focusOnElement(el);
-                        }}
-                        className={`flex items-center justify-between p-1.5 rounded text-xs cursor-pointer transition-all duration-150 ${
-                          isSelected
-                            ? 'bg-[#5E6AD2]/20 text-[#7480E2] font-semibold'
-                            : isDark ? 'hover:bg-white/[0.04] text-gray-300' : 'hover:bg-black/[0.04] text-gray-700'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 truncate">
-                          <span className="text-[#7480E2] shrink-0">{typeIcon}</span>
-                          <span className="truncate">{el.name || '이름 없음'}</span>
-                        </div>
-                        {el.childMapId && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleNavigateToChild(el);
-                            }}
-                            className="px-1.5 py-0.5 rounded bg-[#5E6AD2]/10 hover:bg-[#5E6AD2]/20 text-[#7480E2] text-[9px] font-bold transition-colors shrink-0"
-                            title="세부 지도로 진입"
-                          >
-                            진입 ➔
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })
-              )}
+                return (
+                  <div
+                    key={node.id}
+                    onClick={() => handleTreeNodeClick(node)}
+                    style={{ paddingLeft: `${node.depth * 12 + 6}px` }}
+                    className={`flex items-center justify-between py-1 px-2 rounded text-xs cursor-pointer transition-all duration-150 ${
+                      isCurrentMap 
+                        ? (isDark ? 'bg-[#5E6AD2]/30 text-white border-l-2 border-[#7480E2]' : 'bg-[#5E6AD2]/15 text-[#5E6AD2] border-l-2 border-[#5E6AD2]')
+                        : isSelectedElement
+                          ? 'bg-[#5E6AD2]/15 text-[#7480E2] font-semibold'
+                          : isDark ? 'hover:bg-white/[0.04] text-gray-300' : 'hover:bg-black/[0.04] text-gray-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="shrink-0 text-[11px]">{icon}</span>
+                      <span className={`truncate ${isCurrentMap ? 'font-bold' : ''}`}>
+                        {node.name || '이름 없음'}
+                      </span>
+                    </div>
+                    {node.childMapId && (
+                      <span className="text-[9px] text-[#7480E2] opacity-60 font-semibold uppercase shrink-0">
+                        지도
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 

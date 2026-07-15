@@ -2,10 +2,9 @@ import { useCallback, useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import ReactFlow, {
   Controls,
-  Background,
-  Node as FlowNode,
-  Edge
+  Background
 } from 'reactflow';
+import type { Node as FlowNode, Edge } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { Plus } from 'lucide-react';
 import type { Node } from './types';
