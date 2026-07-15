@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   ChevronRight, Layers, Plus, Move, Trash2, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
-  ZoomIn, ZoomOut, Image, Check, X, Download
+  ZoomIn, ZoomOut, Check, X, Download
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
@@ -161,8 +161,8 @@ export default function WorldMap({
 
   // --- 사이드바 접기/펼치기 ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  // --- 타임라인 슬라이더 접기/펼치기 ---
-  const [timelineCollapsed, setTimelineCollapsed] = useState(false);
+  // --- 타임라인 슬라이더 표시 여부 (사이드바 버튼으로 제어) ---
+  const [showTimeline, setShowTimeline] = useState(false);
 
   // --- 캐릭터 마커 연동 상태 ---
   // 캐릭터 마커는 (Snapshot ID -> CharacterPositionMap) 형태로 관리
@@ -171,7 +171,6 @@ export default function WorldMap({
 
   // References
   const canvasContainerRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // --- LocalStorage & DB Sync ---
   useEffect(() => {
@@ -582,13 +581,6 @@ export default function WorldMap({
     return `url(#pattern-mountain-${tex})`;
   };
 
-  // --- 빵 부스러기 네비게이션 복귀 기능 ---
-  const handleBreadcrumbClick = (idx: number) => {
-    const nextPath = mapPath.slice(0, idx + 1);
-    setMapPath(nextPath);
-    setSelectedElementId(null);
-    setIsDetailOpen(false);
-  };
 
   // --- 핀/영역 더블클릭 하위 드릴다운 이동 ---
   const handleElementDoubleClick = (el: MapElement) => {
@@ -608,17 +600,6 @@ export default function WorldMap({
     }
   };
 
-  // --- 지형 배경 이미지 파일 업로드 ---
-  const handleBgImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setCustomBgImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
 
   // --- 신규 스냅샷 추가 ---
   const handleCreateSnapshot = () => {
@@ -725,26 +706,6 @@ export default function WorldMap({
           isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
         }`}>
           <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1">
-          <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500">계층 네비게이션</span>
-            <div className="flex items-center flex-wrap gap-1 mt-1 text-xs">
-              {mapPath.map((node, idx) => (
-                <React.Fragment key={node.id}>
-                  {idx > 0 && <ChevronRight className="w-3 h-3 text-gray-500 shrink-0" />}
-                  <button 
-                    onClick={() => handleBreadcrumbClick(idx)}
-                    className={`font-semibold hover:underline cursor-pointer ${
-                      idx === mapPath.length - 1 ? 'text-[#7480E2]' : 'text-gray-400'
-                    }`}
-                  >
-                    {node.name}
-                  </button>
-                </React.Fragment>
-              ))}
-            </div>
-          </div>
-
-          <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
 
           {/* 그리기 모드 컨트롤 */}
           <div>
@@ -909,39 +870,29 @@ export default function WorldMap({
               </label>
             </div>
           </div>
-        </div>
 
-        {/* 좌측 레이어 하단 배경 선택 */}
-        <div className="p-4 border-t border-white/[0.06] flex flex-col gap-3">
-          <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500">배경 지도 테마 설정</span>
-          <div className="flex flex-col gap-2 text-xs">
-            <select 
-              value={presetBg} 
-              onChange={e => { setPresetBg(e.target.value as any); setCustomBgImage(null); }}
-              className={`px-2.5 py-1.5 rounded-lg border outline-none cursor-pointer ${
-                isDark ? 'bg-[#1E1F22] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-black'
+          <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
+
+          {/* 히스토리 타임라인 표시 토글 */}
+          <div>
+            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-2">역사 시점 타임라인</span>
+            <button
+              onClick={() => setShowTimeline(!showTimeline)}
+              className={`w-full p-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all border ${
+                showTimeline
+                  ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white'
+                  : isDark ? 'bg-white/[0.03] border-white/[0.06] text-gray-400 hover:bg-white/[0.06]' : 'bg-black/[0.02] border-black/[0.08] text-gray-500 hover:bg-black/[0.05]'
               }`}
             >
-              <option value="vintage">🗎 빈티지 고지도 양식</option>
-              <option value="cosmic">🌌 SF 우주 성계 양식</option>
-              <option value="grid">▦ 단순 격자 캔버스</option>
-            </select>
-
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="p-2 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white font-bold flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <Image className="w-3.5 h-3.5" /> 커스텀 지도 이미지 업로드
+              🕰️ {showTimeline ? '히스토리 숨기기' : '히스토리 보이기'}
             </button>
-            <input 
-              type="file" 
-              ref={fileInputRef} 
-              onChange={handleBgImageUpload} 
-              accept="image/*" 
-              className="hidden" 
-            />
+            {showTimeline && (
+              <p className={`mt-1.5 text-[10px] text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                현재 시점: <span className="text-[#7480E2] font-bold">{currentSnapshot.date}</span>
+              </p>
+            )}
           </div>
-          </div>
+        </div>
         </div>
         {/* 사이드바 접기/펼치기 토글 버튼 */}
         <button
@@ -1007,19 +958,14 @@ export default function WorldMap({
           </div>
         </div>
 
-        {/* 상단 시점 타임라인 슬라이더 바 */}
-        <div className={`border-b shrink-0 select-none transition-all ${isDark ? 'bg-[#0E0F12] border-white/[0.08]' : 'bg-white border-black/[0.08]'}`}>
-          {/* 헤더 행: 항상 표시 */}
-          <div
-            className={`px-4 py-2 flex items-center justify-between text-xs cursor-pointer hover:${isDark ? 'bg-white/[0.02]' : 'bg-black/[0.02]'} transition-colors`}
-            onClick={() => setTimelineCollapsed(!timelineCollapsed)}
-          >
-            <div className="flex items-center gap-2">
-              <ChevronRight className={`w-3.5 h-3.5 text-gray-500 transition-transform shrink-0 ${timelineCollapsed ? '' : 'rotate-90'}`} />
-              <span className={`font-semibold ${isDark ? 'text-[#EDEDEF]' : 'text-[#121316]'}`}>역사적 사건 / 회차 변천사 슬라이더</span>
-              <span className="text-[#5E6AD2] font-bold">({currentSnapshot.date})</span>
-            </div>
-            <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+        {/* 상단 시점 타임라인 슬라이더 바 — 사이드바 히스토리 버튼으로 제어 */}
+        {showTimeline && (
+          <div className={`border-b shrink-0 select-none ${isDark ? 'bg-[#0E0F12] border-white/[0.08]' : 'bg-white border-black/[0.08]'}`}>
+            <div className="px-4 py-2 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className={`font-semibold ${isDark ? 'text-[#EDEDEF]' : 'text-[#121316]'}`}>🕰️ 역사 시점 슬라이더</span>
+                <span className="text-[#5E6AD2] font-bold">({currentSnapshot.date})</span>
+              </div>
               <button
                 onClick={() => setShowNewSnapshotModal(true)}
                 className="p-1 px-2 rounded bg-[#5E6AD2]/10 hover:bg-[#5E6AD2]/20 text-[#7480E2] text-[10px] font-bold flex items-center gap-1 transition-colors"
@@ -1027,10 +973,6 @@ export default function WorldMap({
                 <Plus className="w-3 h-3" /> 새 사건 시점 추가
               </button>
             </div>
-          </div>
-
-          {/* 펼쳐진 상태의 슬라이더 본체 */}
-          {!timelineCollapsed && (
             <div className="px-4 pb-3 flex flex-col gap-2">
               <div className="relative">
                 <input
@@ -1068,8 +1010,8 @@ export default function WorldMap({
                 <span className={`truncate ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{currentSnapshot.description}</span>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* 캔버스 드로잉 물리 보드 */}
         <div 
