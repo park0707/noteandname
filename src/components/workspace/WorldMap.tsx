@@ -189,6 +189,90 @@ export default function WorldMap({
   const [characterPositions, setCharacterPositions] = useState<Record<string, Record<string, { x: number; y: number; trail: Array<{ x: number; y: number }> }>>>({});
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null);
 
+  // --- Undo / Redo History States ---
+  const [undoStack, setUndoStack] = useState<Array<{
+    elements: MapElement[];
+    characterPositions: typeof characterPositions;
+  }>>([]);
+  const [redoStack, setRedoStack] = useState<Array<{
+    elements: MapElement[];
+    characterPositions: typeof characterPositions;
+  }>>([]);
+
+  // 히스토리에 현재 상태 적재
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const pushHistory = useCallback((customElements?: MapElement[], customCharPos?: typeof characterPositions) => {
+    setUndoStack(prev => {
+      const entry = {
+        elements: JSON.parse(JSON.stringify(customElements || elements)),
+        characterPositions: JSON.parse(JSON.stringify(customCharPos || characterPositions))
+      };
+      const next = [...prev, entry];
+      if (next.length > 50) next.shift(); // 최대 50개 제한
+      return next;
+    });
+    setRedoStack([]);
+  }, [elements, characterPositions]);
+
+  // 실행 취소 (Undo)
+  const handleUndo = useCallback(() => {
+    if (undoStack.length === 0) return;
+
+    const currentEntry = {
+      elements: JSON.parse(JSON.stringify(elements)),
+      characterPositions: JSON.parse(JSON.stringify(characterPositions))
+    };
+    setRedoStack(prev => [...prev, currentEntry]);
+
+    const prevEntry = undoStack[undoStack.length - 1];
+    setUndoStack(prev => prev.slice(0, prev.length - 1));
+
+    setElements(prevEntry.elements);
+    setCharacterPositions(prevEntry.characterPositions);
+  }, [undoStack, elements, characterPositions]);
+
+  // 다시 실행 (Redo)
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+
+    const currentEntry = {
+      elements: JSON.parse(JSON.stringify(elements)),
+      characterPositions: JSON.parse(JSON.stringify(characterPositions))
+    };
+    setUndoStack(prev => [...prev, currentEntry]);
+
+    const nextEntry = redoStack[redoStack.length - 1];
+    setRedoStack(prev => prev.slice(0, prev.length - 1));
+
+    setElements(nextEntry.elements);
+    setCharacterPositions(nextEntry.characterPositions);
+  }, [redoStack, elements, characterPositions]);
+
+  // Ctrl+Z / Ctrl+Y 단축키 연동
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (
+        document.activeElement?.tagName === 'INPUT' ||
+        document.activeElement?.tagName === 'TEXTAREA'
+      ) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown);
+    };
+  }, [handleUndo, handleRedo]);
+
   // References
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
@@ -461,6 +545,7 @@ export default function WorldMap({
 
     // 핀 생성 모드 클릭
     if (editMode === 'add_pin') {
+      pushHistory();
       const newPinId = `pin-${Date.now()}`;
       const newPin: MapElement = {
         id: newPinId,
@@ -547,6 +632,7 @@ export default function WorldMap({
       const h = y2 - y1;
       
       if (w > 5 && h > 5) {
+        pushHistory();
         const isRect = editMode === 'draw_border_rect';
         const newId = `border-${Date.now()}`;
         const newBorder: MapElement = {
@@ -589,6 +675,7 @@ export default function WorldMap({
       return;
     }
 
+    pushHistory();
     const newPolygonId = `poly-${Date.now()}`;
     const newPoly: MapElement = {
       id: newPolygonId,
@@ -618,6 +705,7 @@ export default function WorldMap({
       setTempPoints([]);
       return;
     }
+    pushHistory();
     const newRouteId = `route-${Date.now()}`;
     const newRoute: MapElement = {
       id: newRouteId,
@@ -693,8 +781,8 @@ export default function WorldMap({
     const list: FlatTreeNode[] = [];
     
     const traverse = (mapId: string, currentPath: Array<{ id: string; name: string }>, depth: number) => {
-      // 하부 세부 지도가 정의된 요소만 필터링하여 레이아웃 폴더로 취급
-      const mapElements = elements.filter(el => el.parentMapId === mapId && el.childMapId);
+      // 모든 요소를 순회하도록 원래대로 복원
+      const mapElements = elements.filter(el => el.parentMapId === mapId);
       
       for (const el of mapElements) {
         list.push({
@@ -708,8 +796,8 @@ export default function WorldMap({
           path: currentPath
         });
         
-        // 이 폴더가 열려있는(expanded) 경우에만 하위 요소들을 빌드
-        if (mapExpandedFolderIds.includes(el.id) && el.childMapId) {
+        // 하위 지도가 연결된 폴더이고, 해당 폴더가 펼쳐져 있을 때만 재귀 순회
+        if (el.childMapId && mapExpandedFolderIds.includes(el.id)) {
           const nextPath = [...currentPath, { id: el.childMapId, name: el.name }];
           traverse(el.childMapId, nextPath, depth + 1);
         }
@@ -725,7 +813,6 @@ export default function WorldMap({
       path: rootPath
     });
     
-    // 루트 폴더가 열려있는 경우에만 하위 요소들을 빌드
     if (mapExpandedFolderIds.includes('root')) {
       traverse('root', rootPath, 1);
     }
@@ -745,6 +832,16 @@ export default function WorldMap({
       setMapPath([...node.path, { id: node.childMapId, name: node.name }]);
       setSelectedElementId(null);
       setIsDetailOpen(false);
+    } else {
+      setMapPath(node.path);
+      setSelectedElementId(node.id);
+      if (node.element) {
+        loadElementToEdit(node.element);
+        setIsDetailOpen(true);
+        setTimeout(() => {
+          if (node.element) focusOnElement(node.element);
+        }, 50);
+      }
     }
   };
 
@@ -1147,11 +1244,25 @@ export default function WorldMap({
               isDark ? 'bg-black/20 border border-white/[0.06]' : 'bg-black/[0.02] border border-black/[0.06]'
             }`}>
               {buildFlatTree().map(node => {
+                const isFolder = node.type === 'root' || node.childMapId !== undefined;
                 const isExpanded = mapExpandedFolderIds.includes(node.id);
                 const isCurrentMap = (node.id === 'root' && currentMapId === 'root') || (node.childMapId !== undefined && node.childMapId === currentMapId);
                 const isSelectedElement = selectedElementId === node.id;
                 
-                const icon = isExpanded ? '📂' : '📁';
+                let icon = '📍';
+                if (node.type === 'root') {
+                  icon = isExpanded ? '📂' : '📁';
+                } else if (node.childMapId) {
+                  icon = isExpanded ? '📂' : '📁';
+                } else if (node.type === 'polygon') {
+                  icon = '▰';
+                } else if (node.type === 'route') {
+                  icon = '⏂';
+                } else if (node.type === 'border_rect') {
+                  icon = '□';
+                } else if (node.type === 'border_circle') {
+                  icon = '○';
+                }
 
                 return (
                   <div
@@ -1167,24 +1278,28 @@ export default function WorldMap({
                     }`}
                   >
                     <div className="flex items-center gap-1 min-w-0 flex-1">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMapExpandedFolderIds(prev => 
-                            prev.includes(node.id) ? prev.filter(item => item !== node.id) : [...prev, node.id]
-                          );
-                        }}
-                        className="p-0.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors shrink-0"
-                      >
-                        <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
-                      </button>
+                      {isFolder ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMapExpandedFolderIds(prev => 
+                              prev.includes(node.id) ? prev.filter(item => item !== node.id) : [...prev, node.id]
+                            );
+                          }}
+                          className="p-0.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors shrink-0"
+                        >
+                          <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
+                        </button>
+                      ) : (
+                        <div className="w-4.5 h-4.5 shrink-0" />
+                      )}
                       
                       <span className="shrink-0 text-[11px] ml-0.5">{icon}</span>
                       <span className={`truncate ${isCurrentMap ? 'font-bold' : ''}`}>
                         {node.name || '이름 없음'}
                       </span>
                     </div>
-                    {node.id !== 'root' && (
+                    {node.childMapId && (
                       <span className="text-[9px] text-[#7480E2] opacity-60 font-semibold uppercase shrink-0">
                         지도
                       </span>
