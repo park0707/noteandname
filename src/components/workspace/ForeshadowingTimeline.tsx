@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { GitCommit, Plus, CheckCircle2, Circle, Trash2, Calendar, Edit3 } from 'lucide-react';
 import type { Foreshadowing } from './types';
+import { useAlertConfirm } from '../../context/AlertConfirmContext';
 
 interface ForeshadowingTimelineProps {
   isDark: boolean;
@@ -14,6 +15,7 @@ export default function ForeshadowingTimeline({
   foreshadowings,
   setForeshadowings
 }: ForeshadowingTimelineProps) {
+  const { showConfirm } = useAlertConfirm();
   const [showAddForm, setShowAddForm] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -51,8 +53,8 @@ export default function ForeshadowingTimeline({
     );
   };
 
-  const handleDelete = (id: string) => {
-    if (!confirm('이 복선을 타임라인에서 영구 삭제하시겠습니까?')) return;
+  const handleDelete = async (id: string) => {
+    if (!(await showConfirm('이 복선을 타임라인에서 영구 삭제하시겠습니까?'))) return;
     setForeshadowings(prev => prev.filter(f => f.id !== id));
   };
 

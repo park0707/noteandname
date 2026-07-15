@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { AlertConfirmProvider } from './context/AlertConfirmContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
 import Header from './components/Header';
@@ -60,46 +61,48 @@ export default function App() {
     <div className={`w-full min-h-screen font-sans selection:bg-[#5E6AD2]/30 selection:text-white transition-colors duration-300 ${themeMode === 'dark' ? 'bg-[#08090A] text-[#EDEDEF]' : 'bg-[#F4F4F6] text-[#121316]'
       }`}>
       <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            {/* 랜딩 메인 */}
-            <Route
-              path="/"
-              element={<LandingPage themeMode={themeMode} setThemeMode={setThemeMode} />}
-            />
+        <AlertConfirmProvider>
+          <BrowserRouter>
+            <Routes>
+              {/* 랜딩 메인 */}
+              <Route
+                path="/"
+                element={<LandingPage themeMode={themeMode} setThemeMode={setThemeMode} />}
+              />
 
-            {/* 로그인 */}
-            <Route
-              path="/login"
-              element={<LoginPage themeMode={themeMode} />}
-            />
+              {/* 로그인 */}
+              <Route
+                path="/login"
+                element={<LoginPage themeMode={themeMode} />}
+              />
 
-            {/* 회원가입 */}
-            <Route
-              path="/signup"
-              element={<SignupPage themeMode={themeMode} />}
-            />
+              {/* 회원가입 */}
+              <Route
+                path="/signup"
+                element={<SignupPage themeMode={themeMode} />}
+              />
 
-            {/* 공개용 서비스 정보 */}
-            <Route
-              path="/info"
-              element={<PublicInfoPage themeMode={themeMode} setThemeMode={setThemeMode} />}
-            />
+              {/* 공개용 서비스 정보 */}
+              <Route
+                path="/info"
+                element={<PublicInfoPage themeMode={themeMode} setThemeMode={setThemeMode} />}
+              />
 
-            {/* 워크스페이스 (로그인 필요) */}
-            <Route
-              path="/app"
-              element={
-                <ProtectedRoute>
-                  <WorkspacePage themeMode={themeMode} />
-                </ProtectedRoute>
-              }
-            />
+              {/* 워크스페이스 (로그인 필요) */}
+              <Route
+                path="/app"
+                element={
+                  <ProtectedRoute>
+                    <WorkspacePage themeMode={themeMode} />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* 알 수 없는 경로 → 메인으로 */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </BrowserRouter>
+              {/* 알 수 없는 경로 → 메인으로 */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </AlertConfirmProvider>
       </AuthProvider>
     </div>
   );

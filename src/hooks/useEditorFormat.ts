@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import type { FontOption } from '../lib/fonts';
 import { DEFAULT_FONTS } from '../lib/fonts';
+import { useAlertConfirm } from '../context/AlertConfirmContext';
 
 export function useEditorFormat() {
+  const { showConfirm, showAlert } = useAlertConfirm();
   // 1. 글꼴 크기 (localStorage 연동)
   const [editorFontSize, setEditorFontSize] = useState<number>(() => {
     const saved = localStorage.getItem('novelflow_editor_fontsize');
@@ -296,7 +298,7 @@ export function useEditorFormat() {
 
   const handleFontUpload = async (file: File) => {
     const confirmMsg = "업로드하시는 폰트 파일의 라이선스 및 상업적 이용 가능 여부는 사용자 본인의 책임 하에 있습니다. 계속 진행하시겠습니까?";
-    if (!confirm(confirmMsg)) return;
+    if (!(await showConfirm(confirmMsg))) return;
 
     try {
       const family = file.name.replace(/\.(ttf|otf|woff|woff2)$/i, '').trim() || `uploaded-font-${Date.now()}`;
@@ -330,7 +332,7 @@ export function useEditorFormat() {
       recordRecentFont(fontId);
     } catch (error) {
       console.error(error);
-      alert('폰트 업로드에 실패했습니다. ttf, otf, woff, woff2 파일인지 확인해 주세요.');
+      showAlert('폰트 업로드에 실패했습니다. ttf, otf, woff, woff2 파일인지 확인해 주세요.');
     }
   };
 

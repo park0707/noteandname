@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import type { Project, Episode } from '../components/workspace/types';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useAlertConfirm } from '../context/AlertConfirmContext';
 import { getRecursiveDescendants } from '../components/workspace/utils';
 
 export function useEpisodes(
@@ -13,6 +14,7 @@ export function useEpisodes(
   setSelectedEpisodeId: (id: string | null) => void
 ) {
   const { user } = useAuth();
+  const { showConfirm } = useAlertConfirm();
   const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
 
   const [expandedFolderIds, setExpandedFolderIds] = useState<string[]>([]);
@@ -162,8 +164,6 @@ export function useEpisodes(
       ? [toDelete, ...getRecursiveDescendants(toDelete.id, episodes)]
       : [toDelete];
 
-    if (!confirm(`${toDelete.isFolder ? '폴더와 폴더 안의 모든 항목' : '이 문서'}를 휴지통으로 이동하시겠습니까?`)) return;
-
     const nowStr = new Date().toISOString();
     const deletedItems = itemsToDelete.map(item => ({
       ...item,
@@ -277,7 +277,7 @@ export function useEpisodes(
   const handleSidebarPermanentlyDeleteEpisode = useCallback(async (epId: string) => {
     const toDelete = trashEpisodes.find(ep => ep.id === epId);
     if (!toDelete) return;
-    if (!confirm(`${toDelete.isFolder ? '폴더와 폴더 내 모든 항목' : '이 문서'}를 영구적으로 삭제하시겠습니까? 복구할 수 없습니다.`)) return;
+    if (!(await showConfirm(`${toDelete.isFolder ? '폴더와 폴더 내 모든 항목' : '이 문서'}를 영구적으로 삭제하시겠습니까? 복구할 수 없습니다.`))) return;
 
     const itemsToDelete = toDelete.isFolder
       ? [toDelete, ...getRecursiveDescendants(toDelete.id, trashEpisodes)]
@@ -300,12 +300,12 @@ export function useEpisodes(
         console.error('Failed to sync permanent delete to Supabase:', err);
       }
     }
-  }, [trashEpisodes, isGuest]);
+  }, [trashEpisodes, isGuest, showConfirm]);
 
   // 8. 휴지통 비우기
   const handleSidebarEmptyTrash = useCallback(async () => {
     if (trashEpisodes.length === 0) return;
-    if (!confirm('휴지통을 완전히 비우시겠습니까? 모든 삭제된 문서와 폴더가 영구 삭제됩니다.')) return;
+    if (!(await showConfirm('휴지통을 완전히 비우시겠습니까? 모든 삭제된 문서와 폴더가 영구 삭제됩니다.'))) return;
 
     // Local state 업데이트
     setTrashEpisodes([]);
@@ -322,7 +322,7 @@ export function useEpisodes(
         console.error('Failed to empty trash in Supabase:', err);
       }
     }
-  }, [trashEpisodes, isGuest, selectedProject.id]);
+  }, [trashEpisodes, isGuest, selectedProject.id, showConfirm]);
 
   return {
     expandedFolderIds,

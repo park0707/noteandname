@@ -14,6 +14,7 @@ import type { Episode } from '../types';
 import ExternalImportModal from './Modals/ExternalImportModal';
 import LocalImportModal from './Modals/LocalImportModal';
 import type { FileEntry } from './Modals/LocalImportModal';
+import { useAlertConfirm } from '../../../context/AlertConfirmContext';
 
 interface EpisodeSidebarProps {
   isDark: boolean;
@@ -63,6 +64,7 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
     trashCount,
   } = props;
 
+  const { showAlert } = useAlertConfirm();
   const [writingSearchQuery, setWritingSearchQuery] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(false);
 
@@ -174,7 +176,7 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
       setSelectedEpisodeId(createdEpisodeIds[0]);
     }
 
-    alert(`로컬 가져오기 완료: 총 ${files.length}개의 파일이 성공적으로 임포트되었습니다!`);
+    showAlert(`로컬 가져오기 완료: 총 ${files.length}개의 파일이 성공적으로 임포트되었습니다!`);
   };
 
   const handleImport = (selectedItems: { title: string; content: string }[]) => {
@@ -240,7 +242,7 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
       setSelectedEpisodeId(createdEpisodeIds[0]);
     }
 
-    alert(`${folderTitleMatched} 폴더가 생성되었으며, ${selectedItems.length}개의 작업물이 성공적으로 연동 완료되어 가져와졌습니다!`);
+    showAlert(`${folderTitleMatched} 폴더가 생성되었으며, ${selectedItems.length}개의 작업물이 성공적으로 연동 완료되어 가져와졌습니다!`);
   };
 
   const renderTree = (parentId: string | null = null, depth: number = 0) => {

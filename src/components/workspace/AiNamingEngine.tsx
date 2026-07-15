@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { calculateSimilarity } from './utils';
 import type { Node } from './types';
+import { useAlertConfirm } from '../../context/AlertConfirmContext';
 
 interface AiNamingEngineProps {
   isDark: boolean;
@@ -9,6 +10,7 @@ interface AiNamingEngineProps {
 }
 
 export default function AiNamingEngine({ isDark, relationNodes }: AiNamingEngineProps) {
+  const { showAlert } = useAlertConfirm();
   const [namingConcept, setNamingConcept] = useState('fantasy');
   const [namingGender, setNamingGender] = useState('all');
   const [namingKeywords, setNamingKeywords] = useState('');
@@ -176,7 +178,7 @@ export default function AiNamingEngine({ isDark, relationNodes }: AiNamingEngine
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(item.name);
-                      alert(`"${item.name}" 이름이 복사되었습니다.`);
+                      showAlert(`"${item.name}" 이름이 복사되었습니다.`);
                     }}
                     className={`text-xs px-3 py-1.5 rounded-lg border font-semibold hover:bg-white/[0.05] transition-colors ${
                       isDark ? 'border-white/[0.08] text-[#EDEDEF]' : 'border-black/[0.08] text-[#121316]'

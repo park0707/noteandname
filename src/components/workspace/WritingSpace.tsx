@@ -4,6 +4,7 @@ import { FileText } from 'lucide-react';
 import type { Project, Episode, Node, Snapshot } from './types';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { useAlertConfirm } from '../../context/AlertConfirmContext';
 
 // Import custom hooks
 import { useEpisodes } from '../../hooks/useEpisodes';
@@ -55,6 +56,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
   } = props;
 
   const { user } = useAuth();
+  const { showAlert } = useAlertConfirm();
 
   const activeEpisode = episodes.find(ep => ep.id === selectedEpisodeId) || null;
 
@@ -557,7 +559,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
     const newHtml = currentHtml.replace(regex, replaceQuery);
     editorRef.current.innerHTML = newHtml;
     handleContentInput();
-    alert('일괄 교체가 완료되었습니다.');
+    showAlert('일괄 교체가 완료되었습니다.');
   };
 
 

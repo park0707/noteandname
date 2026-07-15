@@ -5,6 +5,7 @@ import Sidebar from '../components/Sidebar';
 import CreateProjectModal from '../components/CreateProjectModal';
 import { Plus, FolderOpen, Trash2 } from 'lucide-react';
 import InfoPage from './InfoPage';
+import { useAlertConfirm } from '../context/AlertConfirmContext';
 
 // Import new modularized components
 import WorkspaceLayoutManager from '../components/workspace/WorkspaceLayoutManager';
@@ -30,6 +31,7 @@ function formatDate(iso: string) {
 
 export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
   const { user } = useAuth();
+  const { showConfirm } = useAlertConfirm();
   const isDark = themeMode === 'dark';
 
   const [layoutTree, setLayoutTree] = useState<LayoutNode>({
@@ -672,7 +674,7 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
 
   // 프로젝트 삭제
   const handleDeleteProject = async (id: string) => {
-    if (!confirm('프로젝트를 삭제하시겠습니까?')) return;
+    if (!(await showConfirm('프로젝트를 삭제하시겠습니까?'))) return;
     if (id.startsWith('mock-')) {
       setProjects(prev => prev.filter(p => p.id !== id));
       if (selectedProject?.id === id) {

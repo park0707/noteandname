@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Snapshot } from '../../types';
+import { useAlertConfirm } from '../../../../context/AlertConfirmContext';
 
 interface SnapshotHistoryModalProps {
   isDark: boolean;
@@ -21,6 +22,7 @@ interface SnapshotHistoryModalProps {
 }
 
 export default function SnapshotHistoryModal(props: SnapshotHistoryModalProps) {
+  const { showConfirm } = useAlertConfirm();
   const {
     isDark,
     showHistoryModal,
@@ -258,8 +260,8 @@ export default function SnapshotHistoryModal(props: SnapshotHistoryModalProps) {
                   복원
                 </button>
                 <button
-                  onClick={() => {
-                    if (confirm('이 버전을 정말 삭제하시겠습니까? (삭제된 버전은 되돌릴 수 없습니다)')) {
+                  onClick={async () => {
+                    if (await showConfirm('이 버전을 정말 삭제하시겠습니까? (삭제된 버전은 되돌릴 수 없습니다)')) {
                       handleDeleteSnapshot(snap.id);
                     }
                   }}

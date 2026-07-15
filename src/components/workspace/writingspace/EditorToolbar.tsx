@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { FONT_CATEGORY_LABELS } from '../../../lib/fonts';
 import type { FontOption } from '../../../lib/fonts';
+import { useAlertConfirm } from '../../../context/AlertConfirmContext';
 
 interface EditorToolbarProps {
   isDark: boolean;
@@ -82,6 +83,7 @@ interface EditorToolbarProps {
 }
 
 export default function EditorToolbar(props: EditorToolbarProps) {
+  const { showAlert } = useAlertConfirm();
   const {
     isDark,
     isFocusMode,
@@ -270,7 +272,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     const rows = Number(tableRows);
     const cols = Number(tableCols);
     if (isNaN(rows) || rows < 1 || rows > 20 || isNaN(cols) || cols < 1 || cols > 20) {
-      alert('행과 열 개수는 1에서 20 사이의 숫자여야 합니다.');
+      showAlert('행과 열 개수는 1에서 20 사이의 숫자여야 합니다.');
       return;
     }
     
@@ -299,7 +301,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
     const rawUrl = linkUrl.trim();
     if (!rawUrl) {
-      alert('URL을 입력해 주세요.');
+      showAlert('URL을 입력해 주세요.');
       return;
     }
 
@@ -310,7 +312,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
     const urlPattern = /^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)$/;
     if (!urlPattern.test(testUrl)) {
-      alert('올바른 URL 형식이 아닙니다. (예: example.com 또는 https://example.com)');
+      showAlert('올바른 URL 형식이 아닙니다. (예: example.com 또는 https://example.com)');
       return;
     }
 
@@ -375,7 +377,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
   const handleExportDocument = (format: 'txt' | 'md' | 'docx') => {
     const editorCanvas = document.querySelector('.novela-editor-content');
     if (!editorCanvas) {
-      alert('에디터 내용을 찾을 수 없습니다.');
+      showAlert('에디터 내용을 찾을 수 없습니다.');
       return;
     }
     const htmlContent = editorCanvas.innerHTML;

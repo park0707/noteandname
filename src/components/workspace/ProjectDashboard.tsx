@@ -14,6 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import type { Project, Episode, Node } from './types';
+import { useAlertConfirm } from '../../context/AlertConfirmContext';
 
 interface ProjectDashboardProps {
   selectedProject: Project;
@@ -58,6 +59,7 @@ export default function ProjectDashboard({
   targetWordCount: targetWordCountProp,
   onTargetWordCountChange,
 }: ProjectDashboardProps) {
+  const { showAlert } = useAlertConfirm();
   const [editingName, setEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState(selectedProject.name);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -186,13 +188,13 @@ export default function ProjectDashboard({
   const handleSaveSettings = () => {
     const trimmedName = inputName.trim();
     if (!trimmedName) {
-      alert('작품 이름을 입력해 주세요.');
+      showAlert('작품 이름을 입력해 주세요.');
       return;
     }
 
     const parsedWordCount = Number(inputTargetWordCount);
     if (isNaN(parsedWordCount) || parsedWordCount <= 0) {
-      alert('목표 글자 수는 0보다 큰 숫자여야 합니다.');
+      showAlert('목표 글자 수는 0보다 큰 숫자여야 합니다.');
       return;
     }
 
