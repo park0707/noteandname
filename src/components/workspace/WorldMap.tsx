@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ChevronRight, Layers, Plus, Move, Trash2, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
 
 // --- Types for WorldMap ---
 export interface MapSnapshot {
@@ -19,7 +21,7 @@ export interface MapSnapshot {
 export interface MapElement {
   id: string;
   name: string;
-  type: 'pin' | 'polygon' | 'route';
+  type: 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle';
   parentMapId: string; // 계층 구조 연동을 위함 (기본 'root')
   
   // Pin 전용 속성
@@ -32,6 +34,14 @@ export interface MapElement {
   color?: string;
   opacity?: number;
   texture?: 'none' | 'slash' | 'dots' | 'sand'; // 지형 텍스처
+  
+  // Border (rect/circle) 전용 속성
+  bx?: number;   // 사각형: 좌상단 X, 원: 중심 X
+  by?: number;   // 사각형: 좌상단 Y, 원: 중심 Y
+  bw?: number;   // 사각형: 너비,   원: 반지름X
+  bh?: number;   // 사각형: 높이,   원: 반지름Y
+  borderStyle?: 'solid' | 'dashed' | 'dotted';
+  borderWidth?: number;
   
   // 상세 속성
   summary?: string;
@@ -78,7 +88,9 @@ export default function WorldMap({
   relationNodes, 
   foreshadowings: _foreshadowings 
 }: WorldMapProps) {
-  const { showAlert } = useAlertConfirm();
+  const { showAlert, showConfirm } = useAlertConfirm();
+  const { user } = useAuth();
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // --- 계층형 뎁스 상태 ---
   const [mapPath, setMapPath] = useState<Array<{ id: string; name: string }>>([
@@ -91,7 +103,11 @@ export default function WorldMap({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [editMode, setEditMode] = useState<'select' | 'pan' | 'draw_polygon' | 'add_pin' | 'draw_route' | 'measure'>('select');
+  const [editMode, setEditMode] = useState<'select' | 'pan' | 'draw_polygon' | 'add_pin' | 'draw_route' | 'measure' | 'draw_border_rect' | 'draw_border_circle'>('select');
+
+  // --- 테두리 드래그 임시 상태 ---
+  const [borderDragStart, setBorderDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [borderDragCurrent, setBorderDragCurrent] = useState<{ x: number; y: number } | null>(null);
   
   // --- 지도 요소 데이터 ---
   const [elements, setElements] = useState<MapElement[]>([]);
@@ -147,6 +163,8 @@ export default function WorldMap({
   const [elementEditOpacity, setElementEditOpacity] = useState(30);
   const [elementEditTexture, setElementEditTexture] = useState<'none' | 'slash' | 'dots' | 'sand'>('none');
   const [elementEditIcon, setElementEditIcon] = useState<'castle' | 'swords' | 'mountain' | 'mappin'>('mappin');
+  const [elementEditBorderStyle, setElementEditBorderStyle] = useState<'solid' | 'dashed' | 'dotted'>('solid');
+  const [elementEditBorderWidth, setElementEditBorderWidth] = useState<number>(3);
   const [elementEditTags, setElementEditTags] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState('');
   const [elementEditChars, setElementEditChars] = useState<string[]>([]);
@@ -172,108 +190,171 @@ export default function WorldMap({
   // References
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
-  // --- LocalStorage & DB Sync ---
+  // --- LocalStorage key helpers ---
+  const getStorageKeys = useCallback(() => ({
+    elementKey: `novelflow_worldmap_elements_${selectedProject.id}`,
+    snapshotKey: `novelflow_worldmap_snapshots_${selectedProject.id}`,
+    configKey: `novelflow_worldmap_config_${selectedProject.id}`,
+    charPosKey: `novelflow_worldmap_char_pos_${selectedProject.id}`,
+  }), [selectedProject.id]);
+
+  const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
+
+  // --- 초기 로드: Supabase 우선, 없으면 localStorage, 없으면 기본값 ---
   useEffect(() => {
     if (!selectedProject) return;
-    
-    // 프로젝트별 데이터 로드
-    const elementKey = `novelflow_worldmap_elements_${selectedProject.id}`;
-    const snapshotKey = `novelflow_worldmap_snapshots_${selectedProject.id}`;
-    const configKey = `novelflow_worldmap_config_${selectedProject.id}`;
-    const charPosKey = `novelflow_worldmap_char_pos_${selectedProject.id}`;
 
-    const savedElements = localStorage.getItem(elementKey);
-    const savedSnapshots = localStorage.getItem(snapshotKey);
-    const savedConfig = localStorage.getItem(configKey);
-    const savedCharPos = localStorage.getItem(charPosKey);
+    const { elementKey, snapshotKey, configKey, charPosKey } = getStorageKeys();
 
-    if (savedElements) {
-      try { setElements(JSON.parse(savedElements)); } catch(e) { console.error(e); }
-    } else {
-      // 기본 모의 엘리먼트 세팅
-      setElements([
-        { id: 'r1', name: '아이론 왕국', type: 'polygon', parentMapId: 'root', color: '#5E6AD2', opacity: 0.25, texture: 'slash', category: 'kingdom', summary: '대륙 중부에 자리 잡은 유서 깊은 왕국.', description: '아이론 가문이 지배하는 넓고 비옥한 영토.', points: [{ x: 100, y: 150 }, { x: 300, y: 120 }, { x: 350, y: 350 }, { x: 80, y: 300 }], statesBySnapshot: {} },
-        { id: 'r2', name: '남방 제국', type: 'polygon', parentMapId: 'root', color: '#E2487A', opacity: 0.35, texture: 'sand', category: 'empire', summary: '철기 무기와 마법으로 팽창 중인 호전국.', description: '철의 장막 뒤에 숨은 기계 문명 중심 국가.', points: [{ x: 380, y: 100 }, { x: 650, y: 150 }, { x: 600, y: 400 }, { x: 360, y: 380 }], statesBySnapshot: {
-          'snap-war': { visible: true, color: '#E2487A', description: '제국의 기습 침공으로 국경선이 서쪽으로 밀려났습니다.' }
-        } },
-        { id: 'p1', name: '수도 아이론시', type: 'pin', parentMapId: 'root', x: 220, y: 200, icon: 'castle', category: 'city', summary: '왕국의 정치, 경제 중심수도.', description: '고대 마법 장벽으로 둘러싸여 난공불락을 자랑한다.', tags: ['수도', '안전지대'], associatedCharacters: ['1'] },
-        { id: 'p2', name: '동부 국경 요새', type: 'pin', parentMapId: 'root', x: 330, y: 220, icon: 'swords', category: 'fortress', summary: '제국의 침략을 감시하는 핵심 군사 기지.', description: '견고한 성벽을 가졌으나 흑마법의 기습에는 취약하다.', tags: ['요새', '분쟁지역'], statesBySnapshot: {
-          'snap-fall': { visible: false } // 함락 시점에는 요새 파괴되어 안 보임
-        } }
-      ]);
-    }
+    const applyData = (data: {
+      elements?: MapElement[];
+      snapshots?: MapSnapshot[];
+      config?: { customBgImage: string | null; presetBg: string; scale: MapScale };
+      characterPositions?: Record<string, Record<string, { x: number; y: number; trail: Array<{ x: number; y: number }> }>>;
+    }) => {
+      if (data.elements && data.elements.length > 0) {
+        setElements(data.elements);
+      } else {
+        setElements([
+          { id: 'r1', name: '아이론 왕국', type: 'polygon', parentMapId: 'root', color: '#5E6AD2', opacity: 0.25, texture: 'slash', category: 'kingdom', summary: '대륙 중부에 자리 잡은 유서 깊은 왕국.', description: '아이론 가문이 지배하는 넓고 비옥한 영토.', points: [{ x: 100, y: 150 }, { x: 300, y: 120 }, { x: 350, y: 350 }, { x: 80, y: 300 }], statesBySnapshot: {} },
+          { id: 'r2', name: '남방 제국', type: 'polygon', parentMapId: 'root', color: '#E2487A', opacity: 0.35, texture: 'sand', category: 'empire', summary: '철기 무기와 마법으로 팽창 중인 호전국.', description: '철의 장막 뒤에 숨은 기계 문명 중심 국가.', points: [{ x: 380, y: 100 }, { x: 650, y: 150 }, { x: 600, y: 400 }, { x: 360, y: 380 }], statesBySnapshot: { 'snap-war': { visible: true, color: '#E2487A', description: '제국의 기습 침공으로 국경선이 서쪽으로 밀려났습니다.' } } },
+          { id: 'p1', name: '수도 아이론시', type: 'pin', parentMapId: 'root', x: 220, y: 200, icon: 'castle', category: 'city', summary: '왕국의 정치, 경제 중심수도.', description: '고대 마법 장벽으로 둘러싸여 난공불락을 자랑한다.', tags: ['수도', '안전지대'], associatedCharacters: ['1'] },
+          { id: 'p2', name: '동부 국경 요새', type: 'pin', parentMapId: 'root', x: 330, y: 220, icon: 'swords', category: 'fortress', summary: '제국의 침략을 감시하는 핵심 군사 기지.', description: '견고한 성벽을 가졌으나 흑마법의 기습에는 취약하다.', tags: ['요새', '분쟁지역'], statesBySnapshot: { 'snap-fall': { visible: false } } }
+        ]);
+      }
 
-    if (savedSnapshots) {
-      try { 
-        const parsed = JSON.parse(savedSnapshots);
-        setSnapshots(parsed); 
-        if (parsed.length > 0) setActiveSnapshotId(parsed[0].id);
-      } catch(e) { console.error(e); }
-    } else {
-      setSnapshots([
-        { id: 'snap-default', order: 0, name: '1권 시작 기준', date: '작중 932년 4월', description: '평화로운 아이론 왕국 영토와 가문 세력권.' },
-        { id: 'snap-war', order: 1, name: '동부 요새 함락 사건', date: '작중 932년 10월', description: '제국의 흑마법 기습 침공으로 동부 요새가 함락되고 소실됨.' },
-        { id: 'snap-fall', order: 2, name: '제국 연합군 병합 완료', date: '작중 933년 6월', description: '아이론 북동부 요충지가 완전히 함락되어 제국 영토로 편입됨.' }
-      ]);
-    }
+      if (data.snapshots && data.snapshots.length > 0) {
+        setSnapshots(data.snapshots);
+        setActiveSnapshotId(data.snapshots[0].id);
+      } else {
+        setSnapshots([
+          { id: 'snap-default', order: 0, name: '1권 시작 기준', date: '작중 932년 4월', description: '평화로운 아이론 왕국 영토와 가문 세력권.' },
+          { id: 'snap-war', order: 1, name: '동부 요새 함락 사건', date: '작중 932년 10월', description: '제국의 흑마법 기습 침공으로 동부 요새가 함락되고 소실됨.' },
+          { id: 'snap-fall', order: 2, name: '제국 연합군 병합 완료', date: '작중 933년 6월', description: '아이론 북동부 요충지가 완전히 함락되어 제국 영토로 편입됨.' }
+        ]);
+      }
 
-    if (savedConfig) {
-      try {
-        const parsed = JSON.parse(savedConfig);
-        setCustomBgImage(parsed.customBgImage || null);
-        setPresetBg(parsed.presetBg || 'vintage');
-        setScale(parsed.scale || { pixels: 100, value: 50, unit: 'km' });
-      } catch(e) { console.error(e); }
-    } else {
-      setCustomBgImage(null);
-      setPresetBg('vintage');
-    }
+      if (data.config) {
+        setCustomBgImage(data.config.customBgImage || null);
+        setPresetBg((data.config.presetBg as 'vintage' | 'cosmic' | 'grid') || 'vintage');
+        setScale(data.config.scale || { pixels: 100, value: 50, unit: 'km' });
+      }
 
-    if (savedCharPos) {
-      try { setCharacterPositions(JSON.parse(savedCharPos)); } catch(e) { console.error(e); }
-    } else {
-      // 기본 mock 캐릭터 동선 적재
-      setCharacterPositions({
-        'snap-default': {
-          '1': { x: 220, y: 200, trail: [{ x: 100, y: 150 }, { x: 220, y: 200 }] },
-          '2': { x: 330, y: 220, trail: [{ x: 330, y: 220 }] }
-        },
-        'snap-war': {
-          '1': { x: 330, y: 220, trail: [{ x: 100, y: 150 }, { x: 220, y: 200 }, { x: 330, y: 220 }] },
-          '2': { x: 420, y: 150, trail: [{ x: 330, y: 220 }, { x: 420, y: 150 }] }
-        },
-        'snap-fall': {
-          '1': { x: 150, y: 280, trail: [{ x: 100, y: 150 }, { x: 220, y: 200 }, { x: 330, y: 220 }, { x: 150, y: 280 }] },
-          '2': { x: 500, y: 180, trail: [{ x: 330, y: 220 }, { x: 420, y: 150 }, { x: 500, y: 180 }] }
-        }
+      if (data.characterPositions && Object.keys(data.characterPositions).length > 0) {
+        setCharacterPositions(data.characterPositions);
+      } else {
+        setCharacterPositions({
+          'snap-default': {
+            '1': { x: 220, y: 200, trail: [{ x: 100, y: 150 }, { x: 220, y: 200 }] },
+            '2': { x: 330, y: 220, trail: [{ x: 330, y: 220 }] }
+          },
+          'snap-war': {
+            '1': { x: 330, y: 220, trail: [{ x: 100, y: 150 }, { x: 220, y: 200 }, { x: 330, y: 220 }] },
+            '2': { x: 420, y: 150, trail: [{ x: 330, y: 220 }, { x: 420, y: 150 }] }
+          },
+          'snap-fall': {
+            '1': { x: 150, y: 280, trail: [{ x: 100, y: 150 }, { x: 220, y: 200 }, { x: 330, y: 220 }, { x: 150, y: 280 }] },
+            '2': { x: 500, y: 180, trail: [{ x: 330, y: 220 }, { x: 420, y: 150 }, { x: 500, y: 180 }] }
+          }
+        });
+      }
+    };
+
+    const loadFromLocalStorage = () => {
+      const savedElements = localStorage.getItem(elementKey);
+      const savedSnapshots = localStorage.getItem(snapshotKey);
+      const savedConfig = localStorage.getItem(configKey);
+      const savedCharPos = localStorage.getItem(charPosKey);
+      applyData({
+        elements: savedElements ? JSON.parse(savedElements) : undefined,
+        snapshots: savedSnapshots ? JSON.parse(savedSnapshots) : undefined,
+        config: savedConfig ? JSON.parse(savedConfig) : undefined,
+        characterPositions: savedCharPos ? JSON.parse(savedCharPos) : undefined,
       });
+    };
+
+    if (isGuest) {
+      loadFromLocalStorage();
+      return;
     }
-  }, [selectedProject]);
 
-  // 자동 동기화 저장
-  useEffect(() => {
+    // Supabase에서 worldmap_data 로드
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('projects')
+          .select('worldmap_data')
+          .eq('id', selectedProject.id)
+          .single();
+
+        if (error) throw error;
+
+        if (data?.worldmap_data) {
+          const wm = data.worldmap_data as {
+            elements?: MapElement[];
+            snapshots?: MapSnapshot[];
+            config?: { customBgImage: string | null; presetBg: string; scale: MapScale };
+            characterPositions?: Record<string, Record<string, { x: number; y: number; trail: Array<{ x: number; y: number }> }>>;
+          };
+          applyData(wm);
+          // localStorage에도 캐시
+          if (wm.elements) localStorage.setItem(elementKey, JSON.stringify(wm.elements));
+          if (wm.snapshots) localStorage.setItem(snapshotKey, JSON.stringify(wm.snapshots));
+          if (wm.config) localStorage.setItem(configKey, JSON.stringify(wm.config));
+          if (wm.characterPositions) localStorage.setItem(charPosKey, JSON.stringify(wm.characterPositions));
+        } else {
+          // DB에 없으면 localStorage 캐시에서 복구 시도
+          loadFromLocalStorage();
+        }
+      } catch (err) {
+        console.error('WorldMap: Supabase 로드 실패, localStorage fallback 사용:', err);
+        loadFromLocalStorage();
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProject.id]);
+
+  // --- Supabase + localStorage 자동 저장 (debounce 2초) ---
+  const saveWorldMapData = useCallback(() => {
     if (!selectedProject) return;
-    const elementKey = `novelflow_worldmap_elements_${selectedProject.id}`;
+    const { elementKey, snapshotKey, configKey, charPosKey } = getStorageKeys();
+
+    // localStorage 즉시 갱신 (캐시)
     localStorage.setItem(elementKey, JSON.stringify(elements));
-  }, [elements, selectedProject]);
-
-  useEffect(() => {
-    if (!selectedProject) return;
-    const snapshotKey = `novelflow_worldmap_snapshots_${selectedProject.id}`;
     localStorage.setItem(snapshotKey, JSON.stringify(snapshots));
-  }, [snapshots, selectedProject]);
-
-  useEffect(() => {
-    if (!selectedProject) return;
-    const configKey = `novelflow_worldmap_config_${selectedProject.id}`;
     localStorage.setItem(configKey, JSON.stringify({ customBgImage, presetBg, scale }));
-  }, [customBgImage, presetBg, scale, selectedProject]);
-
-  useEffect(() => {
-    if (!selectedProject) return;
-    const charPosKey = `novelflow_worldmap_char_pos_${selectedProject.id}`;
     localStorage.setItem(charPosKey, JSON.stringify(characterPositions));
-  }, [characterPositions, selectedProject]);
+
+    if (isGuest) return;
+
+    // Supabase debounce 저장 (2초 후)
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        const { error } = await supabase
+          .from('projects')
+          .update({
+            worldmap_data: {
+              elements,
+              snapshots,
+              config: { customBgImage, presetBg, scale },
+              characterPositions,
+            }
+          })
+          .eq('id', selectedProject.id);
+        if (error) throw error;
+      } catch (err) {
+        console.error('WorldMap: Supabase 저장 실패:', err);
+      }
+    }, 2000);
+  }, [elements, snapshots, customBgImage, presetBg, scale, characterPositions, selectedProject, getStorageKeys, isGuest]);
+
+  // 데이터 변경 시 자동 저장 트리거
+  useEffect(() => {
+    saveWorldMapData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elements, snapshots, customBgImage, presetBg, scale, characterPositions]);
+
 
   // --- 마우스 좌표를 캔버스 공간상 좌표로 변환 ---
   const getCanvasCoords = (clientX: number, clientY: number): { x: number; y: number } => {
@@ -363,6 +444,13 @@ export default function WorldMap({
     const canvasClickCoords = getCanvasCoords(e.clientX, e.clientY);
     const snapped = applySnapping(canvasClickCoords);
 
+    // 테두리 드래그 시작 (mouseDown)
+    if (editMode === 'draw_border_rect' || editMode === 'draw_border_circle') {
+      setBorderDragStart(snapped);
+      setBorderDragCurrent(snapped);
+      return;
+    }
+
     // 거리 측정 모드 클릭
     if (editMode === 'measure') {
       setMeasurePoints(prev => [...prev, snapped]);
@@ -426,6 +514,12 @@ export default function WorldMap({
     const snapped = applySnapping(currentCoords);
     setHoveredPoint(snapped);
 
+    // 테두리 드래그 진행 중 현재 좌표 갱신
+    if ((editMode === 'draw_border_rect' || editMode === 'draw_border_circle') && borderDragStart) {
+      setBorderDragCurrent(snapped);
+      return;
+    }
+
     // 다각형 꼭짓점 드래그 편집 모드
     if (editMode === 'select' && activeAnchorPointIdx !== null && selectedElementId) {
       setElements(prev => prev.map(el => {
@@ -441,6 +535,47 @@ export default function WorldMap({
 
   // --- 마우스 업 핸들러 ---
   const handleCanvasMouseUp = () => {
+    // 테두리 드래그 완료 및 최종 엘리먼트 생성
+    if ((editMode === 'draw_border_rect' || editMode === 'draw_border_circle') && borderDragStart && borderDragCurrent) {
+      const x1 = Math.min(borderDragStart.x, borderDragCurrent.x);
+      const y1 = Math.min(borderDragStart.y, borderDragCurrent.y);
+      const x2 = Math.max(borderDragStart.x, borderDragCurrent.x);
+      const y2 = Math.max(borderDragStart.y, borderDragCurrent.y);
+      const w = x2 - x1;
+      const h = y2 - y1;
+      
+      if (w > 5 && h > 5) {
+        const isRect = editMode === 'draw_border_rect';
+        const newId = `border-${Date.now()}`;
+        const newBorder: MapElement = {
+          id: newId,
+          name: isRect ? '새 사각 테두리' : '새 원형 테두리',
+          type: isRect ? 'border_rect' : 'border_circle',
+          parentMapId: currentMapId,
+          bx: isRect ? x1 : (x1 + x2) / 2,
+          by: isRect ? y1 : (y1 + y2) / 2,
+          bw: isRect ? w : w / 2,
+          bh: isRect ? h : h / 2,
+          color: '#5E6AD2',
+          opacity: 1.0,
+          borderStyle: 'solid',
+          borderWidth: 3,
+          category: 'border',
+          summary: isRect ? '사각형 테두리 구역입니다.' : '원형 테두리 구역입니다.',
+          description: '테두리 영역 설명을 추가하세요.',
+          tags: []
+        };
+        setElements(prev => [...prev, newBorder]);
+        setSelectedElementId(newId);
+        loadElementToEdit(newBorder);
+        setIsDetailOpen(true);
+      }
+      setBorderDragStart(null);
+      setBorderDragCurrent(null);
+      setEditMode('select');
+      return;
+    }
+    
     setIsPanning(false);
     setActiveAnchorPointIdx(null);
   };
@@ -513,9 +648,11 @@ export default function WorldMap({
     setElementEditSummary(el.summary || '');
     setElementEditDesc(state?.description || el.description || '');
     setElementEditColor(state?.color || el.color || '#5E6AD2');
-    setElementEditOpacity(el.opacity !== undefined ? Math.round(el.opacity * 100) : 30);
+    setElementEditOpacity(el.opacity !== undefined ? Math.round(el.opacity * 100) : 100);
     setElementEditTexture(el.texture || 'none');
     setElementEditIcon(el.icon || 'mappin');
+    setElementEditBorderStyle(el.borderStyle || 'solid');
+    setElementEditBorderWidth(el.borderWidth || 3);
     setElementEditTags(el.tags || []);
     setElementEditChars(el.associatedCharacters || []);
     setElementEditEpisodes(el.associatedEpisodes || []);
@@ -536,6 +673,8 @@ export default function WorldMap({
           opacity: elementEditOpacity / 100,
           texture: elementEditTexture,
           icon: elementEditIcon,
+          borderStyle: elementEditBorderStyle,
+          borderWidth: elementEditBorderWidth,
           tags: elementEditTags,
           associatedCharacters: elementEditChars,
           associatedEpisodes: elementEditEpisodes,
@@ -565,8 +704,9 @@ export default function WorldMap({
   };
 
   // --- 요소 영구 제거 ---
-  const handleDeleteElement = (id: string) => {
-    if (confirm('이 세계관 지도 요소를 완전히 삭제하시겠습니까?')) {
+  const handleDeleteElement = async (id: string) => {
+    const ok = await showConfirm('이 세계관 지도 요소를 완전히 삭제하시겠습니까?');
+    if (ok) {
       setElements(prev => prev.filter(el => el.id !== id));
       if (selectedElementId === id) {
         setSelectedElementId(null);
@@ -583,7 +723,7 @@ export default function WorldMap({
 
 
   // --- 핀/영역 더블클릭 하위 드릴다운 이동 ---
-  const handleElementDoubleClick = (el: MapElement) => {
+  const handleElementDoubleClick = async (el: MapElement) => {
     if (el.childMapId) {
       setMapPath(prev => [...prev, { id: el.childMapId || '', name: el.name }]);
       setSelectedElementId(null);
@@ -591,7 +731,8 @@ export default function WorldMap({
     } else {
       // 하위 지도가 없을 시 임시 계층 생성 제안
       const newChildId = `map-child-${el.id}`;
-      if (confirm(`'${el.name}' 하위에 연결된 세부 지도가 없습니다. 새로운 세부 지도 레이어를 연결하고 진입하시겠습니까?`)) {
+      const ok = await showConfirm(`'${el.name}' 하위에 연결된 세부 지도가 없습니다. 새로운 세부 지도 레이어를 연결하고 진입하시겠습니까?`);
+      if (ok) {
         setElements(prev => prev.map(item => item.id === el.id ? { ...item, childMapId: newChildId } : item));
         setMapPath(prev => [...prev, { id: newChildId, name: el.name }]);
         setSelectedElementId(null);
@@ -750,6 +891,22 @@ export default function WorldMap({
                 }`}
               >
                 <ChevronRight className="w-3.5 h-3.5" /> 국경/이동교역선 그리기
+              </button>
+              <button 
+                onClick={() => { setEditMode('draw_border_rect'); setTempPoints([]); }}
+                className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  editMode === 'draw_border_rect' ? 'bg-[#5E6AD2] text-white' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05]'
+                }`}
+              >
+                <span className="w-3.5 h-3.5 border-2 border-current rounded-sm inline-block shrink-0" /> 사각 테두리
+              </button>
+              <button 
+                onClick={() => { setEditMode('draw_border_circle'); setTempPoints([]); }}
+                className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  editMode === 'draw_border_circle' ? 'bg-[#5E6AD2] text-white' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05]'
+                }`}
+              >
+                <span className="w-3.5 h-3.5 border-2 border-current rounded-full inline-block shrink-0" /> 원형 테두리
               </button>
             </div>
 
@@ -921,6 +1078,8 @@ export default function WorldMap({
               {editMode === 'add_pin' && '📍 핀 거점 꼽기'}
               {editMode === 'draw_route' && '⏂ 국경/교역선 그리기'}
               {editMode === 'measure' && '📏 스케일 거리 측정'}
+              {editMode === 'draw_border_rect' && '□ 사각 테두리 드래그'}
+              {editMode === 'draw_border_circle' && '○ 원형 테두리 드래그'}
             </span></span>
           </div>
 
@@ -1149,6 +1308,118 @@ export default function WorldMap({
                     />
                   );
                 })}
+
+              {/* 테두리 (사각형 및 원형) 레이어 */}
+              {layerVisibility.political && elements
+                .filter(el => (el.type === 'border_rect' || el.type === 'border_circle') && el.parentMapId === currentMapId)
+                .map(el => {
+                  const state = el.statesBySnapshot?.[activeSnapshotId];
+                  const isVisible = state ? state.visible : true;
+                  if (!isVisible) return null;
+
+                  const color = state?.color || el.color || '#5E6AD2';
+                  const opacity = el.opacity !== undefined ? el.opacity : 1.0;
+                  const strokeWidth = el.borderWidth || 3;
+                  const borderStyle = el.borderStyle || 'solid';
+                  const isSelected = selectedElementId === el.id;
+
+                  const strokeDash = borderStyle === 'dashed' ? '8,6' : borderStyle === 'dotted' ? '3,3' : undefined;
+
+                  if (el.type === 'border_rect') {
+                    return (
+                      <rect
+                        key={el.id}
+                        x={el.bx}
+                        y={el.by}
+                        width={el.bw}
+                        height={el.bh}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth={strokeWidth}
+                        strokeOpacity={opacity}
+                        strokeDasharray={strokeDash}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedElementId(el.id);
+                          loadElementToEdit(el);
+                          setIsDetailOpen(true);
+                        }}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          handleElementDoubleClick(el);
+                        }}
+                        className={`cursor-pointer transition-all duration-200 ${isSelected ? 'stroke-red-500 stroke-[4px]' : 'hover:stroke-white'}`}
+                      />
+                    );
+                  } else {
+                    return (
+                      <ellipse
+                        key={el.id}
+                        cx={el.bx}
+                        cy={el.by}
+                        rx={el.bw}
+                        ry={el.bh}
+                        fill="none"
+                        stroke={color}
+                        strokeWidth={strokeWidth}
+                        strokeOpacity={opacity}
+                        strokeDasharray={strokeDash}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedElementId(el.id);
+                          loadElementToEdit(el);
+                          setIsDetailOpen(true);
+                        }}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          handleElementDoubleClick(el);
+                        }}
+                        className={`cursor-pointer transition-all duration-200 ${isSelected ? 'stroke-red-500 stroke-[4px]' : 'hover:stroke-white'}`}
+                      />
+                    );
+                  }
+                })}
+
+              {/* 드래그 중인 테두리 임시 프리뷰 */}
+              {borderDragStart && borderDragCurrent && (() => {
+                const x1 = Math.min(borderDragStart.x, borderDragCurrent.x);
+                const y1 = Math.min(borderDragStart.y, borderDragCurrent.y);
+                const x2 = Math.max(borderDragStart.x, borderDragCurrent.x);
+                const y2 = Math.max(borderDragStart.y, borderDragCurrent.y);
+                const w = x2 - x1;
+                const h = y2 - y1;
+                
+                if (editMode === 'draw_border_rect') {
+                  return (
+                    <rect
+                      x={x1}
+                      y={y1}
+                      width={w}
+                      height={h}
+                      fill="none"
+                      stroke="#5E6AD2"
+                      strokeWidth="2.5"
+                      strokeDasharray="5,5"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  );
+                } else if (editMode === 'draw_border_circle') {
+                  return (
+                    <ellipse
+                      cx={(x1 + x2) / 2}
+                      cy={(y1 + y2) / 2}
+                      rx={w / 2}
+                      ry={h / 2}
+                      fill="none"
+                      stroke="#5E6AD2"
+                      strokeWidth="2.5"
+                      strokeDasharray="5,5"
+                      style={{ pointerEvents: 'none' }}
+                    />
+                  );
+                }
+                return null;
+              })()}
 
               {/* 거리 측정 선 미리보기 */}
               {measurePoints.length > 0 && (
@@ -1463,6 +1734,41 @@ export default function WorldMap({
                     <option value="sand">🏜️ 사막/성곽 (모래 점무늬)</option>
                   </select>
                 </div>
+              )}
+
+              {/* 테두리 (사각형 및 원형) 전용 옵션 */}
+              {(el.type === 'border_rect' || el.type === 'border_circle') && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-semibold text-gray-400">테두리 선 스타일</label>
+                    <select 
+                      value={elementEditBorderStyle}
+                      onChange={e => setElementEditBorderStyle(e.target.value as any)}
+                      className={`px-3 py-2 rounded-lg border outline-none cursor-pointer ${
+                        isDark ? 'bg-[#1E1F22] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-black'
+                      }`}
+                    >
+                      <option value="solid">━━━━ 실선 (Solid)</option>
+                      <option value="dashed">╍╍╍╍ 파선 (Dashed)</option>
+                      <option value="dotted">•••• 점선 (Dotted)</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="font-semibold text-gray-400">테두리 두께 (px)</label>
+                    <div className="flex items-center gap-3">
+                      <input 
+                        type="range"
+                        min="1"
+                        max="10"
+                        step="1"
+                        value={elementEditBorderWidth}
+                        onChange={e => setElementEditBorderWidth(parseInt(e.target.value))}
+                        className="flex-1 h-1.5 bg-[#5E6AD2]/20 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
+                      />
+                      <span className="font-mono text-xs w-6 text-right">{elementEditBorderWidth}px</span>
+                    </div>
+                  </div>
+                </>
               )}
 
               {/* 색상 선택 */}
