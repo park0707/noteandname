@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ChevronRight, Layers, Plus, Move, Trash2, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
-  ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search
+  ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search,
+  PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
@@ -185,8 +186,8 @@ export default function WorldMap({
 
   // --- 사이드바 접기/펼치기 ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  // --- 타임라인 슬라이더 표시 여부 (사이드바 버튼으로 제어) ---
-  const [showTimeline, setShowTimeline] = useState(false);
+  // --- 헤더 탭 선택 상태 (null이면 서브패널 닫힘) ---
+  const [activeHeaderTab, setActiveHeaderTab] = useState<'draw' | 'settings' | 'timeline' | 'measure' | null>('draw');
   // --- 지도 계층 트리 폴더 접기/펼치기 상태 ---
   const [mapExpandedFolderIds, setMapExpandedFolderIds] = useState<string[]>(['root']);
 
@@ -1142,329 +1143,127 @@ export default function WorldMap({
         <div className={`${sidebarCollapsed ? 'w-0 overflow-hidden' : 'w-72'} shrink-0 border-r flex flex-col justify-between transition-all duration-200 ${
           isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
         }`}>
-          <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1">
-
-          {/* 그리기 모드 컨트롤 */}
-          <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-2">캔버스 드로잉 도구</span>
-            <div className="grid grid-cols-2 gap-2">
-              <button 
-                onClick={() => { setEditMode('select'); setTempPoints([]); }}
-                className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                  editMode === 'select' ? 'bg-[#5E6AD2] text-white' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05]'
-                }`}
-              >
-                <Sparkles className="w-3.5 h-3.5" /> 선택/편집
-              </button>
-              <button 
-                onClick={() => { setEditMode('pan'); setTempPoints([]); }}
-                className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                  editMode === 'pan' ? 'bg-[#5E6AD2] text-white' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05]'
-                }`}
-              >
-                <Move className="w-3.5 h-3.5" /> 이동/손바닥
-              </button>
-              <button 
-                onClick={() => { setEditMode('draw_polygon'); setTempPoints([]); }}
-                className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                  editMode === 'draw_polygon' ? 'bg-[#5E6AD2] text-white' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05]'
-                }`}
-              >
-                <Layers className="w-3.5 h-3.5" /> 세력권(영역)
-              </button>
-              <button 
-                onClick={() => { setEditMode('add_pin'); setTempPoints([]); }}
-                className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                  editMode === 'add_pin' ? 'bg-[#5E6AD2] text-white' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05]'
-                }`}
-              >
-                <MapPin className="w-3.5 h-3.5" /> 핀 거점 추가
-              </button>
-              <button 
-                onClick={() => { setEditMode('draw_route'); setTempPoints([]); }}
-                className={`col-span-2 p-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
-                  editMode === 'draw_route' ? 'bg-[#5E6AD2] text-white' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05]'
-                }`}
-              >
-                <ChevronRight className="w-3.5 h-3.5" /> 국경/이동교역선 그리기
-              </button>
-              <button 
-                onClick={() => { setEditMode('draw_border_rect'); setTempPoints([]); }}
-                className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                  editMode === 'draw_border_rect' ? 'bg-[#5E6AD2] text-white' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05]'
-                }`}
-              >
-                <span className="w-3.5 h-3.5 border-2 border-current rounded-sm inline-block shrink-0" /> 사각 테두리
-              </button>
-              <button 
-                onClick={() => { setEditMode('draw_border_circle'); setTempPoints([]); }}
-                className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                  editMode === 'draw_border_circle' ? 'bg-[#5E6AD2] text-white' : 'bg-white/[0.03] border border-white/[0.06] hover:bg-white/[0.05]'
-                }`}
-              >
-                <span className="w-3.5 h-3.5 border-2 border-current rounded-full inline-block shrink-0" /> 원형 테두리
-              </button>
-            </div>
-
-            {/* 그리기 임시 상태에 따른 완료 버튼 */}
-            {tempPoints.length > 0 && (
-              <div className="flex gap-2 mt-2">
-                <button 
-                  onClick={() => setTempPoints([])}
-                  className="flex-1 py-1.5 rounded-lg bg-red-500/20 text-red-400 text-xs font-bold hover:bg-red-500/30"
+          <div className="p-4 flex flex-col gap-3 overflow-y-auto flex-1">
+            {/* 레이아웃 계층 트리 뷰 */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                  <Map className="w-3.5 h-3.5 text-[#7480E2]" />
+                  <span className="text-[11px] font-bold tracking-wide text-gray-400">레이아웃</span>
+                </div>
+                <button
+                  onClick={() => {
+                    setNewLayoutParentMapId('layout-root');
+                    setShowNewLayoutModal(true);
+                  }}
+                  className="p-1 rounded text-gray-500 hover:text-[#7480E2] hover:bg-[#5E6AD2]/10 transition-colors shrink-0"
+                  title="새 최상위 레이아웃 추가"
                 >
-                  초기화
-                </button>
-                <button 
-                  onClick={editMode === 'draw_polygon' ? finalizePolygon : finalizeRoute}
-                  className="flex-1 py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700"
-                >
-                  완료 ({tempPoints.length}점)
+                  <Plus className="w-3.5 h-3.5" />
                 </button>
               </div>
-            )}
-          </div>
 
-          <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
+              {/* 검색창 */}
+              <div className="relative mb-2">
+                <Search className="w-3 h-3 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500" />
+                <input 
+                  type="text"
+                  value={layoutSearchQuery}
+                  onChange={e => setLayoutSearchQuery(e.target.value)}
+                  placeholder="이름 검색..."
+                  className={`w-full pl-7 pr-3 py-1.5 rounded-lg text-xs outline-none border transition-all ${
+                    isDark 
+                      ? 'bg-white/[0.02] border-white/[0.08] text-white placeholder-gray-600 focus:border-[#5E6AD2]' 
+                      : 'bg-black/[0.01] border-black/[0.08] text-black placeholder-gray-400 focus:border-[#5E6AD2]'
+                  }`}
+                />
+              </div>
 
-          {/* 자석 스냅 & 잠금 장치 */}
-          <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-2">스냅 및 편집 보호</span>
-            <div className="flex flex-col gap-2 text-xs">
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold text-gray-400">격자 격자선(Grid) 켜기</span>
-                <input 
-                  type="checkbox" 
-                  checked={gridVisible} 
-                  onChange={e => setGridVisible(e.target.checked)}
-                  className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
-                />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold text-gray-400">격자 자석 스냅(Snap)</span>
-                <input 
-                  type="checkbox" 
-                  checked={gridSnapEnabled} 
-                  onChange={e => setGridSnapEnabled(e.target.checked)}
-                  className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
-                />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold text-gray-400">점간(Node) 자동 스냅</span>
-                <input 
-                  type="checkbox" 
-                  checked={pointSnapEnabled} 
-                  onChange={e => setPointSnapEnabled(e.target.checked)}
-                  className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
-                />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold text-gray-400">배경 지도 이미지 잠금</span>
-                <input 
-                  type="checkbox" 
-                  checked={lockLayers.background} 
-                  onChange={e => setLockLayers(prev => ({ ...prev, background: e.target.checked }))}
-                  className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
-                />
-              </label>
-            </div>
-          </div>
+              <div className={`flex flex-col gap-0.5 max-h-full overflow-y-auto rounded-xl p-1.5 ${
+                isDark ? 'bg-black/20 border border-white/[0.06]' : 'bg-black/[0.02] border border-black/[0.06]'
+              }`}>
+                {buildFlatTree()
+                  .filter(node => !layoutSearchQuery || node.name.toLowerCase().includes(layoutSearchQuery.toLowerCase()))
+                  .map(node => {
+                  const isFolder = node.type === 'root' || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '');
+                  const isExpanded = mapExpandedFolderIds.includes(node.id);
+                  const isCurrentMap = (node.id === 'root' && currentMapId === 'root') || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '' && node.childMapId === currentMapId);
+                  const isSelectedElement = selectedElementId === node.id;
+                  
+                  let icon = '📍';
+                  if (node.type === 'root') {
+                    icon = isExpanded ? '📂' : '📁';
+                  } else if (node.childMapId && node.childMapId !== '') {
+                    icon = isExpanded ? '📂' : '📁';
+                  } else if (node.type === 'polygon') {
+                    icon = '▰';
+                  } else if (node.type === 'route') {
+                    icon = '⏂';
+                  } else if (node.type === 'border_rect') {
+                    icon = '□';
+                  } else if (node.type === 'border_circle') {
+                    icon = '○';
+                  }
 
-          <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
-
-          {/* 레이어 가시성 컨트롤 */}
-          <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-2">지도 표시 레이어</span>
-            <div className="flex flex-col gap-2 text-xs">
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold text-gray-400">자연 지형 레이어</span>
-                <input 
-                  type="checkbox" 
-                  checked={layerVisibility.terrain} 
-                  onChange={e => setLayerVisibility(prev => ({ ...prev, terrain: e.target.checked }))}
-                  className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
-                />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold text-gray-400">정치 세력권/국경 레이어</span>
-                <input 
-                  type="checkbox" 
-                  checked={layerVisibility.political} 
-                  onChange={e => setLayerVisibility(prev => ({ ...prev, political: e.target.checked }))}
-                  className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
-                />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold text-gray-400">이동 교역로 레이어</span>
-                <input 
-                  type="checkbox" 
-                  checked={layerVisibility.routes} 
-                  onChange={e => setLayerVisibility(prev => ({ ...prev, routes: e.target.checked }))}
-                  className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
-                />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold text-gray-400">인물 위치 마커</span>
-                <input 
-                  type="checkbox" 
-                  checked={layerVisibility.characters} 
-                  onChange={e => setLayerVisibility(prev => ({ ...prev, characters: e.target.checked }))}
-                  className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
-                />
-              </label>
-              <label className="flex items-center justify-between cursor-pointer">
-                <span className="font-semibold text-gray-400">Fog of War (안개 마스킹)</span>
-                <input 
-                  type="checkbox" 
-                  checked={fogVisible} 
-                  onChange={e => setFogVisible(e.target.checked)}
-                  className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
-                />
-              </label>
-            </div>
-          </div>
-
-          <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
-
-          {/* 전체 지도 레이아웃 계층 트리 뷰 */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block">레이아웃</span>
-              <button
-                onClick={() => {
-                  setNewLayoutParentMapId('layout-root');
-                  setShowNewLayoutModal(true);
-                }}
-                className="p-1 rounded text-gray-500 hover:text-[#7480E2] hover:bg-[#5E6AD2]/10 transition-colors shrink-0"
-                title="새 최상위 레이아웃 추가"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {/* 검색창 */}
-            <div className="relative mb-2">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-              <input 
-                type="text"
-                value={layoutSearchQuery}
-                onChange={e => setLayoutSearchQuery(e.target.value)}
-                placeholder="레이아웃/요소 이름 검색..."
-                className={`w-full pl-8 pr-3 py-1.5 rounded-lg text-xs outline-none border transition-all ${
-                  isDark 
-                    ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' 
-                    : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'
-                }`}
-              />
-            </div>
-
-            <div className={`flex flex-col gap-0.5 max-h-64 overflow-y-auto rounded-lg p-1.5 ${
-              isDark ? 'bg-black/20 border border-white/[0.06]' : 'bg-black/[0.02] border border-black/[0.06]'
-            }`}>
-              {buildFlatTree()
-                .filter(node => !layoutSearchQuery || node.name.toLowerCase().includes(layoutSearchQuery.toLowerCase()))
-                .map(node => {
-                const isFolder = node.type === 'root' || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '');
-                const isExpanded = mapExpandedFolderIds.includes(node.id);
-                const isCurrentMap = (node.id === 'root' && currentMapId === 'root') || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '' && node.childMapId === currentMapId);
-                const isSelectedElement = selectedElementId === node.id;
-                
-                let icon = '📍';
-                if (node.type === 'root') {
-                  icon = isExpanded ? '📂' : '📁';
-                } else if (node.childMapId && node.childMapId !== '') {
-                  icon = isExpanded ? '📂' : '📁';
-                } else if (node.type === 'polygon') {
-                  icon = '▰';
-                } else if (node.type === 'route') {
-                  icon = '⏂';
-                } else if (node.type === 'border_rect') {
-                  icon = '□';
-                } else if (node.type === 'border_circle') {
-                  icon = '○';
-                }
-
-                return (
-                  <div
-                    key={node.id}
-                    onClick={() => handleTreeNodeClick(node)}
-                    style={{ paddingLeft: `${node.depth * 12 + 6}px` }}
-                    className={`flex items-center justify-between py-1 px-2 rounded text-xs cursor-pointer transition-all duration-150 ${
-                      isCurrentMap 
-                        ? (isDark ? 'bg-[#5E6AD2]/30 text-white border-l-2 border-[#7480E2]' : 'bg-[#5E6AD2]/15 text-[#5E6AD2] border-l-2 border-[#5E6AD2]')
-                        : isSelectedElement
-                          ? 'bg-[#5E6AD2]/15 text-[#7480E2] font-semibold'
-                          : isDark ? 'hover:bg-white/[0.04] text-gray-300' : 'hover:bg-black/[0.04] text-gray-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1 min-w-0 flex-1">
-                      {isFolder ? (
+                  return (
+                    <div
+                      key={node.id}
+                      onClick={() => handleTreeNodeClick(node)}
+                      style={{ paddingLeft: `${node.depth * 12 + 6}px` }}
+                      className={`flex items-center justify-between py-1 px-2 rounded text-xs cursor-pointer transition-all duration-150 ${
+                        isCurrentMap 
+                          ? (isDark ? 'bg-[#5E6AD2]/30 text-white border-l-2 border-[#7480E2]' : 'bg-[#5E6AD2]/15 text-[#5E6AD2] border-l-2 border-[#5E6AD2]')
+                          : isSelectedElement
+                            ? 'bg-[#5E6AD2]/15 text-[#7480E2] font-semibold'
+                            : isDark ? 'hover:bg-white/[0.04] text-gray-300' : 'hover:bg-black/[0.04] text-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1 min-w-0 flex-1">
+                        {isFolder ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMapExpandedFolderIds(prev => 
+                                prev.includes(node.id) ? prev.filter(item => item !== node.id) : [...prev, node.id]
+                              );
+                            }}
+                            className="p-0.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors shrink-0"
+                          >
+                            <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
+                          </button>
+                        ) : (
+                          <div className="w-4.5 h-4.5 shrink-0" />
+                        )}
+                        
+                        <span className="shrink-0 text-[11px] ml-0.5">{icon}</span>
+                        <span className={`truncate ${isCurrentMap ? 'font-bold' : ''}`}>
+                          {node.name || '이름 없음'}
+                        </span>
+                      </div>
+                      {isFolder && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setMapExpandedFolderIds(prev => 
-                              prev.includes(node.id) ? prev.filter(item => item !== node.id) : [...prev, node.id]
-                            );
+                            setNewLayoutParentMapId(node.id === 'root' ? 'root' : node.childMapId!);
+                            setShowNewLayoutModal(true);
                           }}
-                          className="p-0.5 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors shrink-0"
+                          className="p-1 rounded text-gray-600 hover:text-[#7480E2] hover:bg-[#5E6AD2]/10 transition-colors shrink-0"
+                          title="새 하위 레이아웃 추가"
                         >
-                          <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
+                          <Plus className="w-3 h-3" />
                         </button>
-                      ) : (
-                        <div className="w-4.5 h-4.5 shrink-0" />
                       )}
-                      
-                      <span className="shrink-0 text-[11px] ml-0.5">{icon}</span>
-                      <span className={`truncate ${isCurrentMap ? 'font-bold' : ''}`}>
-                        {node.name || '이름 없음'}
-                      </span>
+                      {node.childMapId && node.childMapId !== '' && (
+                        <span className="text-[9px] text-[#7480E2] opacity-60 font-semibold uppercase shrink-0">
+                          지도
+                        </span>
+                      )}
                     </div>
-                    {isFolder && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setNewLayoutParentMapId(node.id === 'root' ? 'root' : node.childMapId!);
-                          setShowNewLayoutModal(true);
-                        }}
-                        className="p-1 rounded text-gray-500 hover:text-[#7480E2] hover:bg-[#5E6AD2]/10 transition-colors shrink-0 mr-1"
-                        title="새 하위 레이아웃 추가"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {node.childMapId && node.childMapId !== '' && (
-                      <span className="text-[9px] text-[#7480E2] opacity-60 font-semibold uppercase shrink-0">
-                        지도
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
-
-          <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
-
-          {/* 히스토리 타임라인 표시 토글 */}
-          <div>
-            <span className="text-[10px] uppercase font-bold tracking-wider text-gray-500 block mb-2">역사 시점 타임라인</span>
-            <button
-              onClick={() => setShowTimeline(!showTimeline)}
-              className={`w-full p-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all border ${
-                showTimeline
-                  ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white'
-                  : isDark ? 'bg-white/[0.03] border-white/[0.06] text-gray-400 hover:bg-white/[0.06]' : 'bg-black/[0.02] border-black/[0.08] text-gray-500 hover:bg-black/[0.05]'
-              }`}
-            >
-              🕰️ {showTimeline ? '히스토리 숨기기' : '히스토리 보이기'}
-            </button>
-            {showTimeline && (
-              <p className={`mt-1.5 text-[10px] text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                현재 시점: <span className="text-[#7480E2] font-bold">{currentSnapshot.date}</span>
-              </p>
-            )}
-          </div>
-        </div>
         </div>
         {/* 사이드바 접기/펼치기 토글 버튼 */}
         <button
@@ -1481,135 +1280,244 @@ export default function WorldMap({
       {/* 중앙 메인 캔버스 뷰 (flex-1) */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         
-        {/* 상단 캔버스 보조 툴바 */}
-        <div className={`px-6 py-2 border-b flex items-center justify-between gap-4 shrink-0 ${
-          isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
-        }`}>
-          <div className="flex items-center gap-4 text-xs font-semibold">
-            <span>도구 모드: <span className="text-[#7480E2] font-bold">
-              {editMode === 'select' && '🖱️ 선택/꼭짓점 드래그 수정'}
-              {editMode === 'pan' && '🤚 패닝 이동'}
-              {editMode === 'draw_polygon' && '🖋️ 영역 그리기'}
-              {editMode === 'add_pin' && '📍 핀 거점 꼽기'}
-              {editMode === 'draw_route' && '⏂ 국경/교역선 그리기'}
-              {editMode === 'measure' && '📏 스케일 거리 측정'}
-              {editMode === 'draw_border_rect' && '□ 사각 테두리 드래그'}
-              {editMode === 'draw_border_circle' && '○ 원형 테두리 드래그'}
-            </span></span>
+        {/* ═══ 상단 헤더 ═══ */}
+        <div className={`shrink-0 border-b ${isDark ? 'bg-[#0E0F12] border-white/[0.08]' : 'bg-white border-black/[0.08]'}`}>
+
+          {/* 1행: 탭 버튼 + 우측 고정 액션 */}
+          <div className={`px-4 flex items-center justify-between gap-2 border-b h-12 ${isDark ? 'border-white/[0.05]' : 'border-black/[0.05]'}`}>
+            {/* 탭 버튼 그룹 */}
+            <div className="flex items-center gap-1">
+              {([
+                { id: 'draw',     Icon: PenTool,   label: '도구'   },
+                { id: 'settings', Icon: Settings2,  label: '설정'   },
+                { id: 'timeline', Icon: History,    label: '시점'   },
+                { id: 'measure',  Icon: Ruler,      label: '측정'   },
+              ] as const).map(({ id, Icon, label }) => {
+                const isActive = activeHeaderTab === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setActiveHeaderTab(prev => prev === id ? null : id)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 ${
+                      isActive
+                        ? 'bg-[#5E6AD2] text-white shadow-md shadow-[#5E6AD2]/25'
+                        : isDark
+                          ? 'text-gray-400 hover:text-white hover:bg-white/[0.06]'
+                          : 'text-gray-500 hover:text-gray-800 hover:bg-black/[0.05]'
+                    }`}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 우측 고정: 현재 도구 표시 + Zoom + Undo/Redo + 내보내기 */}
+            <div className="flex items-center gap-2">
+              <span className={`text-[11px] font-semibold hidden md:flex items-center gap-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                {editMode === 'select' && <><Sparkles className="w-3 h-3 text-[#7480E2]" /> 선택/꼭짓점 수정</>}
+                {editMode === 'pan' && <><Move className="w-3 h-3 text-[#7480E2]" /> 패닝 이동</>}
+                {editMode === 'draw_polygon' && <><Layers className="w-3 h-3 text-[#7480E2]" /> 영역 그리기</>}
+                {editMode === 'add_pin' && <><MapPin className="w-3 h-3 text-[#7480E2]" /> 핀 거점 추가</>}
+                {editMode === 'draw_route' && <><ChevronRight className="w-3 h-3 text-[#7480E2]" /> 국경/이동선 그리기</>}
+                {editMode === 'measure' && <><Ruler className="w-3 h-3 text-[#7480E2]" /> 거리 측정</>}
+                {editMode === 'draw_border_rect' && <><span className="border border-current rounded-sm inline-block w-3 h-3 shrink-0 text-[#7480E2]" /> 사각 테두리</>}
+                {editMode === 'draw_border_circle' && <><span className="border border-current rounded-full inline-block w-3 h-3 shrink-0 text-[#7480E2]" /> 원형 테두리</>}
+              </span>
+              <div className={`w-px h-4 ${isDark ? 'bg-white/10' : 'bg-black/10'} hidden md:block`} />
+              <div className={`flex items-center rounded-xl overflow-hidden text-xs border ${isDark ? 'border-white/[0.08] bg-black/20' : 'border-black/[0.08]'}`}>
+                <button onClick={() => setZoom(prev => Math.max(0.4, prev - 0.2))} className={`p-1.5 transition-colors ${isDark ? 'hover:bg-white/[0.06] text-gray-400 hover:text-white' : 'hover:bg-black/[0.04] text-gray-500'}`}><ZoomOut className="w-3.5 h-3.5" /></button>
+                <span className="px-2 font-mono text-[10px] font-bold text-[#7480E2]">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => setZoom(prev => Math.min(4, prev + 0.2))} className={`p-1.5 transition-colors ${isDark ? 'hover:bg-white/[0.06] text-gray-400 hover:text-white' : 'hover:bg-black/[0.04] text-gray-500'}`}><ZoomIn className="w-3.5 h-3.5" /></button>
+              </div>
+              <button onClick={handleUndo} disabled={undoStack.length === 0} title="실행 취소 (Ctrl+Z)" className={`p-1.5 rounded-lg border transition-colors ${undoStack.length === 0 ? 'opacity-30 cursor-not-allowed border-gray-500/20 text-gray-500' : isDark ? 'border-white/[0.08] hover:bg-white/[0.06] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}><RotateCcw className="w-3.5 h-3.5" /></button>
+              <button onClick={handleRedo} disabled={redoStack.length === 0} title="다시 실행 (Ctrl+Y)" className={`p-1.5 rounded-lg border transition-colors ${redoStack.length === 0 ? 'opacity-30 cursor-not-allowed border-gray-500/20 text-gray-500' : isDark ? 'border-white/[0.08] hover:bg-white/[0.06] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}><RotateCw className="w-3.5 h-3.5" /></button>
+              <button onClick={handleExportMap} className="p-1.5 px-3 rounded-xl bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-lg shadow-[#5E6AD2]/20"><Download className="w-3.5 h-3.5" />내보내기</button>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button 
-              onClick={() => { setEditMode('measure'); setMeasurePoints([]); }}
-              className={`p-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
-                editMode === 'measure' ? 'bg-[#5E6AD2] border-none text-white' : (isDark ? 'border-white/[0.08] hover:bg-white/[0.04]' : 'border-black/[0.08] hover:bg-black/[0.04]')
-              }`}
-              title="지도상 거리 계산"
-            >
-              📏 거리 측정
-            </button>
-            <div className="flex items-center border border-white/[0.08] rounded-lg overflow-hidden bg-black/20 text-xs">
-              <button 
-                onClick={() => setZoom(prev => Math.max(0.4, prev - 0.2))}
-                className="p-1.5 hover:bg-white/[0.04] text-gray-400 hover:text-white"
-              >
-                <ZoomOut className="w-3.5 h-3.5" />
-              </button>
-              <span className="px-2 font-mono text-[10px] text-gray-400 font-bold">{Math.round(zoom * 100)}%</span>
-              <button 
-                onClick={() => setZoom(prev => Math.min(4, prev + 0.2))}
-                className="p-1.5 hover:bg-white/[0.04] text-gray-400 hover:text-white"
-              >
-                <ZoomIn className="w-3.5 h-3.5" />
-              </button>
+          {/* 2행: 탭 내용 패널 (조건부 렌더링) */}
+          {activeHeaderTab && (
+            <div className={`px-4 py-2.5 flex items-center gap-4 flex-wrap animate-in slide-in-from-top-1 duration-150 ${isDark ? 'bg-white/[0.01]' : 'bg-black/[0.01]'}`}>
+
+              {/* ── 도구 탭 ── */}
+              {activeHeaderTab === 'draw' && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    { mode: 'select',           Icon: Sparkles,   label: '선택/편집' },
+                    { mode: 'pan',              Icon: Move,       label: '이동/손바닥' },
+                    { mode: 'add_pin',          Icon: MapPin,     label: '핀 거점' },
+                    { mode: 'draw_polygon',     Icon: Layers,     label: '세력권(영역)' },
+                    { mode: 'draw_route',       Icon: ChevronRight, label: '국경/이동교역선' },
+                  ].map(({ mode, Icon, label }) => (
+                    <button
+                      key={mode}
+                      onClick={() => { setEditMode(mode as typeof editMode); setTempPoints([]); }}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 ${
+                        editMode === mode
+                          ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-sm'
+                          : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />{label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => { setEditMode('draw_border_rect'); setTempPoints([]); }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 ${editMode === 'draw_border_rect' ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-sm' : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'}`}
+                  >
+                    <span className="w-3.5 h-3.5 border-2 border-current rounded-sm inline-block shrink-0" /> 사각 테두리
+                  </button>
+                  <button
+                    onClick={() => { setEditMode('draw_border_circle'); setTempPoints([]); }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 ${editMode === 'draw_border_circle' ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-sm' : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'}`}
+                  >
+                    <span className="w-3.5 h-3.5 border-2 border-current rounded-full inline-block shrink-0" /> 원형 테두리
+                  </button>
+                  
+                  {/* 완료/초기화 (드로잉 중일 때만 노출) */}
+                  {tempPoints.length > 0 && (
+                    <>
+                      <div className={`w-px h-5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+                      <button onClick={() => setTempPoints([])} className="px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors">초기화</button>
+                      <button onClick={editMode === 'draw_polygon' ? finalizePolygon : finalizeRoute} className="px-2.5 py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition-colors">완료 ({tempPoints.length}점)</button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ── 설정 탭 ── */}
+              {activeHeaderTab === 'settings' && (
+                <div className="flex items-center gap-4 flex-wrap text-xs">
+                  {/* 스냅 & 편집 보호 */}
+                  <div className="flex items-center gap-1.5">
+                    {[
+                      { Icon: Grid3X3, label: '격자선(Grid) 표시', checked: gridVisible, onChange: setGridVisible },
+                      { Icon: Magnet, label: '격자 자석 스냅', checked: gridSnapEnabled, onChange: setGridSnapEnabled },
+                      { Icon: Magnet, label: '점간(Node) 자동 스냅', checked: pointSnapEnabled, onChange: setPointSnapEnabled },
+                      { Icon: Lock, label: '배경 이미지 잠금', checked: lockLayers.background, onChange: (v: boolean) => setLockLayers(prev => ({ ...prev, background: v })) },
+                    ].map(({ Icon, label, checked, onChange }) => (
+                      <button
+                        key={label}
+                        onClick={() => onChange(!checked)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 ${
+                          checked
+                            ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
+                            : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" />{label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className={`w-px h-5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+                  {/* 레이어 표시 토글 */}
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-bold ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>표시 레이어:</span>
+                    {[
+                      { label: '자연 지형', checked: layerVisibility.terrain, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, terrain: v })) },
+                      { label: '정치/국경', checked: layerVisibility.political, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, political: v })) },
+                      { label: '이동 교역로', checked: layerVisibility.routes, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, routes: v })) },
+                      { label: '인물 위치', checked: layerVisibility.characters, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, characters: v })) },
+                      { label: '안개(Fog)', checked: fogVisible, onChange: setFogVisible },
+                    ].map(({ label, checked, onChange }) => (
+                      <button
+                        key={label}
+                        onClick={() => onChange(!checked)}
+                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border transition-all duration-150 ${
+                          checked
+                            ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
+                            : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
+                        }`}
+                      >
+                        {checked ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── 시점 탭 ── */}
+              {activeHeaderTab === 'timeline' && (
+                <div className="flex items-center gap-4 flex-1 min-w-0">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <History className="w-3.5 h-3.5 text-[#7480E2]" />
+                    <span className={`text-xs font-bold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{currentSnapshot.name}</span>
+                    <span className={`text-[11px] font-medium ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>({currentSnapshot.date})</span>
+                  </div>
+                  <div className="flex-1 min-w-[120px] max-w-[320px]">
+                    <input
+                      type="range"
+                      min="0"
+                      max={snapshots.length - 1}
+                      step="1"
+                      value={activeSnapshotIdx}
+                      onChange={e => {
+                        const idx = parseInt(e.target.value);
+                        const nextSnap = snapshots[idx];
+                        if (nextSnap) setActiveSnapshotId(nextSnap.id);
+                      }}
+                      className="w-full h-1.5 bg-[#5E6AD2]/20 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
+                    />
+                    <div className="flex justify-between text-[9px] font-bold mt-1 text-gray-500 overflow-hidden">
+                      {snapshots.map((snap) => (
+                        <span
+                          key={snap.id}
+                          className={`cursor-pointer hover:text-[#7480E2] transition-colors truncate max-w-[80px] ${snap.id === activeSnapshotId ? 'text-[#7480E2] underline font-bold' : ''}`}
+                          onClick={() => setActiveSnapshotId(snap.id)}
+                        >
+                          {snap.name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowNewSnapshotModal(true)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#5E6AD2]/10 hover:bg-[#5E6AD2]/20 text-[#7480E2] text-xs font-bold transition-colors border border-[#5E6AD2]/20 shrink-0"
+                  >
+                    <Plus className="w-3 h-3" /> 새 시점 추가
+                  </button>
+                  {currentSnapshot.description && (
+                    <div className={`px-3 py-1.5 rounded-lg border text-[11px] truncate max-w-sm hidden lg:block ${isDark ? 'bg-black/25 border-white/[0.06] text-gray-400' : 'bg-black/[0.02] border-black/[0.06] text-gray-500'}`}>
+                      {currentSnapshot.description}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── 측정 탭 ── */}
+              {activeHeaderTab === 'measure' && (
+                <div className="flex items-center gap-3 text-xs">
+                  <button
+                    onClick={() => { setEditMode('measure'); setMeasurePoints([]); }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border font-semibold transition-all duration-150 ${
+                      editMode === 'measure'
+                        ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white'
+                        : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'
+                    }`}
+                  >
+                    <Ruler className="w-3.5 h-3.5" /> 거리 측정 모드 활성화
+                  </button>
+                  {measurePoints.length > 1 && (
+                    <span className={`font-bold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {calculateDistanceInfo()}
+                    </span>
+                  )}
+                  {measurePoints.length > 0 && (
+                    <button onClick={() => setMeasurePoints([])} className="px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors">측정 초기화</button>
+                  )}
+                </div>
+              )}
+
             </div>
-            <button 
-              onClick={handleUndo}
-              disabled={undoStack.length === 0}
-              className={`p-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
-                undoStack.length === 0 
-                  ? 'opacity-40 cursor-not-allowed border-gray-500/20 text-gray-500' 
-                  : (isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-200' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-700')
-              }`}
-              title="실행 취소 (Ctrl+Z)"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-            <button 
-              onClick={handleRedo}
-              disabled={redoStack.length === 0}
-              className={`p-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors ${
-                redoStack.length === 0 
-                  ? 'opacity-40 cursor-not-allowed border-gray-500/20 text-gray-500' 
-                  : (isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-200' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-700')
-              }`}
-              title="다시 실행 (Ctrl+Y)"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-            </button>
-            <button 
-              onClick={handleExportMap}
-              className="p-1.5 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-bold flex items-center gap-1 transition-colors"
-            >
-              <Download className="w-3.5 h-3.5" /> 내보내기
-            </button>
-          </div>
+          )}
         </div>
 
-        {/* 상단 시점 타임라인 슬라이더 바 — 사이드바 히스토리 버튼으로 제어 */}
-        {showTimeline && (
-          <div className={`border-b shrink-0 select-none ${isDark ? 'bg-[#0E0F12] border-white/[0.08]' : 'bg-white border-black/[0.08]'}`}>
-            <div className="px-4 py-2 flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span className={`font-semibold ${isDark ? 'text-[#EDEDEF]' : 'text-[#121316]'}`}>🕰️ 역사 시점 슬라이더</span>
-                <span className="text-[#5E6AD2] font-bold">({currentSnapshot.date})</span>
-              </div>
-              <button
-                onClick={() => setShowNewSnapshotModal(true)}
-                className="p-1 px-2 rounded bg-[#5E6AD2]/10 hover:bg-[#5E6AD2]/20 text-[#7480E2] text-[10px] font-bold flex items-center gap-1 transition-colors"
-              >
-                <Plus className="w-3 h-3" /> 새 사건 시점 추가
-              </button>
-            </div>
-            <div className="px-4 pb-3 flex flex-col gap-2">
-              <div className="relative">
-                <input
-                  type="range"
-                  min="0"
-                  max={snapshots.length - 1}
-                  step="1"
-                  value={activeSnapshotIdx}
-                  onChange={e => {
-                    const idx = parseInt(e.target.value);
-                    const nextSnap = snapshots[idx];
-                    if (nextSnap) setActiveSnapshotId(nextSnap.id);
-                  }}
-                  className="w-full h-2 bg-[#5E6AD2]/20 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
-                />
-                <div className="flex justify-between text-[9px] font-bold mt-1.5 text-gray-500">
-                  {snapshots.map((snap) => (
-                    <span
-                      key={snap.id}
-                      className={`cursor-pointer hover:text-[#7480E2] transition-colors ${
-                        snap.id === activeSnapshotId ? 'text-[#7480E2] underline' : ''
-                      }`}
-                      onClick={() => setActiveSnapshotId(snap.id)}
-                    >
-                      {snap.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className={`px-3 py-2 rounded-xl border text-xs flex items-center gap-3 ${
-                isDark ? 'bg-black/25 border-white/[0.06]' : 'bg-black/[0.02] border-black/[0.06]'
-              }`}>
-                <span className="text-[#7480E2] font-bold shrink-0">🎬 시점 요약</span>
-                <span className={`font-semibold shrink-0 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{currentSnapshot.name}</span>
-                <span className={`truncate ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{currentSnapshot.description}</span>
-              </div>
-            </div>
-          </div>
-        )}
+
 
         {/* 캔버스 드로잉 물리 보드 */}
         <div 
