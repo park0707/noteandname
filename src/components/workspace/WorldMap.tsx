@@ -283,6 +283,23 @@ export default function WorldMap({
   // References
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
+  // 마우스 휠(휠클릭) 브라우저 기본 기능(자동 스크롤 등) 방지
+  useEffect(() => {
+    const canvas = canvasContainerRef.current;
+    if (!canvas) return;
+
+    const handleNativeMouseDown = (e: MouseEvent) => {
+      if (e.button === 1) {
+        e.preventDefault(); // 마우스 휠 클릭시 자동 스크롤 모드 진입 차단
+      }
+    };
+
+    canvas.addEventListener('mousedown', handleNativeMouseDown, { passive: false });
+    return () => {
+      canvas.removeEventListener('mousedown', handleNativeMouseDown);
+    };
+  }, []);
+
   // --- LocalStorage key helpers ---
   const getStorageKeys = useCallback(() => ({
     elementKey: `novelflow_worldmap_elements_${selectedProject.id}`,
