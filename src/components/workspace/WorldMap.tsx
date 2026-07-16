@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  ChevronRight, Layers, Plus, Move, Trash2, 
+  ChevronRight, ChevronDown, ChevronsLeft, ChevronsRight, Layers, Plus, Move, Trash2, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search,
   PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map
@@ -22,7 +22,7 @@ export interface MapSnapshot {
 export interface MapElement {
   id: string;
   name: string;
-  type: 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle';
+  type: 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group';
   parentMapId: string; // 계층 구조 연동을 위함 (기본 'root')
   
   // Pin 전용 속성
@@ -113,6 +113,18 @@ export default function WorldMap({
   // --- 지도 요소 데이터 ---
   const [elements, setElements] = useState<MapElement[]>([]);
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
+  const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
+
+  // 마키/선택 상자 드래그 상태
+  const [selectionBoxStart, setSelectionBoxStart] = useState<{ x: number; y: number } | null>(null);
+  const [selectionBoxCurrent, setSelectionBoxCurrent] = useState<{ x: number; y: number } | null>(null);
+
+  // 요소 드래그 이동 상태
+  const [isDraggingElements, setIsDraggingElements] = useState(false);
+  const [elementDragStartCoords, setElementDragStartCoords] = useState<{ x: number; y: number } | null>(null);
+  const [dragInitialElementsCoords, setDragInitialElementsCoords] = useState<Record<string, { x: number; y: number; points?: Array<{ x: number; y: number }> }>>({});
+  const [preDragElements, setPreDragElements] = useState<MapElement[] | null>(null);
+  const [hasMovedDuringDrag, setHasMovedDuringDrag] = useState(false);
   
   // --- 타임라인 스냅샷 상태 ---
   const [snapshots, setSnapshots] = useState<MapSnapshot[]>([
@@ -255,7 +267,177 @@ export default function WorldMap({
     setCharacterPositions(nextEntry.characterPositions);
   }, [redoStack, elements, characterPositions]);
 
-  // Ctrl+Z / Ctrl+Y 단축키 연동
+  // --- 복수 선택 / 그룹화 유틸리티 함수들 ---
+  const selectSingleElement = useCallback((id: string | null) => {
+    setSelectedElementId(id);
+    setSelectedElementIds(id ? [id] : []);
+  }, []);
+
+  const toggleElementSelection = useCallback((id: string) => {
+    setSelectedElementIds(prev => {
+      const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      setSelectedElementId(next.length > 0 ? next[next.length - 1] : null);
+      return next;
+    });
+  }, []);
+
+  const getTopLevelGroupOrElement = useCallback((id: string): string => {
+    let currentId = id;
+    while (true) {
+      const el = elements.find(item => item.id === currentId);
+      if (!el) break;
+      const parent = elements.find(p => p.id === el.parentMapId && p.type === 'group');
+      if (parent) {
+        currentId = parent.id;
+      } else {
+        break;
+      }
+    }
+    return currentId;
+  }, [elements]);
+
+  const collectAllMemberElements = useCallback((ids: string[]): MapElement[] => {
+    const list: MapElement[] = [];
+    const visited = new Set<string>();
+    
+    const visit = (id: string) => {
+      if (visited.has(id)) return;
+      visited.add(id);
+      const el = elements.find(item => item.id === id);
+      if (!el) return;
+      
+      list.push(el);
+      if (el.type === 'group') {
+        const children = elements.filter(child => child.parentMapId === el.id);
+        children.forEach(child => visit(child.id));
+      }
+    };
+    
+    ids.forEach(visit);
+    return list;
+  }, [elements]);
+
+  const isElementSelected = useCallback((id: string): boolean => {
+    if (selectedElementIds.includes(id)) return true;
+    
+    let currentId = id;
+    while (true) {
+      const el = elements.find(item => item.id === currentId);
+      if (!el) break;
+      if (selectedElementIds.includes(el.parentMapId)) return true;
+      currentId = el.parentMapId;
+    }
+    return false;
+  }, [selectedElementIds, elements]);
+
+  const getAllActiveElementsForMap = useCallback((mapId: string): MapElement[] => {
+    const directElements = elements.filter(el => el.parentMapId === mapId);
+    const all: MapElement[] = [];
+    
+    const collect = (el: MapElement) => {
+      all.push(el);
+      if (el.type === 'group') {
+        const children = elements.filter(child => child.parentMapId === el.id);
+        children.forEach(collect);
+      }
+    };
+    
+    directElements.forEach(collect);
+    return all;
+  }, [elements]);
+
+  const getElementsInSelectionBox = useCallback((
+    start: { x: number; y: number },
+    current: { x: number; y: number }
+  ): string[] => {
+    const x1 = Math.min(start.x, current.x);
+    const y1 = Math.min(start.y, current.y);
+    const x2 = Math.max(start.x, current.x);
+    const y2 = Math.max(start.y, current.y);
+
+    const activeEls = getAllActiveElementsForMap(currentMapId);
+    const selected: string[] = [];
+
+    activeEls.forEach(el => {
+      if (el.type === 'pin') {
+        const x = el.x || 0;
+        const y = el.y || 0;
+        if (x >= x1 && x <= x2 && y >= y1 && y <= y2) {
+          selected.push(el.id);
+        }
+      } else if (el.type === 'border_rect' || el.type === 'border_circle') {
+        const x = el.bx || 0;
+        const y = el.by || 0;
+        if (x >= x1 && x <= x2 && y >= y1 && y <= y2) {
+          selected.push(el.id);
+        }
+      } else if (el.points && el.points.length > 0) {
+        const anyPointInBox = el.points.some(p => p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2);
+        if (anyPointInBox) {
+          selected.push(el.id);
+        }
+      }
+    });
+
+    return selected;
+  }, [currentMapId, getAllActiveElementsForMap]);
+
+  const handleGroupElements = useCallback(() => {
+    if (selectedElementIds.length < 2) return;
+
+    pushHistory();
+
+    const groupId = `group-${Date.now()}`;
+    const groupName = `그룹 ${elements.filter(el => el.type === 'group').length + 1}`;
+
+    const newGroup: MapElement = {
+      id: groupId,
+      name: groupName,
+      type: 'group',
+      parentMapId: currentMapId,
+      tags: []
+    };
+
+    setElements(prev => {
+      const updated = prev.map(el => {
+        if (selectedElementIds.includes(el.id)) {
+          return {
+            ...el,
+            parentMapId: groupId
+          };
+        }
+        return el;
+      });
+      return [...updated, newGroup];
+    });
+
+    setMapExpandedFolderIds(prev => [...prev, groupId]);
+    selectSingleElement(groupId);
+  }, [selectedElementIds, elements, currentMapId, pushHistory, selectSingleElement]);
+
+  const getCursorClass = useCallback((): string => {
+    if (isPanning) return 'cursor-grabbing';
+    
+    switch (editMode) {
+      case 'select':
+        return 'cursor-default';
+      case 'pan':
+        return 'cursor-grab';
+      case 'draw_polygon':
+      case 'draw_route':
+      case 'draw_border_rect':
+      case 'draw_border_circle':
+        return 'cursor-crosshair';
+      case 'add_pin':
+        return 'cursor-cell';
+      case 'measure':
+        return 'cursor-help';
+      default:
+        return 'cursor-default';
+    }
+  }, [editMode, isPanning]);
+
+  // Ctrl+Z / Ctrl+Y / Ctrl+G 단축키 연동
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (
@@ -271,6 +453,9 @@ export default function WorldMap({
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         handleRedo();
+      } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        handleGroupElements();
       }
     };
 
@@ -278,7 +463,7 @@ export default function WorldMap({
     return () => {
       window.removeEventListener('keydown', handleGlobalKeyDown);
     };
-  }, [handleUndo, handleRedo]);
+  }, [handleUndo, handleRedo, handleGroupElements]);
 
   // References
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -474,7 +659,6 @@ export default function WorldMap({
     const y = (clientY - rect.top - pan.y) / zoom;
     return { x, y };
   };
-
   // --- 스냅(Snapping) 연산 함수 ---
   const applySnapping = (coords: { x: number; y: number }): { x: number; y: number } => {
     let result = { ...coords };
@@ -541,6 +725,53 @@ export default function WorldMap({
     setZoom(nextZoom);
   };
 
+  // --- 지도 요소 마우스 다운 (이동 드래그 시작) ---
+  const handleElementMouseDown = (e: React.MouseEvent, el: MapElement) => {
+    e.stopPropagation();
+    
+    if (editMode !== 'select') return;
+
+    // 상위 그룹이 있으면 그룹 전체를 선택/이동 대상으로 선정
+    const targetId = getTopLevelGroupOrElement(el.id);
+
+    // Ctrl / Shift 키 복수 선택 처리
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      toggleElementSelection(targetId);
+      return;
+    }
+
+    // 이미 선택된 복수 그룹에 포함되지 않은 경우 단일 선택으로 갱신
+    if (!isElementSelected(targetId)) {
+      selectSingleElement(targetId);
+    }
+    
+    // 요소 드래그 시작
+    setIsDraggingElements(true);
+    const canvasCoords = getCanvasCoords(e.clientX, e.clientY);
+    setElementDragStartCoords(canvasCoords);
+    setPreDragElements(JSON.parse(JSON.stringify(elements)));
+    setHasMovedDuringDrag(false);
+    
+    // 현재 선택된 모든 요소 및 해당 요소의 모든 하위 그룹 멤버 수집
+    const members = collectAllMemberElements(
+      selectedElementIds.includes(targetId) 
+        ? selectedElementIds 
+        : [...selectedElementIds, targetId]
+    );
+
+    const initialCoords: Record<string, { x: number; y: number; points?: Array<{ x: number; y: number }> }> = {};
+    members.forEach(item => {
+      if (item.type === 'pin') {
+        initialCoords[item.id] = { x: item.x || 0, y: item.y || 0 };
+      } else if (item.type === 'border_rect' || item.type === 'border_circle') {
+        initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0 };
+      } else if (item.points) {
+        initialCoords[item.id] = { x: 0, y: 0, points: JSON.parse(JSON.stringify(item.points)) };
+      }
+    });
+    setDragInitialElementsCoords(initialCoords);
+  };
+
   // --- 패닝 마우스 다운 핸들러 ---
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (editMode === 'pan' || e.button === 1 || e.button === 2) {
@@ -553,6 +784,17 @@ export default function WorldMap({
 
     const canvasClickCoords = getCanvasCoords(e.clientX, e.clientY);
     const snapped = applySnapping(canvasClickCoords);
+
+    // 선택/편집 모드 빈 공간 클릭 시 드래그 마키 선택 시작
+    if (editMode === 'select') {
+      const isShiftOrCtrl = e.shiftKey || e.ctrlKey || e.metaKey;
+      if (!isShiftOrCtrl) {
+        selectSingleElement(null);
+      }
+      setSelectionBoxStart(canvasClickCoords);
+      setSelectionBoxCurrent(canvasClickCoords);
+      return;
+    }
 
     // 테두리 드래그 시작 (mouseDown)
     if (editMode === 'draw_border_rect' || editMode === 'draw_border_circle') {
@@ -585,7 +827,7 @@ export default function WorldMap({
         tags: []
       };
       setElements(prev => [...prev, newPin]);
-      setSelectedElementId(newPinId);
+      selectSingleElement(newPinId);
       loadElementToEdit(newPin);
       setIsDetailOpen(true);
       setEditMode('select');
@@ -625,6 +867,49 @@ export default function WorldMap({
     const snapped = applySnapping(currentCoords);
     setHoveredPoint(snapped);
 
+    // 요소 전체 드래그 이동
+    if (isDraggingElements && elementDragStartCoords) {
+      const dx = currentCoords.x - elementDragStartCoords.x;
+      const dy = currentCoords.y - elementDragStartCoords.y;
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+        setHasMovedDuringDrag(true);
+      }
+      setElements(prev => prev.map(item => {
+        const initial = dragInitialElementsCoords[item.id];
+        if (!initial) return item;
+        
+        if (item.type === 'pin') {
+          return {
+            ...item,
+            x: initial.x + dx,
+            y: initial.y + dy
+          };
+        } else if (item.type === 'border_rect' || item.type === 'border_circle') {
+          return {
+            ...item,
+            bx: initial.x + dx,
+            by: initial.y + dy
+          };
+        } else if (item.points && initial.points) {
+          return {
+            ...item,
+            points: initial.points.map(pt => ({
+              x: pt.x + dx,
+              y: pt.y + dy
+            }))
+          };
+        }
+        return item;
+      }));
+      return;
+    }
+
+    // 마키 선택 박스 영역 갱신
+    if (selectionBoxStart) {
+      setSelectionBoxCurrent(currentCoords);
+      return;
+    }
+
     // 테두리 드래그 진행 중 현재 좌표 갱신
     if ((editMode === 'draw_border_rect' || editMode === 'draw_border_circle') && borderDragStart) {
       setBorderDragCurrent(snapped);
@@ -645,8 +930,43 @@ export default function WorldMap({
   };
 
   // --- 마우스 업 핸들러 ---
-  const handleCanvasMouseUp = () => {
-    // 테두리 드래그 완료 및 최종 엘리먼트 생성
+  const handleCanvasMouseUp = (e?: React.MouseEvent) => {
+    // 1. 요소 드래그 완료 처리
+    if (isDraggingElements) {
+      if (hasMovedDuringDrag && preDragElements) {
+        pushHistory(preDragElements);
+      }
+      setIsDraggingElements(false);
+      setElementDragStartCoords(null);
+      setDragInitialElementsCoords({});
+      setPreDragElements(null);
+      setHasMovedDuringDrag(false);
+      return;
+    }
+
+    // 2. 마키 드래그 복수 선택 완료 처리
+    if (selectionBoxStart && selectionBoxCurrent) {
+      const selected = getElementsInSelectionBox(selectionBoxStart, selectionBoxCurrent);
+      const isShiftOrCtrl = e ? (e.shiftKey || e.ctrlKey || e.metaKey) : false;
+      if (isShiftOrCtrl) {
+        setSelectedElementIds(prev => {
+          const next = [...prev];
+          selected.forEach(id => {
+            if (!next.includes(id)) next.push(id);
+          });
+          setSelectedElementId(next.length > 0 ? next[next.length - 1] : null);
+          return next;
+        });
+      } else {
+        setSelectedElementIds(selected);
+        setSelectedElementId(selected.length > 0 ? selected[selected.length - 1] : null);
+      }
+      setSelectionBoxStart(null);
+      setSelectionBoxCurrent(null);
+      return;
+    }
+
+    // 3. 테두리 드래그 완료 및 최종 엘리먼트 생성
     if ((editMode === 'draw_border_rect' || editMode === 'draw_border_circle') && borderDragStart && borderDragCurrent) {
       const x1 = Math.min(borderDragStart.x, borderDragCurrent.x);
       const y1 = Math.min(borderDragStart.y, borderDragCurrent.y);
@@ -793,7 +1113,7 @@ export default function WorldMap({
   interface FlatTreeNode {
     id: string;
     name: string;
-    type: 'root' | 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle';
+    type: 'root' | 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group';
     depth: number;
     childMapId?: string;
     parentMapId?: string;
@@ -870,18 +1190,18 @@ export default function WorldMap({
   const handleTreeNodeClick = (node: FlatTreeNode) => {
     if (node.id === 'root') {
       setMapPath([{ id: 'root', name: '세계 지도' }]);
-      setSelectedElementId(null);
+      selectSingleElement(null);
       setIsDetailOpen(false);
       return;
     }
 
     if (node.childMapId && node.childMapId !== '') {
       setMapPath([...node.path, { id: node.childMapId, name: node.name }]);
-      setSelectedElementId(null);
+      selectSingleElement(null);
       setIsDetailOpen(false);
     } else {
       setMapPath(node.path);
-      setSelectedElementId(node.id);
+      selectSingleElement(node.id);
       if (node.element) {
         loadElementToEdit(node.element);
         setIsDetailOpen(true);
@@ -1017,13 +1337,38 @@ export default function WorldMap({
 
   // --- 요소 영구 제거 ---
   const handleDeleteElement = async (id: string) => {
-    const ok = await showConfirm('이 세계관 지도 요소를 완전히 삭제하시겠습니까?');
+    const elToDelete = elements.find(el => el.id === id);
+    if (!elToDelete) return;
+
+    const ok = await showConfirm(
+      elToDelete.type === 'group' 
+        ? '이 그룹을 해제하시겠습니까? 그룹에 속한 요소들은 상위 레이아웃으로 해제되어 보존됩니다.' 
+        : '이 세계관 지도 요소를 완전히 삭제하시겠습니까?'
+    );
     if (ok) {
       pushHistory();
-      setElements(prev => prev.filter(el => el.id !== id));
+      if (elToDelete.type === 'group') {
+        setElements(prev => prev
+          .filter(el => el.id !== id)
+          .map(el => {
+            if (el.parentMapId === id) {
+              return {
+                ...el,
+                parentMapId: elToDelete.parentMapId
+              };
+            }
+            return el;
+          })
+        );
+      } else {
+        setElements(prev => prev.filter(el => el.id !== id));
+      }
+
       if (selectedElementId === id) {
-        setSelectedElementId(null);
+        selectSingleElement(null);
         setIsDetailOpen(false);
+      } else if (selectedElementIds.includes(id)) {
+        setSelectedElementIds(prev => prev.filter(x => x !== id));
       }
     }
   };
@@ -1202,15 +1547,17 @@ export default function WorldMap({
                 {buildFlatTree()
                   .filter(node => !layoutSearchQuery || node.name.toLowerCase().includes(layoutSearchQuery.toLowerCase()))
                   .map(node => {
-                  const isFolder = node.type === 'root' || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '');
+                  const isFolder = node.type === 'root' || node.type === 'group' || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '');
                   const isExpanded = mapExpandedFolderIds.includes(node.id);
                   const isCurrentMap = (node.id === 'root' && currentMapId === 'root') || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '' && node.childMapId === currentMapId);
-                  const isSelectedElement = selectedElementId === node.id;
+                  const isSelectedElement = isElementSelected(node.id);
                   
                   let icon = '📍';
                   if (node.type === 'root') {
                     icon = isExpanded ? '📂' : '📁';
                   } else if (node.childMapId && node.childMapId !== '') {
+                    icon = isExpanded ? '📂' : '📁';
+                  } else if (node.type === 'group') {
                     icon = isExpanded ? '📂' : '📁';
                   } else if (node.type === 'polygon') {
                     icon = '▰';
@@ -1257,7 +1604,7 @@ export default function WorldMap({
                           {node.name || '이름 없음'}
                         </span>
                       </div>
-                      {isFolder && (
+                      {isFolder && node.type !== 'group' && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1544,7 +1891,7 @@ export default function WorldMap({
           onMouseUp={handleCanvasMouseUp}
           onMouseLeave={handleCanvasMouseUp}
           onWheel={handleWheel}
-          className={`flex-1 overflow-hidden relative cursor-crosshair ${
+          className={`flex-1 overflow-hidden relative ${getCursorClass()} ${
             presetBg === 'cosmic' ? 'bg-[#050608]' : presetBg === 'grid' ? (isDark ? 'bg-[#18191B]' : 'bg-[#F3F4F6]') : (isDark ? 'bg-[#1A1813]' : 'bg-[#FAF4E8]')
           }`}
         >
@@ -1606,6 +1953,7 @@ export default function WorldMap({
                   const color = state?.color || el.color || '#5E6AD2';
                   const opacity = el.opacity || 0.3;
                   const ptsString = el.points?.map(p => `${p.x},${p.y}`).join(' ') || '';
+                  const isSelected = isElementSelected(el.id);
 
                   return (
                     <g key={el.id}>
@@ -1614,12 +1962,17 @@ export default function WorldMap({
                         points={ptsString}
                         fill={color}
                         fillOpacity={opacity}
-                        stroke={color}
-                        strokeWidth="3.5"
+                        stroke={isSelected ? "#E74C3C" : color}
+                        strokeWidth={isSelected ? "4.5" : "3.5"}
                         strokeDasharray={el.statesBySnapshot?.[activeSnapshotId] ? "6,4" : undefined}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedElementId(el.id);
+                          const targetId = getTopLevelGroupOrElement(el.id);
+                          if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                            toggleElementSelection(targetId);
+                          } else {
+                            selectSingleElement(targetId);
+                          }
                           loadElementToEdit(el);
                           setIsDetailOpen(true);
                           focusOnElement(el);
@@ -1628,8 +1981,21 @@ export default function WorldMap({
                           e.stopPropagation();
                           handleElementDoubleClick(el);
                         }}
-                        className="cursor-pointer hover:stroke-white transition-all duration-200"
+                        className={`transition-all duration-200 ${
+                          editMode === 'select' ? 'cursor-default' : 'cursor-pointer hover:stroke-white'
+                        }`}
                       />
+                      {/* 경계선 마우스 드래그 핸들 (두꺼운 투명 선) */}
+                      {editMode === 'select' && (
+                        <polygon
+                          points={ptsString}
+                          fill="none"
+                          stroke="transparent"
+                          strokeWidth="12"
+                          className="cursor-move pointer-events-auto"
+                          onMouseDown={(e) => handleElementMouseDown(e, el)}
+                        />
+                      )}
                       {/* 지형 텍스처 중첩 */}
                       {el.texture && el.texture !== 'none' && (
                         <polygon 
@@ -1644,8 +2010,8 @@ export default function WorldMap({
                 })}
 
               {/* 경로선 레이어 */}
-              {layerVisibility.routes && elements
-                .filter(el => el.type === 'route' && el.parentMapId === currentMapId)
+              {layerVisibility.routes && getAllActiveElementsForMap(currentMapId)
+                .filter(el => el.type === 'route')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
                   const isVisible = state ? state.visible : true;
@@ -1653,31 +2019,51 @@ export default function WorldMap({
 
                   const color = state?.color || el.color || '#F1C40F';
                   const ptsString = el.points?.map(p => `${p.x},${p.y}`).join(' ') || '';
+                  const isSelected = isElementSelected(el.id);
                   
                   // SVG 폴리라인 좌표
                   return (
-                    <polyline 
-                      key={el.id}
-                      points={ptsString}
-                      fill="none"
-                      stroke={color}
-                      strokeWidth="4"
-                      strokeDasharray="8,6"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedElementId(el.id);
-                        loadElementToEdit(el);
-                        setIsDetailOpen(true);
-                        focusOnElement(el);
-                      }}
-                      className="cursor-pointer hover:stroke-white transition-all duration-200"
-                    />
+                    <g key={el.id}>
+                      <polyline 
+                        points={ptsString}
+                        fill="none"
+                        stroke={isSelected ? "#E74C3C" : color}
+                        strokeWidth={isSelected ? "5" : "4"}
+                        strokeDasharray="8,6"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const targetId = getTopLevelGroupOrElement(el.id);
+                          if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                            toggleElementSelection(targetId);
+                          } else {
+                            selectSingleElement(targetId);
+                          }
+                          loadElementToEdit(el);
+                          setIsDetailOpen(true);
+                          focusOnElement(el);
+                        }}
+                        className={`transition-all duration-200 ${
+                          editMode === 'select' ? 'cursor-default' : 'cursor-pointer hover:stroke-white'
+                        }`}
+                      />
+                      {/* 경계선 마우스 드래그 핸들 (두꺼운 투명 선) */}
+                      {editMode === 'select' && (
+                        <polyline
+                          points={ptsString}
+                          fill="none"
+                          stroke="transparent"
+                          strokeWidth="16"
+                          className="cursor-move pointer-events-auto"
+                          onMouseDown={(e) => handleElementMouseDown(e, el)}
+                        />
+                      )}
+                    </g>
                   );
                 })}
 
               {/* 테두리 (사각형 및 원형) 레이어 */}
-              {layerVisibility.political && elements
-                .filter(el => (el.type === 'border_rect' || el.type === 'border_circle') && el.parentMapId === currentMapId)
+              {layerVisibility.political && getAllActiveElementsForMap(currentMapId)
+                .filter(el => el.type === 'border_rect' || el.type === 'border_circle')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
                   const isVisible = state ? state.visible : true;
@@ -1687,63 +2073,103 @@ export default function WorldMap({
                   const opacity = el.opacity !== undefined ? el.opacity : 1.0;
                   const strokeWidth = el.borderWidth || 3;
                   const borderStyle = el.borderStyle || 'solid';
-                  const isSelected = selectedElementId === el.id;
+                  const isSelected = isElementSelected(el.id);
 
                   const strokeDash = borderStyle === 'dashed' ? '8,6' : borderStyle === 'dotted' ? '3,3' : undefined;
 
                   if (el.type === 'border_rect') {
                     return (
-                      <rect
-                        key={el.id}
-                        x={el.bx}
-                        y={el.by}
-                        width={el.bw}
-                        height={el.bh}
-                        fill="none"
-                        stroke={color}
-                        strokeWidth={strokeWidth}
-                        strokeOpacity={opacity}
-                        strokeDasharray={strokeDash}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedElementId(el.id);
-                          loadElementToEdit(el);
-                          setIsDetailOpen(true);
-                          focusOnElement(el);
-                        }}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          handleElementDoubleClick(el);
-                        }}
-                        className={`cursor-pointer transition-all duration-200 ${isSelected ? 'stroke-red-500 stroke-[4px]' : 'hover:stroke-white'}`}
-                      />
+                      <g key={el.id}>
+                        <rect
+                          x={el.bx}
+                          y={el.by}
+                          width={el.bw}
+                          height={el.bh}
+                          fill="none"
+                          stroke={isSelected ? '#E74C3C' : color}
+                          strokeWidth={isSelected ? strokeWidth + 1.5 : strokeWidth}
+                          strokeOpacity={opacity}
+                          strokeDasharray={strokeDash}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const targetId = getTopLevelGroupOrElement(el.id);
+                            if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                              toggleElementSelection(targetId);
+                            } else {
+                              selectSingleElement(targetId);
+                            }
+                            loadElementToEdit(el);
+                            setIsDetailOpen(true);
+                            focusOnElement(el);
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            handleElementDoubleClick(el);
+                          }}
+                          className={`transition-all duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-default' : 'cursor-pointer'}`}
+                        />
+                        {/* 테두리 드래그 핸들 */}
+                        {editMode === 'select' && (
+                          <rect
+                            x={(el.bx || 0) - 6}
+                            y={(el.by || 0) - 6}
+                            width={(el.bw || 0) + 12}
+                            height={(el.bh || 0) + 12}
+                            fill="none"
+                            stroke="transparent"
+                            strokeWidth="12"
+                            className="cursor-move pointer-events-auto"
+                            onMouseDown={(e) => handleElementMouseDown(e, el)}
+                          />
+                        )}
+                      </g>
                     );
                   } else {
                     return (
-                      <ellipse
-                        key={el.id}
-                        cx={el.bx}
-                        cy={el.by}
-                        rx={el.bw}
-                        ry={el.bh}
-                        fill="none"
-                        stroke={color}
-                        strokeWidth={strokeWidth}
-                        strokeOpacity={opacity}
-                        strokeDasharray={strokeDash}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedElementId(el.id);
-                          loadElementToEdit(el);
-                          setIsDetailOpen(true);
-                          focusOnElement(el);
-                        }}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          handleElementDoubleClick(el);
-                        }}
-                        className={`cursor-pointer transition-all duration-200 ${isSelected ? 'stroke-red-500 stroke-[4px]' : 'hover:stroke-white'}`}
-                      />
+                      <g key={el.id}>
+                        <ellipse
+                          cx={el.bx}
+                          cy={el.by}
+                          rx={el.bw}
+                          ry={el.bh}
+                          fill="none"
+                          stroke={isSelected ? '#E74C3C' : color}
+                          strokeWidth={isSelected ? strokeWidth + 1.5 : strokeWidth}
+                          strokeOpacity={opacity}
+                          strokeDasharray={strokeDash}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const targetId = getTopLevelGroupOrElement(el.id);
+                            if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                              toggleElementSelection(targetId);
+                            } else {
+                              selectSingleElement(targetId);
+                            }
+                            loadElementToEdit(el);
+                            setIsDetailOpen(true);
+                            focusOnElement(el);
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            handleElementDoubleClick(el);
+                          }}
+                          className={`transition-all duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-default' : 'cursor-pointer'}`}
+                        />
+                        {/* 원형 테두리 드래그 핸들 */}
+                        {editMode === 'select' && (
+                          <ellipse
+                            cx={el.bx}
+                            cy={el.by}
+                            rx={(el.bw || 0) + 6}
+                            ry={(el.bh || 0) + 6}
+                            fill="none"
+                            stroke="transparent"
+                            strokeWidth="12"
+                            className="cursor-move pointer-events-auto"
+                            onMouseDown={(e) => handleElementMouseDown(e, el)}
+                          />
+                        )}
+                      </g>
                     );
                   }
                 })}
@@ -1861,18 +2287,38 @@ export default function WorldMap({
                     ))}
                   </g>
                 ))}
+              {/* 마키/선택 상자 드래그 오버레이 */}
+              {selectionBoxStart && selectionBoxCurrent && (() => {
+                const x = Math.min(selectionBoxStart.x, selectionBoxCurrent.x);
+                const y = Math.min(selectionBoxStart.y, selectionBoxCurrent.y);
+                const w = Math.max(selectionBoxStart.x, selectionBoxCurrent.x) - x;
+                const h = Math.max(selectionBoxStart.y, selectionBoxCurrent.y) - y;
+                return (
+                  <rect
+                    x={x}
+                    y={y}
+                    width={w}
+                    height={h}
+                    fill="rgba(94, 106, 210, 0.08)"
+                    stroke="#5E6AD2"
+                    strokeWidth="1.5"
+                    strokeDasharray="4,3"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                );
+              })()}
             </svg>
 
             {/* 4. 절대 배치형 거점 핀(Pin Marker) 리스트 */}
-            {layerVisibility.political && elements
-              .filter(el => el.type === 'pin' && el.parentMapId === currentMapId)
+            {layerVisibility.political && getAllActiveElementsForMap(currentMapId)
+              .filter(el => el.type === 'pin')
               .map(el => {
                 const state = el.statesBySnapshot?.[activeSnapshotId];
                 const isVisible = state ? state.visible : true;
                 if (!isVisible) return null;
 
                 const color = state?.color || el.color || '#5E6AD2';
-                const isSelected = selectedElementId === el.id;
+                const isSelected = isElementSelected(el.id);
 
                 // 핀 아이콘 매핑
                 const IconComponent = {
@@ -1885,14 +2331,29 @@ export default function WorldMap({
                 return (
                   <div 
                     key={el.id}
-                    className="absolute pointer-events-auto cursor-pointer flex flex-col items-center gap-1 group transform -translate-x-1/2 -translate-y-1/2"
+                    className="absolute pointer-events-auto flex flex-col items-center gap-1 group transform -translate-x-1/2 -translate-y-1/2"
                     style={{
                       left: `${el.x}px`,
                       top: `${el.y}px`,
+                      cursor: editMode === 'select' ? 'move' : 'pointer'
+                    }}
+                    onMouseDown={(e) => {
+                      if (editMode === 'select') {
+                        handleElementMouseDown(e, el);
+                      }
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      setSelectedElementId(el.id);
+                      const targetId = getTopLevelGroupOrElement(el.id);
+                      if (editMode === 'select') {
+                        if (e.ctrlKey || e.metaKey || e.shiftKey) {
+                          toggleElementSelection(targetId);
+                        } else {
+                          selectSingleElement(targetId);
+                        }
+                      } else {
+                        selectSingleElement(targetId);
+                      }
                       loadElementToEdit(el);
                       setIsDetailOpen(true);
                     }}
