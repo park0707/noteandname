@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  ChevronRight, ChevronDown, ChevronsLeft, ChevronsRight, Layers, Plus, Move, Trash2, 
+  ChevronRight, ChevronDown, Layers, Plus, Move, Trash2, Unlock, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search,
   PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map
@@ -133,6 +133,13 @@ export default function WorldMap({
   const [activeSnapshotId, setActiveSnapshotId] = useState<string>('snap-default');
   const activeSnapshotIdx = snapshots.findIndex(s => s.id === activeSnapshotId) === -1 ? 0 : snapshots.findIndex(s => s.id === activeSnapshotId);
   const currentSnapshot = snapshots[activeSnapshotIdx] || snapshots[0];
+
+  const [isSnapshotEditUnlocked, setIsSnapshotEditUnlocked] = useState(false);
+  const isLatestSnapshot = snapshots.length > 0 && activeSnapshotId === snapshots[snapshots.length - 1].id;
+  const isReadOnly = activeSnapshotId !== 'snap-default' && !isLatestSnapshot && !isSnapshotEditUnlocked;
+
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
+  const [showMemoModal, setShowMemoModal] = useState(false);
 
   // --- 안개 모드 및 레이어 락 제어 ---
   const [fogVisible, setFogVisible] = useState(false);
@@ -650,6 +657,25 @@ export default function WorldMap({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elements, snapshots, customBgImage, presetBg, scale, characterPositions]);
 
+  // 빈 그룹 자동 삭제 감지
+  useEffect(() => {
+    const emptyGroups = elements.filter(el => el.type === 'group' && !elements.some(item => item.parentMapId === el.id));
+    if (emptyGroups.length > 0) {
+      const emptyGroupIds = emptyGroups.map(g => g.id);
+      setElements(prev => prev.filter(el => !emptyGroupIds.includes(el.id)));
+      if (selectedElementId && emptyGroupIds.includes(selectedElementId)) {
+        setSelectedElementId(null);
+      }
+      setSelectedElementIds(prev => prev.filter(id => !emptyGroupIds.includes(id)));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elements, selectedElementId]);
+
+  // 스냅샷 변경 시 편집 잠금 상태 초기화
+  useEffect(() => {
+    setIsSnapshotEditUnlocked(false);
+  }, [activeSnapshotId]);
+
 
   // --- 마우스 좌표를 캔버스 공간상 좌표로 변환 ---
   const getCanvasCoords = (clientX: number, clientY: number): { x: number; y: number } => {
@@ -731,6 +757,11 @@ export default function WorldMap({
     
     if (editMode !== 'select') return;
 
+    if (isReadOnly) {
+      showAlert('현재 시점 버전 이력을 탐색 중입니다. 편집을 진행하려면 상단 시점 제어 바에서 [편집 잠금 해제]를 클릭하세요.');
+      return;
+    }
+
     // 상위 그룹이 있으면 그룹 전체를 선택/이동 대상으로 선정
     const targetId = getTopLevelGroupOrElement(el.id);
 
@@ -793,6 +824,18 @@ export default function WorldMap({
       }
       setSelectionBoxStart(canvasClickCoords);
       setSelectionBoxCurrent(canvasClickCoords);
+      return;
+    }
+
+    // 편집 불가(ReadOnly) 예외 감지 및 잠금해제 알림 모달 출력
+    if (isReadOnly && (
+      editMode === 'draw_border_rect' || 
+      editMode === 'draw_border_circle' || 
+      editMode === 'add_pin' || 
+      editMode === 'draw_polygon' || 
+      editMode === 'draw_route'
+    )) {
+      showAlert('현재 시점 버전 이력을 탐색 중입니다. 편집을 진행하려면 상단 시점 제어 바에서 [편집 잠금 해제]를 클릭하세요.');
       return;
     }
 
@@ -1140,11 +1183,11 @@ export default function WorldMap({
           path: currentPath
         });
         
-        // 하위 지도가 연결된 폴더이고, 해당 폴더가 펼쳐져 있을 때만 재귀 순회
-        // 하위 지도가 연결된 폴더이고, 해당 폴더가 펼쳐져 있을 때만 재귀 순회
-        if (el.childMapId && el.childMapId !== '' && mapExpandedFolderIds.includes(el.id)) {
-          const nextPath = [...currentPath, { id: el.childMapId, name: el.name }];
-          traverse(el.childMapId, nextPath, depth + 1);
+        // 하위 지도가 연결된 폴더이거나 그룹 요소이며, 펼쳐져 있을 때 재귀 순회
+        if ((el.childMapId && el.childMapId !== '' && mapExpandedFolderIds.includes(el.id)) || (el.type === 'group' && mapExpandedFolderIds.includes(el.id))) {
+          const nextMapId = (el.childMapId && el.childMapId !== '') ? el.childMapId : el.id;
+          const nextPath = (el.childMapId && el.childMapId !== '') ? [...currentPath, { id: el.childMapId, name: el.name }] : currentPath;
+          traverse(nextMapId, nextPath, depth + 1);
         }
       }
     };
@@ -1337,6 +1380,7 @@ export default function WorldMap({
 
   // --- 요소 영구 제거 ---
   const handleDeleteElement = async (id: string) => {
+    if (isReadOnly) return;
     const elToDelete = elements.find(el => el.id === id);
     if (!elToDelete) return;
 
@@ -1418,6 +1462,19 @@ export default function WorldMap({
     setNewSnapshotName('');
     setNewSnapshotDate('');
     setNewSnapshotDesc('');
+  };
+
+  // --- 버전 관리: 스냅샷 삭제 ---
+  const handleDeleteSnapshot = async (id: string, name: string) => {
+    if (id === 'snap-default') return;
+    const ok = await showConfirm(`'${name}' 시점 이력을 완전히 삭제하시겠습니까?`);
+    if (ok) {
+      setSnapshots(prev => prev.filter(snap => snap.id !== id));
+      if (activeSnapshotId === id) {
+        setActiveSnapshotId('snap-default');
+      }
+      showAlert('스냅샷 버전이 성공적으로 삭제되었습니다.');
+    }
   };
 
   // --- 캐릭터 스냅샷 좌표 드래그 이동 설정 ---
@@ -1808,10 +1865,64 @@ export default function WorldMap({
               {/* ── 시점 탭 ── */}
               {activeHeaderTab === 'timeline' && (
                 <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0 relative">
                     <History className="w-3.5 h-3.5 text-[#7480E2]" />
-                    <span className={`text-xs font-bold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{currentSnapshot.name}</span>
+                    <button
+                      onClick={() => setShowHistoryDropdown(prev => !prev)}
+                      className={`flex items-center gap-1 hover:text-[#7480E2] transition-colors text-xs font-bold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}
+                    >
+                      <span>{currentSnapshot.name}</span>
+                      <ChevronDown className="w-3 h-3 opacity-60" />
+                    </button>
                     <span className={`text-[11px] font-medium ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>({currentSnapshot.date})</span>
+
+                    {/* 이력 목록 드롭다운 */}
+                    {showHistoryDropdown && (
+                      <div className={`absolute top-full left-0 mt-1.5 w-72 rounded-xl border p-2 shadow-2xl z-50 flex flex-col gap-1 max-h-80 overflow-y-auto ${
+                        isDark ? 'bg-[#141517] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+                      }`}>
+                        {snapshots.map((snap) => (
+                          <div
+                            key={snap.id}
+                            className={`w-full rounded-lg hover:bg-white/[0.04] flex items-center justify-between gap-1 group px-1 ${
+                              activeSnapshotId === snap.id ? 'bg-[#5E6AD2]/10' : ''
+                            }`}
+                          >
+                            <button
+                              onClick={() => {
+                                setActiveSnapshotId(snap.id);
+                                setShowHistoryDropdown(false);
+                              }}
+                              className={`flex-1 text-left px-2 py-1.5 transition-colors flex flex-col min-w-0 ${
+                                activeSnapshotId === snap.id ? 'text-[#7480E2] font-bold' : ''
+                              }`}
+                            >
+                              <span className="truncate w-full">{snap.name}</span>
+                              {snap.description && (
+                                <span className="text-[10px] text-gray-400 line-clamp-2 mt-0.5 whitespace-pre-wrap leading-tight font-normal text-left">
+                                  {snap.description.length > 50 ? `${snap.description.slice(0, 50)}...` : snap.description}
+                                </span>
+                              )}
+                              <span className="text-[9px] text-gray-500 font-mono mt-0.5">{snap.date}</span>
+                            </button>
+                            
+                            {/* 이력 삭제 버튼 (snap-default는 삭제 금지) */}
+                            {snap.id !== 'snap-default' && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteSnapshot(snap.id, snap.name);
+                                }}
+                                className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
+                                title="이력 삭제"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex-1 min-w-[120px] max-w-[320px]">
                     <input
@@ -1845,10 +1956,38 @@ export default function WorldMap({
                   >
                     <Plus className="w-3 h-3" /> 새 시점 추가
                   </button>
+
+                  {/* 편집 잠금 해제 / 잠금 버튼 */}
+                  {activeSnapshotId !== 'snap-default' && !isLatestSnapshot && (
+                    <button
+                      onClick={() => setIsSnapshotEditUnlocked(prev => !prev)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all shrink-0 ${
+                        isSnapshotEditUnlocked
+                          ? 'bg-orange-500/10 border-orange-500/30 text-orange-400 font-bold'
+                          : isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-500'
+                      }`}
+                      title="이력을 보고 있는 상태에서 지도를 수정하려면 편집 잠금을 해제하세요."
+                    >
+                      {isSnapshotEditUnlocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                      <span>{isSnapshotEditUnlocked ? '편집 잠금' : '편집 잠금 해제'}</span>
+                    </button>
+                  )}
+
+                  {/* 이력 메모 10글자 요약 버튼 */}
                   {currentSnapshot.description && (
-                    <div className={`px-3 py-1.5 rounded-lg border text-[11px] truncate max-w-sm hidden lg:block ${isDark ? 'bg-black/25 border-white/[0.06] text-gray-400' : 'bg-black/[0.02] border-black/[0.06] text-gray-500'}`}>
-                      {currentSnapshot.description}
-                    </div>
+                    <button
+                      onClick={() => setShowMemoModal(true)}
+                      className={`px-3 py-1.5 rounded-lg border text-[11px] truncate max-w-[150px] transition-colors shrink-0 ${
+                        isDark 
+                          ? 'bg-black/25 border-white/[0.06] text-gray-400 hover:bg-white/[0.04]' 
+                          : 'bg-black/[0.02] border-black/[0.06] text-gray-500 hover:bg-black/[0.04]'
+                      }`}
+                      title="클릭하여 전체 내용 보기"
+                    >
+                      {currentSnapshot.description.trim().length > 10 
+                        ? `${currentSnapshot.description.trim().slice(0, 10)}...` 
+                        : currentSnapshot.description.trim()}
+                    </button>
                   )}
                 </div>
               )}
@@ -1965,6 +2104,7 @@ export default function WorldMap({
                         stroke={isSelected ? "#E74C3C" : color}
                         strokeWidth={isSelected ? "4.5" : "3.5"}
                         strokeDasharray={el.statesBySnapshot?.[activeSnapshotId] ? "6,4" : undefined}
+                        onMouseDown={(e) => handleElementMouseDown(e, el)}
                         onClick={(e) => {
                           e.stopPropagation();
                           const targetId = getTopLevelGroupOrElement(el.id);
@@ -1982,7 +2122,7 @@ export default function WorldMap({
                           handleElementDoubleClick(el);
                         }}
                         className={`transition-all duration-200 ${
-                          editMode === 'select' ? 'cursor-default' : 'cursor-pointer hover:stroke-white'
+                          editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:stroke-white'
                         }`}
                       />
                       {/* 경계선 마우스 드래그 핸들 (두꺼운 투명 선) */}
@@ -1991,7 +2131,7 @@ export default function WorldMap({
                           points={ptsString}
                           fill="none"
                           stroke="transparent"
-                          strokeWidth="12"
+                          strokeWidth="24"
                           className="cursor-move pointer-events-auto"
                           onMouseDown={(e) => handleElementMouseDown(e, el)}
                         />
@@ -2030,6 +2170,7 @@ export default function WorldMap({
                         stroke={isSelected ? "#E74C3C" : color}
                         strokeWidth={isSelected ? "5" : "4"}
                         strokeDasharray="8,6"
+                        onMouseDown={(e) => handleElementMouseDown(e, el)}
                         onClick={(e) => {
                           e.stopPropagation();
                           const targetId = getTopLevelGroupOrElement(el.id);
@@ -2043,7 +2184,7 @@ export default function WorldMap({
                           focusOnElement(el);
                         }}
                         className={`transition-all duration-200 ${
-                          editMode === 'select' ? 'cursor-default' : 'cursor-pointer hover:stroke-white'
+                          editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:stroke-white'
                         }`}
                       />
                       {/* 경계선 마우스 드래그 핸들 (두꺼운 투명 선) */}
@@ -2052,7 +2193,7 @@ export default function WorldMap({
                           points={ptsString}
                           fill="none"
                           stroke="transparent"
-                          strokeWidth="16"
+                          strokeWidth="24"
                           className="cursor-move pointer-events-auto"
                           onMouseDown={(e) => handleElementMouseDown(e, el)}
                         />
@@ -2090,6 +2231,7 @@ export default function WorldMap({
                           strokeWidth={isSelected ? strokeWidth + 1.5 : strokeWidth}
                           strokeOpacity={opacity}
                           strokeDasharray={strokeDash}
+                          onMouseDown={(e) => handleElementMouseDown(e, el)}
                           onClick={(e) => {
                             e.stopPropagation();
                             const targetId = getTopLevelGroupOrElement(el.id);
@@ -2106,18 +2248,18 @@ export default function WorldMap({
                             e.stopPropagation();
                             handleElementDoubleClick(el);
                           }}
-                          className={`transition-all duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-default' : 'cursor-pointer'}`}
+                          className={`transition-all duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
                         />
                         {/* 테두리 드래그 핸들 */}
                         {editMode === 'select' && (
                           <rect
-                            x={(el.bx || 0) - 6}
-                            y={(el.by || 0) - 6}
-                            width={(el.bw || 0) + 12}
-                            height={(el.bh || 0) + 12}
+                            x={el.bx}
+                            y={el.by}
+                            width={el.bw}
+                            height={el.bh}
                             fill="none"
                             stroke="transparent"
-                            strokeWidth="12"
+                            strokeWidth="24"
                             className="cursor-move pointer-events-auto"
                             onMouseDown={(e) => handleElementMouseDown(e, el)}
                           />
@@ -2137,6 +2279,7 @@ export default function WorldMap({
                           strokeWidth={isSelected ? strokeWidth + 1.5 : strokeWidth}
                           strokeOpacity={opacity}
                           strokeDasharray={strokeDash}
+                          onMouseDown={(e) => handleElementMouseDown(e, el)}
                           onClick={(e) => {
                             e.stopPropagation();
                             const targetId = getTopLevelGroupOrElement(el.id);
@@ -2153,18 +2296,18 @@ export default function WorldMap({
                             e.stopPropagation();
                             handleElementDoubleClick(el);
                           }}
-                          className={`transition-all duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-default' : 'cursor-pointer'}`}
+                          className={`transition-all duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
                         />
                         {/* 원형 테두리 드래그 핸들 */}
                         {editMode === 'select' && (
                           <ellipse
                             cx={el.bx}
                             cy={el.by}
-                            rx={(el.bw || 0) + 6}
-                            ry={(el.bh || 0) + 6}
+                            rx={el.bw}
+                            ry={el.bh}
                             fill="none"
                             stroke="transparent"
-                            strokeWidth="12"
+                            strokeWidth="24"
                             className="cursor-move pointer-events-auto"
                             onMouseDown={(e) => handleElementMouseDown(e, el)}
                           />
@@ -2280,6 +2423,10 @@ export default function WorldMap({
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
+                          if (isReadOnly) {
+                            showAlert('현재 시점 버전 이력을 탐색 중입니다. 편집을 진행하려면 상단 시점 제어 바에서 [편집 잠금 해제]를 클릭하세요.');
+                            return;
+                          }
                           pushHistory();
                           setActiveAnchorPointIdx(idx);
                         }}
@@ -2416,6 +2563,10 @@ export default function WorldMap({
                         top: `${charPos.y}px`
                       }}
                       onMouseDown={(e) => {
+                        if (isReadOnly) {
+                          showAlert('현재 시점 버전 이력을 탐색 중입니다. 편집을 진행하려면 상단 시점 제어 바에서 [편집 잠금 해제]를 클릭하세요.');
+                          return;
+                        }
                         // 캐릭터 이동을 드래그로 조작하기 위해
                         e.stopPropagation();
                         pushHistory();
@@ -2486,7 +2637,7 @@ export default function WorldMap({
           <div className={`w-80 shrink-0 border-l flex flex-col justify-between ${
             isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
           }`}>
-            <div className="p-4 flex flex-col gap-4 overflow-y-auto flex-1 text-xs">
+            <fieldset disabled={isReadOnly} className="p-4 flex flex-col gap-4 overflow-y-auto flex-1 text-xs border-none m-0" style={{ minWidth: 0 }}>
               <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
                 <h3 className="font-bold text-sm">📝 장소 속성 편집</h3>
                 <button 
@@ -2769,27 +2920,83 @@ export default function WorldMap({
                   })}
                 </div>
               </div>
-            </div>
+            </fieldset>
 
             {/* 상세 속성 하단 제어 버튼 */}
             <div className="p-4 border-t border-white/[0.06] flex gap-2">
-              <button 
-                onClick={() => handleDeleteElement(selectedElementId)}
-                className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-xs transition-colors shrink-0 flex items-center justify-center"
-                title="삭제"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-              <button 
-                onClick={handleSaveProperties}
-                className="flex-1 p-2 rounded-xl bg-[#5E6AD2] hover:bg-[#7480E2] text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-[#5E6AD2]/20"
-              >
-                <Check className="w-4 h-4" /> 설정 저장
-              </button>
+              {isReadOnly ? (
+                <button 
+                  onClick={() => setIsDetailOpen(false)}
+                  className={`flex-1 py-2 rounded-xl border font-bold text-xs flex items-center justify-center gap-1.5 transition-colors ${
+                    isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
+                  }`}
+                >
+                  닫기
+                </button>
+              ) : (
+                <>
+                  <button 
+                    onClick={() => handleDeleteElement(selectedElementId)}
+                    className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-xs transition-colors shrink-0 flex items-center justify-center"
+                    title="삭제"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <button 
+                    onClick={handleSaveProperties}
+                    className="flex-1 p-2 rounded-xl bg-[#5E6AD2] hover:bg-[#7480E2] text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-[#5E6AD2]/20"
+                  >
+                    <Check className="w-4 h-4" /> 설정 저장
+                  </button>
+                </>
+              )}
             </div>
           </div>
         );
       })()}
+
+      {/* 이력 메모 조회 모달 창 */}
+      {showMemoModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`w-[450px] rounded-2xl border p-6 flex flex-col gap-4 shadow-2xl ${
+            isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            <div className="flex items-center justify-between pb-2 border-b border-gray-500/10">
+              <h3 className="text-sm font-bold text-[#7480E2]">
+                <span>{currentSnapshot.name}</span>
+              </h3>
+              <button 
+                onClick={() => setShowMemoModal(false)}
+                className="text-gray-400 hover:text-gray-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-3 text-xs">
+              <div className="flex justify-between items-center text-[10px] text-gray-500 font-mono">
+                <span>작중 일시: {currentSnapshot.date}</span>
+              </div>
+              <div className={`p-4 rounded-xl border whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto ${
+                isDark ? 'bg-white/[0.02] border-white/[0.08] text-gray-300' : 'bg-black/[0.01] border-black/[0.08] text-gray-700'
+              }`}>
+                {currentSnapshot.description || '작성된 이력 메모가 없습니다.'}
+              </div>
+            </div>
+
+            <div className="flex gap-2 mt-4 pt-3 border-t border-gray-500/10">
+              <button 
+                onClick={() => setShowMemoModal(false)}
+                className={`flex-1 py-2 rounded-xl font-bold border transition-colors ${
+                  isDark ? 'border-white/[0.06] hover:bg-[#1E1F22] text-gray-300' : 'border-black/[0.06] hover:bg-gray-100 text-gray-700'
+                }`}
+              >
+                닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 새 스냅샷 추가 모달 창 */}
       {showNewSnapshotModal && (
