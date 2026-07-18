@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
-  ChevronRight, ChevronDown, Layers, Plus, Move, Trash2, Unlock, 
+  ChevronRight, ChevronDown, Layers, Plus, Move, Trash2, Unlock, ChevronsLeft, ChevronsRight, ChevronLeft, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search,
   PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map
@@ -1864,131 +1864,212 @@ export default function WorldMap({
 
               {/* ── 시점 탭 ── */}
               {activeHeaderTab === 'timeline' && (
-                <div className="flex items-center gap-4 flex-1 min-w-0">
-                  <div className="flex items-center gap-2 shrink-0 relative">
-                    <History className="w-3.5 h-3.5 text-[#7480E2]" />
-                    <button
-                      onClick={() => setShowHistoryDropdown(prev => !prev)}
-                      className={`flex items-center gap-1 hover:text-[#7480E2] transition-colors text-xs font-bold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}
-                    >
-                      <span>{currentSnapshot.name}</span>
-                      <ChevronDown className="w-3 h-3 opacity-60" />
-                    </button>
-                    <span className={`text-[11px] font-medium ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>({currentSnapshot.date})</span>
+                <div className="flex items-center justify-between gap-4 flex-1 min-w-0 select-none">
+                  {/* 좌측: 현재 시점 표시 및 목록 드롭다운 */}
+                  <div className="flex items-center gap-2 relative">
+                    <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>현재 시점:</span>
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowHistoryDropdown(prev => !prev)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
+                          activeSnapshotId && activeSnapshotId !== 'snap-default'
+                            ? 'bg-[#5E6AD2]/10 border-[#5E6AD2]/30 text-[#7480E2] font-bold' 
+                            : isDark ? 'border-white/[0.08] hover:bg-white/[0.04]' : 'border-black/[0.08] hover:bg-black/[0.04]'
+                        }`}
+                      >
+                        <span>{activeSnapshotId && activeSnapshotId !== 'snap-default' ? snapshots.find(s => s.id === activeSnapshotId)?.name : '기본 상태'}</span>
+                        <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                      </button>
 
-                    {/* 이력 목록 드롭다운 */}
-                    {showHistoryDropdown && (
-                      <div className={`absolute top-full left-0 mt-1.5 w-72 rounded-xl border p-2 shadow-2xl z-50 flex flex-col gap-1 max-h-80 overflow-y-auto ${
-                        isDark ? 'bg-[#141517] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
-                      }`}>
-                        {snapshots.map((snap) => (
-                          <div
-                            key={snap.id}
-                            className={`w-full rounded-lg hover:bg-white/[0.04] flex items-center justify-between gap-1 group px-1 ${
-                              activeSnapshotId === snap.id ? 'bg-[#5E6AD2]/10' : ''
-                            }`}
+                      {/* 이력 목록 드롭다운 */}
+                      {showHistoryDropdown && (
+                        <div className={`absolute top-full left-0 mt-1.5 w-72 rounded-xl border p-2 shadow-2xl z-50 flex flex-col gap-1 max-h-80 overflow-y-auto ${
+                          isDark ? 'bg-[#141517] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+                        }`}>
+                          <button
+                            onClick={() => {
+                              setActiveSnapshotId('snap-default');
+                              setShowHistoryDropdown(false);
+                            }}
+                            className={`w-full text-left px-2 py-1.5 rounded-lg hover:bg-white/[0.04] transition-colors ${activeSnapshotId === 'snap-default' ? 'text-[#7480E2] font-bold bg-[#5E6AD2]/10' : ''}`}
                           >
-                            <button
-                              onClick={() => {
-                                setActiveSnapshotId(snap.id);
-                                setShowHistoryDropdown(false);
-                              }}
-                              className={`flex-1 text-left px-2 py-1.5 transition-colors flex flex-col min-w-0 ${
-                                activeSnapshotId === snap.id ? 'text-[#7480E2] font-bold' : ''
-                              }`}
-                            >
-                              <span className="truncate w-full">{snap.name}</span>
-                              {snap.description && (
-                                <span className="text-[10px] text-gray-400 line-clamp-2 mt-0.5 whitespace-pre-wrap leading-tight font-normal text-left">
-                                  {snap.description.length > 50 ? `${snap.description.slice(0, 50)}...` : snap.description}
-                                </span>
-                              )}
-                              <span className="text-[9px] text-gray-500 font-mono mt-0.5">{snap.date}</span>
-                            </button>
-                            
-                            {/* 이력 삭제 버튼 (snap-default는 삭제 금지) */}
-                            {snap.id !== 'snap-default' && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleDeleteSnapshot(snap.id, snap.name);
-                                }}
-                                className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
-                                title="이력 삭제"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                            기본 상태 (편집 가능)
+                          </button>
+                          <div className={`h-px my-1 ${isDark ? 'bg-white/[0.06]' : 'bg-black/[0.06]'}`} />
+                          {snapshots.length === 0 || (snapshots.length === 1 && snapshots[0].id === 'snap-default') ? (
+                            <div className="text-[10px] text-gray-500 text-center py-3">생성된 시점 이력이 없습니다.</div>
+                          ) : (
+                            snapshots.map((snap) => {
+                              if (snap.id === 'snap-default') return null;
+                              return (
+                                <div
+                                  key={snap.id}
+                                  className={`w-full rounded-lg hover:bg-white/[0.04] flex items-center justify-between gap-1 group px-1 ${
+                                    activeSnapshotId === snap.id ? 'bg-[#5E6AD2]/10' : ''
+                                  }`}
+                                >
+                                  <button
+                                    onClick={() => {
+                                      setActiveSnapshotId(snap.id);
+                                      setShowHistoryDropdown(false);
+                                    }}
+                                    className={`flex-1 text-left px-2 py-1.5 transition-colors flex flex-col min-w-0 ${
+                                      activeSnapshotId === snap.id ? 'text-[#7480E2] font-bold' : ''
+                                    }`}
+                                  >
+                                    <span className="truncate w-full">{snap.name}</span>
+                                    {snap.description && (
+                                      <span className="text-[10px] text-gray-400 line-clamp-2 mt-0.5 whitespace-pre-wrap leading-tight font-normal text-left">
+                                        {snap.description.length > 50 ? `${snap.description.slice(0, 50)}...` : snap.description}
+                                      </span>
+                                    )}
+                                    <span className="text-[9px] text-gray-500 font-mono mt-0.5">{snap.date}</span>
+                                  </button>
+                                  
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteSnapshot(snap.id, snap.name);
+                                    }}
+                                    className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
+                                    title="이력 삭제"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 이력 메모 버튼 */}
+                    {activeSnapshotId && (
+                      <button
+                        onClick={() => setShowMemoModal(true)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
+                          isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
+                        }`}
+                      >
+                        <span>
+                          {(() => {
+                            if (currentSnapshot && currentSnapshot.description && currentSnapshot.description.trim()) {
+                              const m = currentSnapshot.description.trim();
+                              return m.length > 10 ? `${m.slice(0, 10)}...` : m;
+                            }
+                            return '이력 메모';
+                          })()}
+                        </span>
+                      </button>
+                    )}
+
+                    {/* 최신 시점 편집 가능 안내 혹은 편집 잠금 해제 토글 버튼 */}
+                    {activeSnapshotId && (
+                      isLatestSnapshot ? (
+                        <span className="px-2 py-1 rounded bg-[#5E6AD2]/10 text-[#7480E2] text-[10px] font-bold">
+                          최신 시점 (편집 가능)
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => setIsSnapshotEditUnlocked(prev => !prev)}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] transition-all ${
+                            isSnapshotEditUnlocked
+                              ? 'bg-orange-500/10 border-orange-500/30 text-orange-400 font-bold'
+                              : isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-500'
+                          }`}
+                          title="이력을 보고 있는 상태에서 지도를 수정하려면 편집 잠금을 해제하세요."
+                        >
+                          {isSnapshotEditUnlocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
+                          <span>{isSnapshotEditUnlocked ? '편집 잠금' : '편집 잠금 해제'}</span>
+                        </button>
+                      )
                     )}
                   </div>
-                  <div className="flex-1 min-w-[120px] max-w-[320px]">
-                    <input
-                      type="range"
-                      min="0"
-                      max={snapshots.length - 1}
-                      step="1"
-                      value={activeSnapshotIdx}
-                      onChange={e => {
-                        const idx = parseInt(e.target.value);
-                        const nextSnap = snapshots[idx];
-                        if (nextSnap) setActiveSnapshotId(nextSnap.id);
-                      }}
-                      className="w-full h-1.5 bg-[#5E6AD2]/20 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
-                    />
-                    <div className="flex justify-between text-[9px] font-bold mt-1 text-gray-500 overflow-hidden">
-                      {snapshots.map((snap) => (
-                        <span
-                          key={snap.id}
-                          className={`cursor-pointer hover:text-[#7480E2] transition-colors truncate max-w-[80px] ${snap.id === activeSnapshotId ? 'text-[#7480E2] underline font-bold' : ''}`}
-                          onClick={() => setActiveSnapshotId(snap.id)}
-                        >
-                          {snap.name}
-                        </span>
-                      ))}
+
+                  {/* 우측: 시점 이동 제어판 및 이력 생성 */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      {/* 가장 옛날 이력으로 이동 */}
+                      <button
+                        onClick={() => {
+                          if (snapshots.length > 0) {
+                            setActiveSnapshotId(snapshots[0].id);
+                          }
+                        }}
+                        disabled={snapshots.length === 0}
+                        className={`p-1.5 rounded-lg border transition-colors ${
+                          isDark ? 'border-white/[0.08] hover:bg-white/[0.04] disabled:opacity-40' : 'border-black/[0.08] hover:bg-black/[0.04] disabled:opacity-40'
+                        }`}
+                        title="가장 옛날 이력으로 이동"
+                      >
+                        <ChevronsLeft className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* 이전 이력으로 이동 */}
+                      <button
+                        onClick={() => {
+                          if (snapshots.length === 0) return;
+                          const idx = snapshots.findIndex(s => s.id === activeSnapshotId);
+                          if (idx > 0) {
+                            setActiveSnapshotId(snapshots[idx - 1].id);
+                          } else {
+                            setActiveSnapshotId('snap-default');
+                          }
+                        }}
+                        className={`p-1.5 rounded-lg border transition-colors ${
+                          isDark ? 'border-white/[0.08] hover:bg-white/[0.04]' : 'border-black/[0.08] hover:bg-black/[0.04]'
+                        }`}
+                        title="이전 이력으로 이동"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* 다음 이력으로 이동 */}
+                      <button
+                        onClick={() => {
+                          if (snapshots.length === 0) return;
+                          const idx = snapshots.findIndex(s => s.id === activeSnapshotId);
+                          if (idx >= 0 && idx < snapshots.length - 1) {
+                            setActiveSnapshotId(snapshots[idx + 1].id);
+                          }
+                        }}
+                        className={`p-1.5 rounded-lg border transition-colors ${
+                          isDark ? 'border-white/[0.08] hover:bg-white/[0.04]' : 'border-black/[0.08] hover:bg-black/[0.04]'
+                        }`}
+                        title="다음 이력으로 이동"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* 가장 최근 이력으로 이동 */}
+                      <button
+                        onClick={() => {
+                          if (snapshots.length > 0) {
+                            setActiveSnapshotId(snapshots[snapshots.length - 1].id);
+                          }
+                        }}
+                        disabled={snapshots.length === 0}
+                        className={`p-1.5 rounded-lg border transition-colors ${
+                          isDark ? 'border-white/[0.08] hover:bg-white/[0.04] disabled:opacity-40' : 'border-black/[0.08] hover:bg-black/[0.04] disabled:opacity-40'
+                        }`}
+                        title="가장 최근 이력으로 이동"
+                      >
+                        <ChevronsRight className="w-3.5 h-3.5" />
+                      </button>
                     </div>
+
+                    <div className={`w-px h-4 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+                    {/* 이력 생성 버튼 */}
+                    <button
+                      onClick={() => setShowNewSnapshotModal(true)}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>새 시점 추가</span>
+                    </button>
                   </div>
-                  <button
-                    onClick={() => setShowNewSnapshotModal(true)}
-                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#5E6AD2]/10 hover:bg-[#5E6AD2]/20 text-[#7480E2] text-xs font-bold transition-colors border border-[#5E6AD2]/20 shrink-0"
-                  >
-                    <Plus className="w-3 h-3" /> 새 시점 추가
-                  </button>
-
-                  {/* 편집 잠금 해제 / 잠금 버튼 */}
-                  {activeSnapshotId !== 'snap-default' && !isLatestSnapshot && (
-                    <button
-                      onClick={() => setIsSnapshotEditUnlocked(prev => !prev)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all shrink-0 ${
-                        isSnapshotEditUnlocked
-                          ? 'bg-orange-500/10 border-orange-500/30 text-orange-400 font-bold'
-                          : isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-500'
-                      }`}
-                      title="이력을 보고 있는 상태에서 지도를 수정하려면 편집 잠금을 해제하세요."
-                    >
-                      {isSnapshotEditUnlocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                      <span>{isSnapshotEditUnlocked ? '편집 잠금' : '편집 잠금 해제'}</span>
-                    </button>
-                  )}
-
-                  {/* 이력 메모 10글자 요약 버튼 */}
-                  {currentSnapshot.description && (
-                    <button
-                      onClick={() => setShowMemoModal(true)}
-                      className={`px-3 py-1.5 rounded-lg border text-[11px] truncate max-w-[150px] transition-colors shrink-0 ${
-                        isDark 
-                          ? 'bg-black/25 border-white/[0.06] text-gray-400 hover:bg-white/[0.04]' 
-                          : 'bg-black/[0.02] border-black/[0.06] text-gray-500 hover:bg-black/[0.04]'
-                      }`}
-                      title="클릭하여 전체 내용 보기"
-                    >
-                      {currentSnapshot.description.trim().length > 10 
-                        ? `${currentSnapshot.description.trim().slice(0, 10)}...` 
-                        : currentSnapshot.description.trim()}
-                    </button>
-                  )}
                 </div>
               )}
 
