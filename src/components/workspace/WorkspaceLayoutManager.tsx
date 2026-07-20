@@ -80,16 +80,19 @@ function LayoutNodeRenderer(props: LayoutNodeRendererProps) {
 
     return (
       <PanelGroup
+        key={node.id}
+        id={node.id}
         orientation={direction === 'row' ? 'horizontal' : 'vertical'}
         className="w-full h-full"
       >
         <Panel
+          id={`${node.id}-child-0`}
           defaultSize={node.ratio}
           minSize={15}
           onResize={(size) => {
-            // 미세 조절 시 무한 루프 예방 및 최적화
-            if (Math.abs(node.ratio - size.asPercentage) > 0.5) {
-              onRatioChange(node.id, size.asPercentage);
+            const numSize = typeof size === 'number' ? size : size?.asPercentage;
+            if (typeof numSize === 'number' && Math.abs(node.ratio - numSize) > 0.5) {
+              onRatioChange(node.id, numSize);
             }
           }}
           className="overflow-hidden flex relative"
@@ -104,6 +107,8 @@ function LayoutNodeRenderer(props: LayoutNodeRendererProps) {
         />
 
         <Panel
+          id={`${node.id}-child-1`}
+          defaultSize={100 - node.ratio}
           minSize={15}
           className="overflow-hidden flex relative"
         >
@@ -233,7 +238,7 @@ function PanelRenderer(props: PanelRendererProps) {
     >
       {/* 패널 헤더 바 */}
       <div
-        className={`flex items-center justify-between px-4 py-2 border-b select-none shrink-0 transition-colors duration-150 ${
+        className={`relative z-50 flex items-center justify-between px-4 py-2 border-b select-none shrink-0 transition-colors duration-150 ${
           isFocused && showCloseButton
             ? isDark
               ? 'bg-[#18191E] border-white/[0.08]'
@@ -289,7 +294,7 @@ function PanelRenderer(props: PanelRendererProps) {
 
             {showSplitDropdown && (
               <div
-                className={`absolute right-0 mt-1.5 w-36 rounded-xl border p-1 shadow-xl z-30 animate-in fade-in slide-in-from-top-2 duration-150 ${
+                className={`absolute right-0 mt-1.5 w-36 rounded-xl border p-1 shadow-xl z-50 animate-in fade-in slide-in-from-top-2 duration-150 ${
                   isDark
                     ? 'bg-[#111215]/95 border-white/[0.08] text-gray-200 backdrop-blur-md shadow-black/80'
                     : 'bg-white/95 border-black/[0.08] text-gray-800 backdrop-blur-md shadow-black/10'

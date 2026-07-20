@@ -22,7 +22,7 @@ export interface MapSnapshot {
 export interface MapElement {
   id: string;
   name: string;
-  type: 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group';
+  type: 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group' | 'brush';
   parentMapId: string; // 계층 구조 연동을 위함 (기본 'root')
   
   // Pin 전용 속성
@@ -43,6 +43,10 @@ export interface MapElement {
   bh?: number;   // 사각형: 높이,   원: 반지름Y
   borderStyle?: 'solid' | 'dashed' | 'dotted';
   borderWidth?: number;
+
+  // Brush 전용 속성
+  brushStrokes?: Array<Array<{ x: number; y: number }>>;
+  brushWidth?: number;
   
   // 상세 속성
   summary?: string;
@@ -104,7 +108,7 @@ export default function WorldMap({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [editMode, setEditMode] = useState<'select' | 'pan' | 'draw_polygon' | 'add_pin' | 'draw_route' | 'measure' | 'draw_border_rect' | 'draw_border_circle'>('select');
+  const [editMode, setEditMode] = useState<'select' | 'pan' | 'draw_polygon' | 'add_pin' | 'draw_route' | 'measure' | 'draw_border_rect' | 'draw_border_circle' | 'draw_brush'>('select');
 
   // --- 테두리 드래그 임시 상태 ---
   const [borderDragStart, setBorderDragStart] = useState<{ x: number; y: number } | null>(null);
@@ -122,15 +126,17 @@ export default function WorldMap({
   // 요소 드래그 이동 상태
   const [isDraggingElements, setIsDraggingElements] = useState(false);
   const [elementDragStartCoords, setElementDragStartCoords] = useState<{ x: number; y: number } | null>(null);
-  const [dragInitialElementsCoords, setDragInitialElementsCoords] = useState<Record<string, { x: number; y: number; points?: Array<{ x: number; y: number }> }>>({});
+  const [dragInitialElementsCoords, setDragInitialElementsCoords] = useState<Record<string, { x: number; y: number; w?: number; h?: number; points?: Array<{ x: number; y: number }>; brushStrokes?: Array<Array<{ x: number; y: number }>> }>>({});
   const [preDragElements, setPreDragElements] = useState<MapElement[] | null>(null);
   const [hasMovedDuringDrag, setHasMovedDuringDrag] = useState(false);
   
   // --- 타임라인 스냅샷 상태 ---
   const [snapshots, setSnapshots] = useState<MapSnapshot[]>([
-    { id: 'snap-default', order: 0, name: '1권 시작 기준', date: '작중 932년 4월', description: '평화로운 아이론 왕국 영토와 가문 세력권.' }
+    { id: 'snap-default', order: 0, name: '1권 시작 기준', date: '작중 932년 4월', description: '평화로운 아이론 왕국 영토와 가문 세력권.' },
+    { id: 'snap-war', order: 1, name: '동부 요새 함락 사건', date: '작중 932년 10월', description: '제국의 흑마법 기습 침공으로 동부 요새가 함락되고 소실됨.' },
+    { id: 'snap-fall', order: 2, name: '제국 연합군 병합 완료', date: '작중 933년 6월', description: '아이론 북동부 요충지가 완전히 함락되어 제국 영토로 편입됨.' }
   ]);
-  const [activeSnapshotId, setActiveSnapshotId] = useState<string>('snap-default');
+  const [activeSnapshotId, setActiveSnapshotId] = useState<string>('snap-fall');
   const activeSnapshotIdx = snapshots.findIndex(s => s.id === activeSnapshotId) === -1 ? 0 : snapshots.findIndex(s => s.id === activeSnapshotId);
   const currentSnapshot = snapshots[activeSnapshotIdx] || snapshots[0];
 
@@ -164,6 +170,45 @@ export default function WorldMap({
   const [tempPoints, setTempPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number } | null>(null);
   const [activeAnchorPointIdx, setActiveAnchorPointIdx] = useState<number | null>(null);
+  const [activeBorderResizeDirection, setActiveBorderResizeDirection] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | null>(null);
+
+  // --- 붓 그리기 리액트 상태 ---
+  const [brushWidth, setBrushWidth] = useState<number>(20);
+  const [tempBrushStrokes, setTempBrushStrokes] = useState<Array<Array<{ x: number; y: number }>>>([]);
+  const [currentBrushStroke, setCurrentBrushStroke] = useState<Array<{ x: number; y: number }>>([]);
+  const [isDrawingBrush, setIsDrawingBrush] = useState<boolean>(false);
+  const [showBrushWidthDropdown, setShowBrushWidthDropdown] = useState<boolean>(false);
+  const [showBorderDropdown, setShowBorderDropdown] = useState<boolean>(false);
+  const [showPointDropdown, setShowPointDropdown] = useState<boolean>(false);
+  const brushDropdownRef = useRef<HTMLDivElement | null>(null);
+  const borderDropdownRef = useRef<HTMLDivElement | null>(null);
+  const pointDropdownRef = useRef<HTMLDivElement | null>(null);
+  const isGroupSelectedBeforeMouseDownRef = useRef<boolean>(false);
+
+  // 드롭다운 바깥 영역 클릭 시 자동 닫기 핸들러
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as unknown as HTMLElement;
+      if (brushDropdownRef.current && !brushDropdownRef.current.contains(target)) {
+        setShowBrushWidthDropdown(false);
+      }
+      if (borderDropdownRef.current && !borderDropdownRef.current.contains(target)) {
+        setShowBorderDropdown(false);
+      }
+      if (pointDropdownRef.current && !pointDropdownRef.current.contains(target)) {
+        setShowPointDropdown(false);
+      }
+    };
+
+    if (showBrushWidthDropdown || showBorderDropdown || showPointDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [showBrushWidthDropdown, showBorderDropdown, showPointDropdown]);
 
   // --- 이미지 업로드 배경 및 프리셋 ---
   const [customBgImage, setCustomBgImage] = useState<string | null>(null);
@@ -280,6 +325,7 @@ export default function WorldMap({
     setSelectedElementIds(id ? [id] : []);
   }, []);
 
+  /*
   const toggleElementSelection = useCallback((id: string) => {
     setSelectedElementIds(prev => {
       const next = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
@@ -287,6 +333,7 @@ export default function WorldMap({
       return next;
     });
   }, []);
+  */
 
   const getTopLevelGroupOrElement = useCallback((id: string): string => {
     let currentId = id;
@@ -302,6 +349,16 @@ export default function WorldMap({
     }
     return currentId;
   }, [elements]);
+
+  /*
+  const getSelectionTargetId = useCallback((elId: string, e: React.MouseEvent | React.TouchEvent) => {
+    const topGroup = getTopLevelGroupOrElement(elId);
+    const isChildSelected = selectedElementIds.includes(elId);
+    const isParentSelected = selectedElementIds.includes(topGroup);
+    const altPressed = 'altKey' in e && e.altKey;
+    return (isChildSelected || isParentSelected || altPressed) ? elId : topGroup;
+  }, [selectedElementIds, getTopLevelGroupOrElement]);
+  */
 
   const collectAllMemberElements = useCallback((ids: string[]): MapElement[] => {
     const list: MapElement[] = [];
@@ -378,6 +435,11 @@ export default function WorldMap({
         if (x >= x1 && x <= x2 && y >= y1 && y <= y2) {
           selected.push(el.id);
         }
+      } else if (el.brushStrokes && el.brushStrokes.length > 0) {
+        const anyPointInBox = el.brushStrokes.some(stroke => stroke.some(p => p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2));
+        if (anyPointInBox) {
+          selected.push(el.id);
+        }
       } else if (el.points && el.points.length > 0) {
         const anyPointInBox = el.points.some(p => p.x >= x1 && p.x <= x2 && p.y >= y1 && p.y <= y2);
         if (anyPointInBox) {
@@ -422,6 +484,78 @@ export default function WorldMap({
     selectSingleElement(groupId);
   }, [selectedElementIds, elements, currentMapId, pushHistory, selectSingleElement]);
 
+  const handleUngroupElements = useCallback((groupIdsToUngroup: string[], memberIdsToRelease: string[]) => {
+    pushHistory();
+
+    setElements(prev => {
+      let updated = prev.map(el => {
+        if (memberIdsToRelease.includes(el.id)) {
+          const parentGroup = prev.find(p => p.id === el.parentMapId);
+          return {
+            ...el,
+            parentMapId: parentGroup ? parentGroup.parentMapId : currentMapId
+          };
+        }
+        if (groupIdsToUngroup.includes(el.parentMapId)) {
+          const parentGroup = prev.find(p => p.id === el.parentMapId);
+          return {
+            ...el,
+            parentMapId: parentGroup ? parentGroup.parentMapId : currentMapId
+          };
+        }
+        return el;
+      });
+
+      updated = updated.filter(el => !(el.type === 'group' && groupIdsToUngroup.includes(el.id)));
+      return updated;
+    });
+
+    setSelectedElementIds(prev => prev.filter(id => !groupIdsToUngroup.includes(id)));
+    if (selectedElementId && groupIdsToUngroup.includes(selectedElementId)) {
+      setSelectedElementId(null);
+    }
+  }, [currentMapId, pushHistory, selectedElementId]);
+
+  const handleLeaveGroup = useCallback((elementId: string) => {
+    const el = elements.find(item => item.id === elementId);
+    if (!el) return;
+    
+    const parentGroup = elements.find(p => p.id === el.parentMapId && p.type === 'group');
+    if (!parentGroup) return;
+
+    pushHistory();
+
+    setElements(prev => prev.map(item => {
+      if (item.id === elementId) {
+        return {
+          ...item,
+          parentMapId: parentGroup.parentMapId
+        };
+      }
+      return item;
+    }));
+  }, [elements, pushHistory]);
+
+  const handleGroupOrUngroup = useCallback(() => {
+    if (selectedElementIds.length === 0) return;
+
+    const selectedGroups = elements.filter(el => selectedElementIds.includes(el.id) && el.type === 'group');
+    const selectedGroupIds = selectedGroups.map(g => g.id);
+
+    const selectedMembersInGroups = elements.filter(el => 
+      selectedElementIds.includes(el.id) && 
+      el.type !== 'group' && 
+      elements.some(p => p.id === el.parentMapId && p.type === 'group')
+    );
+    const selectedMemberIds = selectedMembersInGroups.map(m => m.id);
+
+    if (selectedGroupIds.length > 0 || selectedMemberIds.length > 0) {
+      handleUngroupElements(selectedGroupIds, selectedMemberIds);
+    } else {
+      handleGroupElements();
+    }
+  }, [selectedElementIds, elements, handleUngroupElements, handleGroupElements]);
+
   const getCursorClass = useCallback((): string => {
     if (isPanning) return 'cursor-grabbing';
     
@@ -462,7 +596,7 @@ export default function WorldMap({
         handleRedo();
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
         e.preventDefault();
-        handleGroupElements();
+        handleGroupOrUngroup();
       }
     };
 
@@ -470,7 +604,7 @@ export default function WorldMap({
     return () => {
       window.removeEventListener('keydown', handleGlobalKeyDown);
     };
-  }, [handleUndo, handleRedo, handleGroupElements]);
+  }, [handleUndo, handleRedo, handleGroupOrUngroup]);
 
   // References
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -527,13 +661,15 @@ export default function WorldMap({
 
       if (data.snapshots && data.snapshots.length > 0) {
         setSnapshots(data.snapshots);
-        setActiveSnapshotId(data.snapshots[0].id);
+        setActiveSnapshotId(data.snapshots[data.snapshots.length - 1].id);
       } else {
-        setSnapshots([
+        const defaultSnaps: MapSnapshot[] = [
           { id: 'snap-default', order: 0, name: '1권 시작 기준', date: '작중 932년 4월', description: '평화로운 아이론 왕국 영토와 가문 세력권.' },
           { id: 'snap-war', order: 1, name: '동부 요새 함락 사건', date: '작중 932년 10월', description: '제국의 흑마법 기습 침공으로 동부 요새가 함락되고 소실됨.' },
           { id: 'snap-fall', order: 2, name: '제국 연합군 병합 완료', date: '작중 933년 6월', description: '아이론 북동부 요충지가 완전히 함락되어 제국 영토로 편입됨.' }
-        ]);
+        ];
+        setSnapshots(defaultSnaps);
+        setActiveSnapshotId(defaultSnaps[defaultSnaps.length - 1].id);
       }
 
       if (data.config) {
@@ -733,7 +869,7 @@ export default function WorldMap({
     if (e.deltaY < 0) {
       nextZoom = Math.min(4, zoom * zoomFactor);
     } else {
-      nextZoom = Math.max(0.4, zoom / zoomFactor);
+      nextZoom = Math.max(0.1, zoom / zoomFactor);
     }
     
     if (!canvasContainerRef.current) return;
@@ -762,20 +898,49 @@ export default function WorldMap({
       return;
     }
 
-    // 상위 그룹이 있으면 그룹 전체를 선택/이동 대상으로 선정
-    const targetId = getTopLevelGroupOrElement(el.id);
+    const topGroup = getTopLevelGroupOrElement(el.id);
+    const hasGroup = topGroup !== el.id;
 
-    // Ctrl / Shift 키 복수 선택 처리
+    let activeSelectedIds = selectedElementIds;
+
     if (e.ctrlKey || e.metaKey || e.shiftKey) {
-      toggleElementSelection(targetId);
+      // Ctrl 복수 선택 모드: 그룹 여부와 상관없이 무조건 클릭한 개별 요소(el.id)가 다중 선택 대상이 됨
+      setSelectedElementIds(prev => {
+        const filtered = hasGroup ? prev.filter(x => x !== topGroup) : prev;
+        const next = filtered.includes(el.id) ? filtered.filter(x => x !== el.id) : [...filtered, el.id];
+        setSelectedElementId(next.length > 0 ? next[next.length - 1] : null);
+        return next;
+      });
       return;
     }
 
-    // 이미 선택된 복수 그룹에 포함되지 않은 경우 단일 선택으로 갱신
-    if (!isElementSelected(targetId)) {
-      selectSingleElement(targetId);
+    // Ctrl이 없는 일반 클릭/드래그 모드
+    if (hasGroup) {
+      const groupMembers = collectAllMemberElements([topGroup]).map(m => m.id);
+      const isFullySelected = groupMembers.length > 0 && groupMembers.every(id => selectedElementIds.includes(id));
+      const isSingleChildSelected = selectedElementIds.length === 1 && selectedElementIds[0] === el.id;
+
+      if (isSingleChildSelected) {
+        // 이미 개별 자식 요소 1개만 단일 선택되어 있는 상태에서 드래그: 개별 요소 단독 이동!
+        isGroupSelectedBeforeMouseDownRef.current = false;
+        activeSelectedIds = [el.id];
+      } else if (isFullySelected) {
+        // 이미 그룹 전체가 선택되어 있는 상태에서 드래그: 그룹 전체 동시 이동!
+        isGroupSelectedBeforeMouseDownRef.current = true;
+        activeSelectedIds = selectedElementIds;
+      } else {
+        // 첫 마우스다운/드래그 시작: 어디를 누르든 무조건 그룹 전체 선택 및 그룹 이동!
+        isGroupSelectedBeforeMouseDownRef.current = false;
+        setSelectedElementId(el.id);
+        setSelectedElementIds(groupMembers);
+        activeSelectedIds = groupMembers;
+      }
+    } else {
+      isGroupSelectedBeforeMouseDownRef.current = false;
+      selectSingleElement(el.id);
+      activeSelectedIds = [el.id];
     }
-    
+
     // 요소 드래그 시작
     setIsDraggingElements(true);
     const canvasCoords = getCanvasCoords(e.clientX, e.clientY);
@@ -783,23 +948,63 @@ export default function WorldMap({
     setPreDragElements(JSON.parse(JSON.stringify(elements)));
     setHasMovedDuringDrag(false);
     
-    // 현재 선택된 모든 요소 및 해당 요소의 모든 하위 그룹 멤버 수집
-    const members = collectAllMemberElements(
-      selectedElementIds.includes(targetId) 
-        ? selectedElementIds 
-        : [...selectedElementIds, targetId]
-    );
+    const members = collectAllMemberElements(activeSelectedIds);
 
-    const initialCoords: Record<string, { x: number; y: number; points?: Array<{ x: number; y: number }> }> = {};
+    const initialCoords: Record<string, { x: number; y: number; w?: number; h?: number; points?: Array<{ x: number; y: number }>; brushStrokes?: Array<Array<{ x: number; y: number }>> }> = {};
     members.forEach(item => {
       if (item.type === 'pin') {
         initialCoords[item.id] = { x: item.x || 0, y: item.y || 0 };
       } else if (item.type === 'border_rect' || item.type === 'border_circle') {
-        initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0 };
+        initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0, w: item.bw || 0, h: item.bh || 0 };
+      } else if (item.brushStrokes) {
+        initialCoords[item.id] = { x: 0, y: 0, brushStrokes: JSON.parse(JSON.stringify(item.brushStrokes)) };
       } else if (item.points) {
         initialCoords[item.id] = { x: 0, y: 0, points: JSON.parse(JSON.stringify(item.points)) };
       }
     });
+    setDragInitialElementsCoords(initialCoords);
+  };
+
+  // --- 테두리 리사이즈 마우스 다운 핸들러 ---
+  const handleBorderResizeMouseDown = (
+    e: React.MouseEvent,
+    el: MapElement,
+    dir: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
+  ) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    if (isReadOnly) {
+      showAlert('현재 시점 버전 이력을 탐색 중입니다. 편집을 진행하려면 상단 시점 제어 바에서 [편집 잠금 해제]를 클릭하세요.');
+      return;
+    }
+
+    pushHistory();
+    setActiveBorderResizeDirection(dir);
+    
+    const canvasCoords = getCanvasCoords(e.clientX, e.clientY);
+    setElementDragStartCoords(canvasCoords);
+    setPreDragElements(JSON.parse(JSON.stringify(elements)));
+    setHasMovedDuringDrag(false);
+    
+    const initialCoords: Record<string, { x: number; y: number; w?: number; h?: number; brushStrokes?: Array<Array<{ x: number; y: number }>> }> = {};
+    if (el.type === 'brush' && el.brushStrokes) {
+      const bbox = getBrushBoundingBox(el.brushStrokes);
+      initialCoords[el.id] = {
+        x: bbox.minX,
+        y: bbox.minY,
+        w: bbox.w,
+        h: bbox.h,
+        brushStrokes: JSON.parse(JSON.stringify(el.brushStrokes))
+      };
+    } else {
+      initialCoords[el.id] = {
+        x: el.bx || 0,
+        y: el.by || 0,
+        w: el.bw || 0,
+        h: el.bh || 0
+      };
+    }
     setDragInitialElementsCoords(initialCoords);
   };
 
@@ -833,9 +1038,17 @@ export default function WorldMap({
       editMode === 'draw_border_circle' || 
       editMode === 'add_pin' || 
       editMode === 'draw_polygon' || 
-      editMode === 'draw_route'
+      editMode === 'draw_route' ||
+      editMode === 'draw_brush'
     )) {
       showAlert('현재 시점 버전 이력을 탐색 중입니다. 편집을 진행하려면 상단 시점 제어 바에서 [편집 잠금 해제]를 클릭하세요.');
+      return;
+    }
+
+    // 붓 그리기 모드 클릭 (드래그 획 시작)
+    if (editMode === 'draw_brush') {
+      setIsDrawingBrush(true);
+      setCurrentBrushStroke([snapped]);
       return;
     }
 
@@ -910,6 +1123,110 @@ export default function WorldMap({
     const snapped = applySnapping(currentCoords);
     setHoveredPoint(snapped);
 
+    // 붓 그리기 모드 드래그 중인 경우
+    if (editMode === 'draw_brush' && isDrawingBrush) {
+      setCurrentBrushStroke(prev => {
+        if (prev.length > 0) {
+          const last = prev[prev.length - 1];
+          const dist = Math.hypot(snapped.x - last.x, snapped.y - last.y);
+          if (dist < 3 / zoom) {
+            return prev;
+          }
+        }
+        return [...prev, snapped];
+      });
+      return;
+    }
+
+    // 테두리 리사이즈 드래그 중인 경우
+    if (activeBorderResizeDirection && selectedElementId && elementDragStartCoords) {
+      const dx = snapped.x - elementDragStartCoords.x;
+      const dy = snapped.y - elementDragStartCoords.y;
+      
+      setElements(prev => prev.map(item => {
+        if (item.id !== selectedElementId) return item;
+        
+        const initial = dragInitialElementsCoords[item.id];
+        if (!initial) return item;
+        
+        let x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+        const initW = initial.w ?? 0;
+        const initH = initial.h ?? 0;
+        
+        if (item.type === 'border_rect' || item.type === 'brush') {
+          x1 = initial.x;
+          y1 = initial.y;
+          x2 = initial.x + initW;
+          y2 = initial.y + initH;
+        } else if (item.type === 'border_circle') {
+          x1 = initial.x - initW;
+          y1 = initial.y - initH;
+          x2 = initial.x + initW;
+          y2 = initial.y + initH;
+        } else {
+          return item;
+        }
+        
+        let newX1 = x1;
+        let newY1 = y1;
+        let newX2 = x2;
+        let newY2 = y2;
+        const minSize = 10;
+        
+        if (activeBorderResizeDirection === 'top-left') {
+          newX1 = Math.min(x1 + dx, x2 - minSize);
+          newY1 = Math.min(y1 + dy, y2 - minSize);
+        } else if (activeBorderResizeDirection === 'top-right') {
+          newX2 = Math.max(x2 + dx, x1 + minSize);
+          newY1 = Math.min(y1 + dy, y2 - minSize);
+        } else if (activeBorderResizeDirection === 'bottom-left') {
+          newX1 = Math.min(x1 + dx, x2 - minSize);
+          newY2 = Math.max(y2 + dy, y1 + minSize);
+        } else if (activeBorderResizeDirection === 'bottom-right') {
+          newX2 = Math.max(x2 + dx, x1 + minSize);
+          newY2 = Math.max(y2 + dy, y1 + minSize);
+        }
+        
+        if (item.type === 'brush') {
+          const newW = newX2 - newX1;
+          const newH = newY2 - newY1;
+          const scaleX = initW > 0 ? newW / initW : 1;
+          const scaleY = initH > 0 ? newH / initH : 1;
+
+          const initStrokes = initial.brushStrokes || item.brushStrokes || [];
+          const nextStrokes = initStrokes.map(stroke => 
+            stroke.map(pt => ({
+              x: newX1 + (pt.x - x1) * scaleX,
+              y: newY1 + (pt.y - y1) * scaleY
+            }))
+          );
+
+          return {
+            ...item,
+            brushStrokes: nextStrokes
+          };
+        } else if (item.type === 'border_rect') {
+          return {
+            ...item,
+            bx: newX1,
+            by: newY1,
+            bw: newX2 - newX1,
+            bh: newY2 - newY1
+          };
+        } else {
+          return {
+            ...item,
+            bx: (newX1 + newX2) / 2,
+            by: (newY1 + newY2) / 2,
+            bw: (newX2 - newX1) / 2,
+            bh: (newY2 - newY1) / 2
+          };
+        }
+      }));
+      setHasMovedDuringDrag(true);
+      return;
+    }
+
     // 요소 전체 드래그 이동
     if (isDraggingElements && elementDragStartCoords) {
       const dx = currentCoords.x - elementDragStartCoords.x;
@@ -932,6 +1249,14 @@ export default function WorldMap({
             ...item,
             bx: initial.x + dx,
             by: initial.y + dy
+          };
+        } else if (item.brushStrokes && initial.brushStrokes) {
+          return {
+            ...item,
+            brushStrokes: initial.brushStrokes.map(stroke => stroke.map(pt => ({
+              x: pt.x + dx,
+              y: pt.y + dy
+            })))
           };
         } else if (item.points && initial.points) {
           return {
@@ -974,6 +1299,29 @@ export default function WorldMap({
 
   // --- 마우스 업 핸들러 ---
   const handleCanvasMouseUp = (e?: React.MouseEvent) => {
+    // 붓 그리기 모드 마우스 업 (획 종료)
+    if (editMode === 'draw_brush' && isDrawingBrush) {
+      setIsDrawingBrush(false);
+      if (currentBrushStroke.length > 0) {
+        setTempBrushStrokes(prev => [...prev, currentBrushStroke]);
+      }
+      setCurrentBrushStroke([]);
+      return;
+    }
+
+    // 테두리 리사이즈 완료 처리
+    if (activeBorderResizeDirection) {
+      if (hasMovedDuringDrag && preDragElements) {
+        pushHistory(preDragElements);
+      }
+      setActiveBorderResizeDirection(null);
+      setElementDragStartCoords(null);
+      setDragInitialElementsCoords({});
+      setPreDragElements(null);
+      setHasMovedDuringDrag(false);
+      return;
+    }
+
     // 1. 요소 드래그 완료 처리
     if (isDraggingElements) {
       if (hasMovedDuringDrag && preDragElements) {
@@ -1053,6 +1401,40 @@ export default function WorldMap({
     
     setIsPanning(false);
     setActiveAnchorPointIdx(null);
+  };
+
+  // --- 붓 드로잉 빌드 완성 ---
+  const finalizeBrush = () => {
+    if (tempBrushStrokes.length === 0) {
+      setTempBrushStrokes([]);
+      setCurrentBrushStroke([]);
+      return;
+    }
+
+    pushHistory();
+    const newBrushId = `brush-${Date.now()}`;
+    const newBrush: MapElement = {
+      id: newBrushId,
+      name: '새 붓 영역',
+      type: 'brush',
+      parentMapId: currentMapId,
+      brushStrokes: tempBrushStrokes,
+      brushWidth: brushWidth,
+      color: '#5E6AD2',
+      opacity: 0.4,
+      category: 'nature',
+      summary: '붓으로 칠해진 영역입니다.',
+      description: '붓 드로잉으로 생성된 영역입니다. 설명을 추가해보세요.',
+      tags: []
+    };
+    
+    setElements(prev => [...prev, newBrush]);
+    setSelectedElementId(newBrushId);
+    loadElementToEdit(newBrush);
+    setIsDetailOpen(true);
+    setTempBrushStrokes([]);
+    setCurrentBrushStroke([]);
+    setEditMode('select');
   };
 
   // --- 다각형 영역 빌드 완성 ---
@@ -1140,6 +1522,10 @@ export default function WorldMap({
         targetX = el.bx;
         targetY = el.by;
       }
+    } else if (el.type === 'brush' && el.brushStrokes) {
+      const bbox = getBrushBoundingBox(el.brushStrokes);
+      targetX = bbox.minX + bbox.w / 2;
+      targetY = bbox.minY + bbox.h / 2;
     } else {
       return;
     }
@@ -1152,11 +1538,51 @@ export default function WorldMap({
 
 
 
+  // --- 붓 드로잉 패스 빌더 헬퍼 ---
+  const buildStrokesPathData = (strokes: Array<Array<{ x: number; y: number }>>) => {
+    return strokes
+      .map(stroke => {
+        if (stroke.length === 0) return '';
+        return `M ${stroke[0].x} ${stroke[0].y} ` + stroke.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
+      })
+      .join(' ');
+  };
+
+  // --- 붓 영역 바운딩 박스 계산 헬퍼 ---
+  const getBrushBoundingBox = (strokes: Array<Array<{ x: number; y: number }>>) => {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    strokes.forEach(stroke => {
+      stroke.forEach(pt => {
+        if (pt.x < minX) minX = pt.x;
+        if (pt.y < minY) minY = pt.y;
+        if (pt.x > maxX) maxX = pt.x;
+        if (pt.y > maxY) maxY = pt.y;
+      });
+    });
+
+    if (minX === Infinity) {
+      return { minX: 0, minY: 0, maxX: 0, maxY: 0, w: 0, h: 0 };
+    }
+
+    return {
+      minX,
+      minY,
+      maxX,
+      maxY,
+      w: maxX - minX,
+      h: maxY - minY
+    };
+  };
+
   // --- 전체 지도 레이아웃 계층 트리 뷰 빌드 ---
   interface FlatTreeNode {
     id: string;
     name: string;
-    type: 'root' | 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group';
+    type: 'root' | 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group' | 'brush';
     depth: number;
     childMapId?: string;
     parentMapId?: string;
@@ -1244,7 +1670,20 @@ export default function WorldMap({
       setIsDetailOpen(false);
     } else {
       setMapPath(node.path);
-      selectSingleElement(node.id);
+      if (node.type === 'group') {
+        const groupMembers = collectAllMemberElements([node.id]).map(m => m.id);
+        setSelectedElementId(node.id);
+        setSelectedElementIds(groupMembers);
+      } else {
+        const topGroup = getTopLevelGroupOrElement(node.id);
+        if (topGroup !== node.id) {
+          const groupMembers = collectAllMemberElements([topGroup]).map(m => m.id);
+          setSelectedElementId(node.id);
+          setSelectedElementIds(groupMembers);
+        } else {
+          selectSingleElement(node.id);
+        }
+      }
       if (node.element) {
         loadElementToEdit(node.element);
         setIsDetailOpen(true);
@@ -1326,7 +1765,7 @@ export default function WorldMap({
     setElementEditTexture(el.texture || 'none');
     setElementEditIcon(el.icon || 'mappin');
     setElementEditBorderStyle(el.borderStyle || 'solid');
-    setElementEditBorderWidth(el.borderWidth || 3);
+    setElementEditBorderWidth(el.type === 'brush' ? (el.brushWidth || 20) : (el.borderWidth || 3));
     setElementEditTags(el.tags || []);
     setElementEditChars(el.associatedCharacters || []);
     setElementEditEpisodes(el.associatedEpisodes || []);
@@ -1350,6 +1789,7 @@ export default function WorldMap({
           icon: elementEditIcon,
           borderStyle: elementEditBorderStyle,
           borderWidth: elementEditBorderWidth,
+          brushWidth: el.type === 'brush' ? elementEditBorderWidth : el.brushWidth,
           tags: elementEditTags,
           associatedCharacters: elementEditChars,
           associatedEpisodes: elementEditEpisodes,
@@ -1376,6 +1816,51 @@ export default function WorldMap({
       return el;
     }));
     setIsDetailOpen(false);
+  };
+
+  const handleElementClick = (el: MapElement, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (hasMovedDuringDrag) return;
+
+    const topGroup = getTopLevelGroupOrElement(el.id);
+    const hasGroup = topGroup !== el.id;
+    let targetId = el.id;
+
+    if (editMode === 'select') {
+      if (e.ctrlKey || e.metaKey || e.shiftKey) {
+        targetId = el.id;
+        setSelectedElementIds(prev => {
+          const filtered = hasGroup ? prev.filter(x => x !== topGroup) : prev;
+          const next = filtered.includes(el.id) ? filtered.filter(x => x !== el.id) : [...filtered, el.id];
+          setSelectedElementId(next.length > 0 ? next[next.length - 1] : null);
+          return next;
+        });
+      } else {
+        if (hasGroup) {
+          if (isGroupSelectedBeforeMouseDownRef.current) {
+            // 2번째 클릭: 이미 마우스다운 직전부터 그룹이 완벽히 선택된 상태에서 다시 뗐을 때만 개별 자식 선택으로 전환
+            targetId = el.id;
+            selectSingleElement(el.id);
+          } else {
+            // 첫 번째 클릭: 어디를 누르든 무조건 그룹 전체 선택 유지!
+            targetId = topGroup;
+            const groupMembers = collectAllMemberElements([topGroup]).map(m => m.id);
+            setSelectedElementId(el.id);
+            setSelectedElementIds(groupMembers);
+          }
+        } else {
+          targetId = el.id;
+          selectSingleElement(el.id);
+        }
+      }
+    } else {
+      targetId = el.id;
+      selectSingleElement(el.id);
+    }
+    const targetEl = elements.find(x => x.id === targetId) || el;
+    loadElementToEdit(targetEl);
+    setIsDetailOpen(true);
+    focusOnElement(targetEl);
   };
 
   // --- 요소 영구 제거 ---
@@ -1616,6 +2101,8 @@ export default function WorldMap({
                     icon = isExpanded ? '📂' : '📁';
                   } else if (node.type === 'group') {
                     icon = isExpanded ? '📂' : '📁';
+                  } else if (node.type === 'brush') {
+                    icon = '🖌️';
                   } else if (node.type === 'polygon') {
                     icon = '▰';
                   } else if (node.type === 'route') {
@@ -1702,12 +2189,12 @@ export default function WorldMap({
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
         
         {/* ═══ 상단 헤더 ═══ */}
-        <div className={`shrink-0 border-b ${isDark ? 'bg-[#0E0F12] border-white/[0.08]' : 'bg-white border-black/[0.08]'}`}>
+        <div className={`relative z-30 shrink-0 border-b ${isDark ? 'bg-[#0E0F12] border-white/[0.08]' : 'bg-white border-black/[0.08]'}`}>
 
           {/* 1행: 탭 버튼 + 우측 고정 액션 */}
-          <div className={`px-4 flex items-center justify-between gap-2 border-b h-12 ${isDark ? 'border-white/[0.05]' : 'border-black/[0.05]'}`}>
+          <div className={`px-4 flex items-center justify-between gap-4 border-b h-12 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-black/10 dark:[&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full ${isDark ? 'border-white/[0.05]' : 'border-black/[0.05]'}`}>
             {/* 탭 버튼 그룹 */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 shrink-0">
               {([
                 { id: 'draw',     Icon: PenTool,   label: '도구'   },
                 { id: 'settings', Icon: Settings2,  label: '설정'   },
@@ -1719,7 +2206,7 @@ export default function WorldMap({
                   <button
                     key={id}
                     onClick={() => setActiveHeaderTab(prev => prev === id ? null : id)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all duration-200 ${
                       isActive
                         ? 'bg-[#5E6AD2] text-white shadow-md shadow-[#5E6AD2]/25'
                         : isDark
@@ -1727,7 +2214,7 @@ export default function WorldMap({
                           : 'text-gray-500 hover:text-gray-800 hover:bg-black/[0.05]'
                     }`}
                   >
-                    <Icon className="w-3.5 h-3.5" />
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
                     {label}
                   </button>
                 );
@@ -1735,74 +2222,266 @@ export default function WorldMap({
             </div>
 
             {/* 우측 고정: 현재 도구 표시 + Zoom + Undo/Redo + 내보내기 */}
-            <div className="flex items-center gap-2">
-              <span className={`text-[11px] font-semibold hidden md:flex items-center gap-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                {editMode === 'select' && <><Sparkles className="w-3 h-3 text-[#7480E2]" /> 선택/꼭짓점 수정</>}
-                {editMode === 'pan' && <><Move className="w-3 h-3 text-[#7480E2]" /> 패닝 이동</>}
-                {editMode === 'draw_polygon' && <><Layers className="w-3 h-3 text-[#7480E2]" /> 영역 그리기</>}
-                {editMode === 'add_pin' && <><MapPin className="w-3 h-3 text-[#7480E2]" /> 핀 거점 추가</>}
-                {editMode === 'draw_route' && <><ChevronRight className="w-3 h-3 text-[#7480E2]" /> 국경/이동선 그리기</>}
-                {editMode === 'measure' && <><Ruler className="w-3 h-3 text-[#7480E2]" /> 거리 측정</>}
+            <div className="flex items-center gap-2 shrink-0">
+              <span className={`text-[11px] font-semibold hidden md:flex items-center gap-1 shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                {editMode === 'select' && <><Sparkles className="w-3 h-3 text-[#7480E2] shrink-0" /> 선택/꼭짓점 수정</>}
+                {editMode === 'pan' && <><Move className="w-3 h-3 text-[#7480E2] shrink-0" /> 패닝 이동</>}
+                {editMode === 'draw_polygon' && <><Layers className="w-3 h-3 text-[#7480E2] shrink-0" /> 영역 그리기</>}
+                {editMode === 'add_pin' && <><MapPin className="w-3 h-3 text-[#7480E2] shrink-0" /> 핀 거점 추가</>}
+                {editMode === 'draw_route' && <><ChevronRight className="w-3 h-3 text-[#7480E2] shrink-0" /> 선 긋기</>}
+                {editMode === 'draw_brush' && <><PenTool className="w-3 h-3 text-[#7480E2] shrink-0" /> 붓 그리기</>}
+                {editMode === 'measure' && <><Ruler className="w-3 h-3 text-[#7480E2] shrink-0" /> 거리 측정</>}
                 {editMode === 'draw_border_rect' && <><span className="border border-current rounded-sm inline-block w-3 h-3 shrink-0 text-[#7480E2]" /> 사각 테두리</>}
                 {editMode === 'draw_border_circle' && <><span className="border border-current rounded-full inline-block w-3 h-3 shrink-0 text-[#7480E2]" /> 원형 테두리</>}
               </span>
-              <div className={`w-px h-4 ${isDark ? 'bg-white/10' : 'bg-black/10'} hidden md:block`} />
-              <div className={`flex items-center rounded-xl overflow-hidden text-xs border ${isDark ? 'border-white/[0.08] bg-black/20' : 'border-black/[0.08]'}`}>
-                <button onClick={() => setZoom(prev => Math.max(0.4, prev - 0.2))} className={`p-1.5 transition-colors ${isDark ? 'hover:bg-white/[0.06] text-gray-400 hover:text-white' : 'hover:bg-black/[0.04] text-gray-500'}`}><ZoomOut className="w-3.5 h-3.5" /></button>
-                <span className="px-2 font-mono text-[10px] font-bold text-[#7480E2]">{Math.round(zoom * 100)}%</span>
-                <button onClick={() => setZoom(prev => Math.min(4, prev + 0.2))} className={`p-1.5 transition-colors ${isDark ? 'hover:bg-white/[0.06] text-gray-400 hover:text-white' : 'hover:bg-black/[0.04] text-gray-500'}`}><ZoomIn className="w-3.5 h-3.5" /></button>
+              <div className={`w-px h-4 shrink-0 ${isDark ? 'bg-white/10' : 'bg-black/10'} hidden md:block`} />
+              <div className={`flex items-center rounded-xl overflow-hidden text-xs border shrink-0 ${isDark ? 'border-white/[0.08] bg-black/20' : 'border-black/[0.08]'}`}>
+                <button onClick={() => setZoom(prev => Math.max(0.1, prev - 0.2))} className={`p-1.5 transition-colors shrink-0 ${isDark ? 'hover:bg-white/[0.06] text-gray-400 hover:text-white' : 'hover:bg-black/[0.04] text-gray-500'}`}><ZoomOut className="w-3.5 h-3.5 shrink-0" /></button>
+                <span className="px-2 font-mono text-[10px] font-bold text-[#7480E2] shrink-0">{Math.round(zoom * 100)}%</span>
+                <button onClick={() => setZoom(prev => Math.min(4, prev + 0.2))} className={`p-1.5 transition-colors shrink-0 ${isDark ? 'hover:bg-white/[0.06] text-gray-400 hover:text-white' : 'hover:bg-black/[0.04] text-gray-500'}`}><ZoomIn className="w-3.5 h-3.5 shrink-0" /></button>
               </div>
-              <button onClick={handleUndo} disabled={undoStack.length === 0} title="실행 취소 (Ctrl+Z)" className={`p-1.5 rounded-lg border transition-colors ${undoStack.length === 0 ? 'opacity-30 cursor-not-allowed border-gray-500/20 text-gray-500' : isDark ? 'border-white/[0.08] hover:bg-white/[0.06] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}><RotateCcw className="w-3.5 h-3.5" /></button>
-              <button onClick={handleRedo} disabled={redoStack.length === 0} title="다시 실행 (Ctrl+Y)" className={`p-1.5 rounded-lg border transition-colors ${redoStack.length === 0 ? 'opacity-30 cursor-not-allowed border-gray-500/20 text-gray-500' : isDark ? 'border-white/[0.08] hover:bg-white/[0.06] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}><RotateCw className="w-3.5 h-3.5" /></button>
-              <button onClick={handleExportMap} className="p-1.5 px-3 rounded-xl bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-lg shadow-[#5E6AD2]/20"><Download className="w-3.5 h-3.5" />내보내기</button>
+              <button onClick={handleUndo} disabled={undoStack.length === 0} title="실행 취소 (Ctrl+Z)" className={`p-1.5 rounded-lg border transition-colors shrink-0 ${undoStack.length === 0 ? 'opacity-30 cursor-not-allowed border-gray-500/20 text-gray-500' : isDark ? 'border-white/[0.08] hover:bg-white/[0.06] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}><RotateCcw className="w-3.5 h-3.5 shrink-0" /></button>
+              <button onClick={handleRedo} disabled={redoStack.length === 0} title="다시 실행 (Ctrl+Y)" className={`p-1.5 rounded-lg border transition-colors shrink-0 ${redoStack.length === 0 ? 'opacity-30 cursor-not-allowed border-gray-500/20 text-gray-500' : isDark ? 'border-white/[0.08] hover:bg-white/[0.06] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}><RotateCw className="w-3.5 h-3.5 shrink-0" /></button>
+              <button onClick={handleExportMap} className="p-1.5 px-3 rounded-xl bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-bold flex items-center gap-1.5 shrink-0 transition-colors shadow-lg shadow-[#5E6AD2]/20"><Download className="w-3.5 h-3.5 shrink-0" />내보내기</button>
             </div>
           </div>
 
           {/* 2행: 탭 내용 패널 (조건부 렌더링) */}
           {activeHeaderTab && (
-            <div className={`px-4 py-2.5 flex items-center gap-4 flex-wrap animate-in slide-in-from-top-1 duration-150 ${isDark ? 'bg-white/[0.01]' : 'bg-black/[0.01]'}`}>
+            <div className={`relative z-30 px-4 py-2.5 flex items-center gap-4 flex-nowrap overflow-visible animate-in slide-in-from-top-1 duration-150 ${isDark ? 'bg-white/[0.01]' : 'bg-black/[0.01]'}`}>
 
               {/* ── 도구 탭 ── */}
               {activeHeaderTab === 'draw' && (
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="flex items-center gap-1.5 flex-nowrap shrink-0">
                   {[
                     { mode: 'select',           Icon: Sparkles,   label: '선택/편집' },
                     { mode: 'pan',              Icon: Move,       label: '이동/손바닥' },
                     { mode: 'add_pin',          Icon: MapPin,     label: '핀 거점' },
-                    { mode: 'draw_polygon',     Icon: Layers,     label: '세력권(영역)' },
-                    { mode: 'draw_route',       Icon: ChevronRight, label: '국경/이동교역선' },
                   ].map(({ mode, Icon, label }) => (
                     <button
                       key={mode}
-                      onClick={() => { setEditMode(mode as typeof editMode); setTempPoints([]); }}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 ${
+                      onClick={() => { setEditMode(mode as typeof editMode); setTempPoints([]); setTempBrushStrokes([]); setCurrentBrushStroke([]); }}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all duration-150 ${
                         editMode === mode
-                          ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-sm'
-                          : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'
+                          ? 'bg-[#5E6AD2] text-white shadow-sm'
+                          : isDark ? 'text-gray-300 hover:text-white hover:bg-white/[0.06]' : 'text-gray-600 hover:text-gray-900 hover:bg-black/[0.05]'
                       }`}
                     >
-                      <Icon className="w-3.5 h-3.5" />{label}
+                      <Icon className="w-3.5 h-3.5 shrink-0" />{label}
                     </button>
                   ))}
-                  <button
-                    onClick={() => { setEditMode('draw_border_rect'); setTempPoints([]); }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 ${editMode === 'draw_border_rect' ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-sm' : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'}`}
-                  >
-                    <span className="w-3.5 h-3.5 border-2 border-current rounded-sm inline-block shrink-0" /> 사각 테두리
-                  </button>
-                  <button
-                    onClick={() => { setEditMode('draw_border_circle'); setTempPoints([]); }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 ${editMode === 'draw_border_circle' ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-sm' : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'}`}
-                  >
-                    <span className="w-3.5 h-3.5 border-2 border-current rounded-full inline-block shrink-0" /> 원형 테두리
-                  </button>
+
+                  {/* 포인트 도구 (선 긋기 / 영역 그리기 드롭다운 포함) */}
+                  <div ref={pointDropdownRef} className="relative inline-flex items-stretch shrink-0">
+                    <div className={`flex items-center rounded-lg shrink-0 transition-all duration-150 ${
+                      editMode === 'draw_route' || editMode === 'draw_polygon'
+                        ? 'bg-[#5E6AD2] text-white shadow-sm'
+                        : isDark ? 'text-gray-300 hover:text-white hover:bg-white/[0.06]' : 'text-gray-600 hover:text-gray-900 hover:bg-black/[0.05]'
+                    }`}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (editMode !== 'draw_polygon' && editMode !== 'draw_route') {
+                            setEditMode('draw_polygon');
+                          }
+                          setTempPoints([]);
+                          setTempBrushStrokes([]);
+                          setCurrentBrushStroke([]);
+                        }}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-l-lg transition-colors ${
+                          editMode === 'draw_route' || editMode === 'draw_polygon'
+                            ? 'hover:bg-white/10'
+                            : isDark ? 'hover:bg-white/[0.06]' : 'hover:bg-black/[0.05]'
+                        }`}
+                      >
+                        <Layers className="w-3.5 h-3.5 shrink-0" />
+                        포인트
+                      </button>
+                      <div className={`w-px h-3.5 shrink-0 ${
+                        editMode === 'draw_route' || editMode === 'draw_polygon'
+                          ? 'bg-white/20'
+                          : isDark ? 'bg-white/10' : 'bg-black/10'
+                      }`} />
+                      <button
+                        type="button"
+                        onClick={() => setShowPointDropdown(prev => !prev)}
+                        className={`px-1.5 py-1.5 text-xs font-semibold rounded-r-lg transition-colors flex items-center justify-center ${
+                          editMode === 'draw_route' || editMode === 'draw_polygon'
+                            ? 'hover:bg-white/10'
+                            : isDark ? 'hover:bg-white/[0.06]' : 'hover:bg-black/[0.05]'
+                        }`}
+                      >
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                      </button>
+                    </div>
+
+                    {showPointDropdown && (
+                      <div className={`absolute left-0 top-full mt-1 z-50 rounded-lg border shadow-xl p-1.5 flex flex-col gap-1 min-w-36 ${
+                        isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+                      }`}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditMode('draw_route');
+                            setTempPoints([]);
+                            setShowPointDropdown(false);
+                          }}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-semibold text-left transition-colors ${
+                            editMode === 'draw_route'
+                              ? 'bg-[#5E6AD2] text-white'
+                              : isDark ? 'hover:bg-white/[0.06]' : 'hover:bg-black/[0.04]'
+                          }`}
+                        >
+                          <ChevronRight className="w-3.5 h-3.5 shrink-0" />
+                          선 긋기
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditMode('draw_polygon');
+                            setTempPoints([]);
+                            setShowPointDropdown(false);
+                          }}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs font-semibold text-left transition-colors ${
+                            editMode === 'draw_polygon'
+                              ? 'bg-[#5E6AD2] text-white'
+                              : isDark ? 'hover:bg-white/[0.06]' : 'hover:bg-black/[0.04]'
+                          }`}
+                        >
+                          <Layers className="w-3.5 h-3.5 shrink-0" />
+                          영역 그리기
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 붓 그리기 도구 (굵기 드롭다운 포함) */}
+                  <div ref={brushDropdownRef} className="relative inline-flex items-stretch shrink-0">
+                    <div className={`flex items-center rounded-lg shrink-0 transition-all duration-150 ${
+                      editMode === 'draw_brush'
+                        ? 'bg-[#5E6AD2] text-white shadow-sm'
+                        : isDark ? 'text-gray-300 hover:text-white hover:bg-white/[0.06]' : 'text-gray-600 hover:text-gray-900 hover:bg-black/[0.05]'
+                    }`}>
+                      <button
+                        type="button"
+                        onClick={() => { setEditMode('draw_brush'); setTempPoints([]); setTempBrushStrokes([]); setCurrentBrushStroke([]); }}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-l-lg transition-colors ${
+                          editMode === 'draw_brush'
+                            ? 'hover:bg-white/10'
+                            : isDark ? 'hover:bg-white/[0.06]' : 'hover:bg-black/[0.05]'
+                        }`}
+                      >
+                        <PenTool className="w-3.5 h-3.5 shrink-0" />
+                        붓 그리기
+                      </button>
+                      <div className={`w-px h-3.5 shrink-0 ${
+                        editMode === 'draw_brush'
+                          ? 'bg-white/20'
+                          : isDark ? 'bg-white/10' : 'bg-black/10'
+                      }`} />
+                      <button
+                        type="button"
+                        onClick={() => setShowBrushWidthDropdown(prev => !prev)}
+                        className={`px-1.5 py-1.5 text-xs font-semibold rounded-r-lg transition-colors flex items-center justify-center ${
+                          editMode === 'draw_brush'
+                            ? 'hover:bg-white/10'
+                            : isDark ? 'hover:bg-white/[0.06]' : 'hover:bg-black/[0.05]'
+                        }`}
+                      >
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                      </button>
+                    </div>
+                    {showBrushWidthDropdown && (
+                      <div className={`absolute left-0 top-full mt-1 z-50 rounded-lg border shadow-xl p-3 flex flex-col gap-2 min-w-44 ${
+                        isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+                      }`}>
+                        <span className="text-[10px] font-bold text-gray-400">붓 굵기: {brushWidth}px</span>
+                        <input
+                          type="range"
+                          min="5"
+                          max="100"
+                          step="5"
+                          value={brushWidth}
+                          onChange={(e) => setBrushWidth(Number(e.target.value))}
+                          className="w-full accent-[#5E6AD2] cursor-pointer"
+                        />
+                        <div className="grid grid-cols-4 gap-1 mt-1">
+                          {[10, 20, 40, 60].map(w => (
+                            <button
+                              key={w}
+                              onClick={() => { setBrushWidth(w); setShowBrushWidthDropdown(false); }}
+                              className={`py-1 rounded text-[10px] font-bold border transition-all ${
+                                brushWidth === w
+                                  ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white'
+                                  : isDark ? 'border-white/[0.08] text-gray-400 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-500 hover:bg-black/[0.04]'
+                              }`}
+                            >
+                              {w}px
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 테두리 그리기 도구 (사각/원형 드롭다운 포함) */}
+                  <div ref={borderDropdownRef} className="relative">
+                    <button
+                      onClick={() => setShowBorderDropdown(prev => !prev)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all duration-150 ${
+                        editMode === 'draw_border_rect' || editMode === 'draw_border_circle'
+                          ? 'bg-[#5E6AD2] text-white shadow-sm'
+                          : isDark ? 'text-gray-300 hover:text-white hover:bg-white/[0.06]' : 'text-gray-600 hover:text-gray-900 hover:bg-black/[0.05]'
+                      }`}
+                    >
+                      <span className="w-3.5 h-3.5 border-2 border-current rounded-sm inline-block shrink-0" />
+                      테두리
+                      <ChevronDown className="w-3 h-3 shrink-0" />
+                    </button>
+                    {showBorderDropdown && (
+                      <div className={`absolute left-0 mt-1 z-50 rounded-lg border shadow-xl p-1.5 flex flex-col gap-1 min-w-32 ${
+                        isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+                      }`}>
+                        <button
+                          onClick={() => {
+                            setEditMode('draw_border_rect');
+                            setTempPoints([]);
+                            setShowBorderDropdown(false);
+                          }}
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold text-left transition-colors ${
+                            editMode === 'draw_border_rect'
+                              ? 'bg-[#5E6AD2] text-white'
+                              : isDark ? 'hover:bg-white/[0.06]' : 'hover:bg-black/[0.04]'
+                          }`}
+                        >
+                          <span className="w-3 h-3 border-2 border-current rounded-sm inline-block shrink-0" />
+                          사각형
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditMode('draw_border_circle');
+                            setTempPoints([]);
+                            setShowBorderDropdown(false);
+                          }}
+                          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-semibold text-left transition-colors ${
+                            editMode === 'draw_border_circle'
+                              ? 'bg-[#5E6AD2] text-white'
+                              : isDark ? 'hover:bg-white/[0.06]' : 'hover:bg-black/[0.04]'
+                          }`}
+                        >
+                          <span className="w-3 h-3 border-2 border-current rounded-full inline-block shrink-0" />
+                          원형
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   
                   {/* 완료/초기화 (드로잉 중일 때만 노출) */}
-                  {tempPoints.length > 0 && (
+                  {(tempPoints.length > 0 || tempBrushStrokes.length > 0) && (
                     <>
-                      <div className={`w-px h-5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
-                      <button onClick={() => setTempPoints([])} className="px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors">초기화</button>
-                      <button onClick={editMode === 'draw_polygon' ? finalizePolygon : finalizeRoute} className="px-2.5 py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition-colors">완료 ({tempPoints.length}점)</button>
+                      <div className={`w-px h-5 shrink-0 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+                      <button onClick={() => { setTempPoints([]); setTempBrushStrokes([]); setCurrentBrushStroke([]); }} className="px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors shrink-0">초기화</button>
+                      <button onClick={editMode === 'draw_brush' ? finalizeBrush : editMode === 'draw_polygon' ? finalizePolygon : finalizeRoute} className="px-2.5 py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition-colors shrink-0">완료 {editMode === 'draw_brush' ? `(${tempBrushStrokes.length}획)` : `(${tempPoints.length}점)`}</button>
                     </>
                   )}
                 </div>
@@ -1810,9 +2489,9 @@ export default function WorldMap({
 
               {/* ── 설정 탭 ── */}
               {activeHeaderTab === 'settings' && (
-                <div className="flex items-center gap-4 flex-wrap text-xs">
+                <div className="flex items-center gap-4 flex-nowrap shrink-0 text-xs">
                   {/* 스냅 & 편집 보호 */}
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {[
                       { Icon: Grid3X3, label: '격자선(Grid) 표시', checked: gridVisible, onChange: setGridVisible },
                       { Icon: Magnet, label: '격자 자석 스냅', checked: gridSnapEnabled, onChange: setGridSnapEnabled },
@@ -1822,22 +2501,22 @@ export default function WorldMap({
                       <button
                         key={label}
                         onClick={() => onChange(!checked)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all duration-150 ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
                           checked
                             ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
                             : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
                         }`}
                       >
-                        <Icon className="w-3.5 h-3.5" />{label}
+                        <Icon className="w-3.5 h-3.5 shrink-0" />{label}
                       </button>
                     ))}
                   </div>
 
-                  <div className={`w-px h-5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+                  <div className={`w-px h-5 shrink-0 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
 
                   {/* 레이어 표시 토글 */}
-                  <div className="flex items-center gap-1.5">
-                    <span className={`text-[10px] font-bold ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>표시 레이어:</span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`text-[10px] font-bold shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>표시 레이어:</span>
                     {[
                       { label: '자연 지형', checked: layerVisibility.terrain, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, terrain: v })) },
                       { label: '정치/국경', checked: layerVisibility.political, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, political: v })) },
@@ -1848,13 +2527,13 @@ export default function WorldMap({
                       <button
                         key={label}
                         onClick={() => onChange(!checked)}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border transition-all duration-150 ${
+                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
                           checked
                             ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
                             : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
                         }`}
                       >
-                        {checked ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
+                        {checked ? <Eye className="w-3 h-3 shrink-0" /> : <EyeOff className="w-3 h-3 shrink-0" />}
                         {label}
                       </button>
                     ))}
@@ -1864,21 +2543,21 @@ export default function WorldMap({
 
               {/* ── 시점 탭 ── */}
               {activeHeaderTab === 'timeline' && (
-                <div className="flex items-center justify-between gap-4 flex-1 min-w-0 select-none">
+                <div className="flex items-center justify-between gap-6 shrink-0 min-w-max select-none">
                   {/* 좌측: 현재 시점 표시 및 목록 드롭다운 */}
-                  <div className="flex items-center gap-2 relative">
-                    <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>현재 시점:</span>
-                    <div className="relative">
+                  <div className="flex items-center gap-2 relative shrink-0">
+                    <span className={`shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>현재 시점:</span>
+                    <div className="relative shrink-0">
                       <button
                         onClick={() => setShowHistoryDropdown(prev => !prev)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shrink-0 transition-all ${
                           activeSnapshotId && activeSnapshotId !== 'snap-default'
                             ? 'bg-[#5E6AD2]/10 border-[#5E6AD2]/30 text-[#7480E2] font-bold' 
                             : isDark ? 'border-white/[0.08] hover:bg-white/[0.04]' : 'border-black/[0.08] hover:bg-black/[0.04]'
                         }`}
                       >
-                        <span>{activeSnapshotId && activeSnapshotId !== 'snap-default' ? snapshots.find(s => s.id === activeSnapshotId)?.name : '기본 상태'}</span>
-                        <ChevronDown className="w-3.5 h-3.5 opacity-60" />
+                        <span className="shrink-0">{activeSnapshotId && activeSnapshotId !== 'snap-default' ? snapshots.find(s => s.id === activeSnapshotId)?.name : '기본 상태'}</span>
+                        <ChevronDown className="w-3.5 h-3.5 opacity-60 shrink-0" />
                       </button>
 
                       {/* 이력 목록 드롭다운 */}
@@ -1934,7 +2613,7 @@ export default function WorldMap({
                                     className="p-1.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
                                     title="이력 삭제"
                                   >
-                                    <Trash2 className="w-3.5 h-3.5" />
+                                    <Trash2 className="w-3.5 h-3.5 shrink-0" />
                                   </button>
                                 </div>
                               );
@@ -1948,11 +2627,11 @@ export default function WorldMap({
                     {activeSnapshotId && (
                       <button
                         onClick={() => setShowMemoModal(true)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all ${
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shrink-0 transition-all ${
                           isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
                         }`}
                       >
-                        <span>
+                        <span className="shrink-0">
                           {(() => {
                             if (currentSnapshot && currentSnapshot.description && currentSnapshot.description.trim()) {
                               const m = currentSnapshot.description.trim();
@@ -1967,29 +2646,29 @@ export default function WorldMap({
                     {/* 최신 시점 편집 가능 안내 혹은 편집 잠금 해제 토글 버튼 */}
                     {activeSnapshotId && (
                       isLatestSnapshot ? (
-                        <span className="px-2 py-1 rounded bg-[#5E6AD2]/10 text-[#7480E2] text-[10px] font-bold">
+                        <span className="px-2 py-1 rounded bg-[#5E6AD2]/10 text-[#7480E2] text-[10px] font-bold shrink-0">
                           최신 시점 (편집 가능)
                         </span>
                       ) : (
                         <button
                           onClick={() => setIsSnapshotEditUnlocked(prev => !prev)}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] transition-all ${
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] shrink-0 transition-all ${
                             isSnapshotEditUnlocked
                               ? 'bg-orange-500/10 border-orange-500/30 text-orange-400 font-bold'
                               : isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-500'
                           }`}
                           title="이력을 보고 있는 상태에서 지도를 수정하려면 편집 잠금을 해제하세요."
                         >
-                          {isSnapshotEditUnlocked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
-                          <span>{isSnapshotEditUnlocked ? '편집 잠금' : '편집 잠금 해제'}</span>
+                          {isSnapshotEditUnlocked ? <Unlock className="w-3.5 h-3.5 shrink-0" /> : <Lock className="w-3.5 h-3.5 shrink-0" />}
+                          <span className="shrink-0">{isSnapshotEditUnlocked ? '편집 잠금' : '편집 잠금 해제'}</span>
                         </button>
                       )
                     )}
                   </div>
 
                   {/* 우측: 시점 이동 제어판 및 이력 생성 */}
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0">
                       {/* 가장 옛날 이력으로 이동 */}
                       <button
                         onClick={() => {
@@ -1998,12 +2677,12 @@ export default function WorldMap({
                           }
                         }}
                         disabled={snapshots.length === 0}
-                        className={`p-1.5 rounded-lg border transition-colors ${
+                        className={`p-1.5 rounded-lg border transition-colors shrink-0 ${
                           isDark ? 'border-white/[0.08] hover:bg-white/[0.04] disabled:opacity-40' : 'border-black/[0.08] hover:bg-black/[0.04] disabled:opacity-40'
                         }`}
                         title="가장 옛날 이력으로 이동"
                       >
-                        <ChevronsLeft className="w-3.5 h-3.5" />
+                        <ChevronsLeft className="w-3.5 h-3.5 shrink-0" />
                       </button>
 
                       {/* 이전 이력으로 이동 */}
@@ -2017,12 +2696,12 @@ export default function WorldMap({
                             setActiveSnapshotId('snap-default');
                           }
                         }}
-                        className={`p-1.5 rounded-lg border transition-colors ${
+                        className={`p-1.5 rounded-lg border transition-colors shrink-0 ${
                           isDark ? 'border-white/[0.08] hover:bg-white/[0.04]' : 'border-black/[0.08] hover:bg-black/[0.04]'
                         }`}
                         title="이전 이력으로 이동"
                       >
-                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <ChevronLeft className="w-3.5 h-3.5 shrink-0" />
                       </button>
 
                       {/* 다음 이력으로 이동 */}
@@ -2034,12 +2713,12 @@ export default function WorldMap({
                             setActiveSnapshotId(snapshots[idx + 1].id);
                           }
                         }}
-                        className={`p-1.5 rounded-lg border transition-colors ${
+                        className={`p-1.5 rounded-lg border transition-colors shrink-0 ${
                           isDark ? 'border-white/[0.08] hover:bg-white/[0.04]' : 'border-black/[0.08] hover:bg-black/[0.04]'
                         }`}
                         title="다음 이력으로 이동"
                       >
-                        <ChevronRight className="w-3.5 h-3.5" />
+                        <ChevronRight className="w-3.5 h-3.5 shrink-0" />
                       </button>
 
                       {/* 가장 최근 이력으로 이동 */}
@@ -2050,24 +2729,24 @@ export default function WorldMap({
                           }
                         }}
                         disabled={snapshots.length === 0}
-                        className={`p-1.5 rounded-lg border transition-colors ${
+                        className={`p-1.5 rounded-lg border transition-colors shrink-0 ${
                           isDark ? 'border-white/[0.08] hover:bg-white/[0.04] disabled:opacity-40' : 'border-black/[0.08] hover:bg-black/[0.04] disabled:opacity-40'
                         }`}
                         title="가장 최근 이력으로 이동"
                       >
-                        <ChevronsRight className="w-3.5 h-3.5" />
+                        <ChevronsRight className="w-3.5 h-3.5 shrink-0" />
                       </button>
                     </div>
 
-                    <div className={`w-px h-4 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+                    <div className={`w-px h-4 shrink-0 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
 
                     {/* 이력 생성 버튼 */}
                     <button
                       onClick={() => setShowNewSnapshotModal(true)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-colors"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white shrink-0 transition-colors"
                     >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>새 시점 추가</span>
+                      <Plus className="w-3.5 h-3.5 shrink-0" />
+                      <span className="shrink-0">새 시점 추가</span>
                     </button>
                   </div>
                 </div>
@@ -2075,24 +2754,24 @@ export default function WorldMap({
 
               {/* ── 측정 탭 ── */}
               {activeHeaderTab === 'measure' && (
-                <div className="flex items-center gap-3 text-xs">
+                <div className="flex items-center gap-3 shrink-0 text-xs">
                   <button
                     onClick={() => { setEditMode('measure'); setMeasurePoints([]); }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border font-semibold transition-all duration-150 ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border font-semibold shrink-0 transition-all duration-150 ${
                       editMode === 'measure'
                         ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white'
                         : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'
                     }`}
                   >
-                    <Ruler className="w-3.5 h-3.5" /> 거리 측정 모드 활성화
+                    <Ruler className="w-3.5 h-3.5 shrink-0" /> 거리 측정 모드 활성화
                   </button>
                   {measurePoints.length > 1 && (
-                    <span className={`font-bold ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                    <span className={`font-bold shrink-0 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                       {calculateDistanceInfo()}
                     </span>
                   )}
                   {measurePoints.length > 0 && (
-                    <button onClick={() => setMeasurePoints([])} className="px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors">측정 초기화</button>
+                    <button onClick={() => setMeasurePoints([])} className="px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors shrink-0">측정 초기화</button>
                   )}
                 </div>
               )}
@@ -2163,8 +2842,8 @@ export default function WorldMap({
               style={{ pointerEvents: 'auto' }}
             >
               {/* 다각형 면적 레이어 */}
-              {layerVisibility.political && elements
-                .filter(el => el.type === 'polygon' && el.parentMapId === currentMapId)
+              {layerVisibility.political && getAllActiveElementsForMap(currentMapId)
+                .filter(el => el.type === 'polygon')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
                   const isVisible = state ? state.visible : true;
@@ -2186,23 +2865,12 @@ export default function WorldMap({
                         strokeWidth={isSelected ? "4.5" : "3.5"}
                         strokeDasharray={el.statesBySnapshot?.[activeSnapshotId] ? "6,4" : undefined}
                         onMouseDown={(e) => handleElementMouseDown(e, el)}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          const targetId = getTopLevelGroupOrElement(el.id);
-                          if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                            toggleElementSelection(targetId);
-                          } else {
-                            selectSingleElement(targetId);
-                          }
-                          loadElementToEdit(el);
-                          setIsDetailOpen(true);
-                          focusOnElement(el);
-                        }}
+                        onClick={(e) => handleElementClick(el, e)}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
                           handleElementDoubleClick(el);
                         }}
-                        className={`transition-all duration-200 ${
+                        className={`transition-colors duration-200 ${
                           editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:stroke-white'
                         }`}
                       />
@@ -2252,19 +2920,12 @@ export default function WorldMap({
                         strokeWidth={isSelected ? "5" : "4"}
                         strokeDasharray="8,6"
                         onMouseDown={(e) => handleElementMouseDown(e, el)}
-                        onClick={(e) => {
+                        onClick={(e) => handleElementClick(el, e)}
+                        onDoubleClick={(e) => {
                           e.stopPropagation();
-                          const targetId = getTopLevelGroupOrElement(el.id);
-                          if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                            toggleElementSelection(targetId);
-                          } else {
-                            selectSingleElement(targetId);
-                          }
-                          loadElementToEdit(el);
-                          setIsDetailOpen(true);
-                          focusOnElement(el);
+                          handleElementDoubleClick(el);
                         }}
-                        className={`transition-all duration-200 ${
+                        className={`transition-colors duration-200 ${
                           editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:stroke-white'
                         }`}
                       />
@@ -2277,11 +2938,101 @@ export default function WorldMap({
                           strokeWidth="24"
                           className="cursor-move pointer-events-auto"
                           onMouseDown={(e) => handleElementMouseDown(e, el)}
+                          onClick={(e) => handleElementClick(el, e)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            handleElementDoubleClick(el);
+                          }}
                         />
                       )}
                     </g>
                   );
                 })}
+
+              {/* 붓 그리기 영역 레이어 */}
+              {layerVisibility.political && getAllActiveElementsForMap(currentMapId)
+                .filter(el => el.type === 'brush')
+                .map(el => {
+                  const state = el.statesBySnapshot?.[activeSnapshotId];
+                  const isVisible = state ? state.visible : true;
+                  if (!isVisible) return null;
+
+                  const isSelected = isElementSelected(el.id);
+                  const color = state?.color || el.color || '#5E6AD2';
+                  const baseOpacity = el.opacity !== undefined ? el.opacity : 0.4;
+                  const opacity = isSelected ? Math.min(1, baseOpacity + 0.2) : baseOpacity;
+                  const brushWidthVal = el.brushWidth || 20;
+                  const pathData = buildStrokesPathData(el.brushStrokes || []);
+
+                  return (
+                    <g key={el.id}>
+                      {/* 실제 붓 영역 표현 (반투명 선) */}
+                      <path
+                        d={pathData}
+                        fill="none"
+                        stroke={isSelected ? '#E74C3C' : color}
+                        strokeWidth={brushWidthVal}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        opacity={opacity}
+                        onMouseDown={(e) => handleElementMouseDown(e, el)}
+                        onClick={(e) => handleElementClick(el, e)}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          handleElementDoubleClick(el);
+                        }}
+                        className={`transition-colors duration-200 ${
+                          editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:opacity-80'
+                        }`}
+                      />
+                      {/* 드래그 및 마우스 감지를 위한 투명 캡슐 패스 */}
+                      {editMode === 'select' && (
+                        <path
+                          d={pathData}
+                          fill="none"
+                          stroke="transparent"
+                          strokeWidth={brushWidthVal + 10}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="cursor-move pointer-events-auto"
+                          onMouseDown={(e) => handleElementMouseDown(e, el)}
+                          onClick={(e) => handleElementClick(el, e)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            handleElementDoubleClick(el);
+                          }}
+                        />
+                      )}
+                    </g>
+                  );
+                })}
+
+              {/* 붓 드로잉 중일 때 실시간 프리뷰 */}
+              {editMode === 'draw_brush' && (tempBrushStrokes.length > 0 || currentBrushStroke.length > 0) && (
+                <path
+                  d={buildStrokesPathData([...tempBrushStrokes, currentBrushStroke])}
+                  fill="none"
+                  stroke="#5E6AD2"
+                  strokeWidth={brushWidth}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  opacity={0.4}
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
+
+              {/* 붓 드로잉 마우스 포인터 브러시 크기 가이드 */}
+              {editMode === 'draw_brush' && hoveredPoint && (
+                <circle
+                  cx={hoveredPoint.x}
+                  cy={hoveredPoint.y}
+                  r={brushWidth / 2}
+                  fill="rgba(94, 106, 210, 0.15)"
+                  stroke="#5E6AD2"
+                  strokeWidth="1.5"
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
 
               {/* 테두리 (사각형 및 원형) 레이어 */}
               {layerVisibility.political && getAllActiveElementsForMap(currentMapId)
@@ -2313,23 +3064,12 @@ export default function WorldMap({
                           strokeOpacity={opacity}
                           strokeDasharray={strokeDash}
                           onMouseDown={(e) => handleElementMouseDown(e, el)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const targetId = getTopLevelGroupOrElement(el.id);
-                            if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                              toggleElementSelection(targetId);
-                            } else {
-                              selectSingleElement(targetId);
-                            }
-                            loadElementToEdit(el);
-                            setIsDetailOpen(true);
-                            focusOnElement(el);
-                          }}
+                          onClick={(e) => handleElementClick(el, e)}
                           onDoubleClick={(e) => {
                             e.stopPropagation();
                             handleElementDoubleClick(el);
                           }}
-                          className={`transition-all duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
+                          className={`transition-colors duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
                         />
                         {/* 테두리 드래그 핸들 */}
                         {editMode === 'select' && (
@@ -2361,23 +3101,12 @@ export default function WorldMap({
                           strokeOpacity={opacity}
                           strokeDasharray={strokeDash}
                           onMouseDown={(e) => handleElementMouseDown(e, el)}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const targetId = getTopLevelGroupOrElement(el.id);
-                            if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                              toggleElementSelection(targetId);
-                            } else {
-                              selectSingleElement(targetId);
-                            }
-                            loadElementToEdit(el);
-                            setIsDetailOpen(true);
-                            focusOnElement(el);
-                          }}
+                          onClick={(e) => handleElementClick(el, e)}
                           onDoubleClick={(e) => {
                             e.stopPropagation();
                             handleElementDoubleClick(el);
                           }}
-                          className={`transition-all duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
+                          className={`transition-colors duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
                         />
                         {/* 원형 테두리 드래그 핸들 */}
                         {editMode === 'select' && (
@@ -2515,6 +3244,93 @@ export default function WorldMap({
                     ))}
                   </g>
                 ))}
+              
+              {/* 선택된 테두리(rect / circle) 및 붓(brush)의 리사이즈 드래그 핸들 (Anchor Points) */}
+              {editMode === 'select' && selectedElementId && elements
+                .filter(el => el.id === selectedElementId && (el.type === 'border_rect' || el.type === 'border_circle' || el.type === 'brush'))
+                .map(el => {
+                  let tl = { x: 0, y: 0 };
+                  let tr = { x: 0, y: 0 };
+                  let bl = { x: 0, y: 0 };
+                  let br = { x: 0, y: 0 };
+                  
+                  let boxX = 0, boxY = 0, boxW = 0, boxH = 0;
+
+                  if (el.type === 'brush' && el.brushStrokes) {
+                    const bbox = getBrushBoundingBox(el.brushStrokes);
+                    const bwMargin = (el.brushWidth || 20) / 2;
+                    boxX = bbox.minX - bwMargin;
+                    boxY = bbox.minY - bwMargin;
+                    boxW = bbox.w + bwMargin * 2;
+                    boxH = bbox.h + bwMargin * 2;
+
+                    tl = { x: boxX, y: boxY };
+                    tr = { x: boxX + boxW, y: boxY };
+                    bl = { x: boxX, y: boxY + boxH };
+                    br = { x: boxX + boxW, y: boxY + boxH };
+                  } else if (el.type === 'border_rect') {
+                    const bx = el.bx || 0;
+                    const by = el.by || 0;
+                    const bw = el.bw || 0;
+                    const bh = el.bh || 0;
+                    boxX = bx; boxY = by; boxW = bw; boxH = bh;
+
+                    tl = { x: bx, y: by };
+                    tr = { x: bx + bw, y: by };
+                    bl = { x: bx, y: by + bh };
+                    br = { x: bx + bw, y: by + bh };
+                  } else { // border_circle
+                    const bx = el.bx || 0;
+                    const by = el.by || 0;
+                    const bw = el.bw || 0;
+                    const bh = el.bh || 0;
+                    boxX = bx - bw; boxY = by - bh; boxW = bw * 2; boxH = bh * 2;
+
+                    tl = { x: bx - bw, y: by - bh };
+                    tr = { x: bx + bw, y: by - bh };
+                    bl = { x: bx - bw, y: by + bh };
+                    br = { x: bx + bw, y: by + bh };
+                  }
+                  
+                  const anchors: Array<{ dir: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'; pt: { x: number; y: number } }> = [
+                    { dir: 'top-left', pt: tl },
+                    { dir: 'top-right', pt: tr },
+                    { dir: 'bottom-left', pt: bl },
+                    { dir: 'bottom-right', pt: br }
+                  ];
+                  
+                  return (
+                    <g key={`border-resize-${el.id}`}>
+                      {/* 가이드 바운딩 박스 선 */}
+                      <rect 
+                        x={boxX}
+                        y={boxY}
+                        width={boxW}
+                        height={boxH}
+                        fill="none"
+                        stroke="#E74C3C"
+                        strokeWidth="1.5"
+                        strokeDasharray="4,4"
+                        style={{ pointerEvents: 'none' }}
+                      />
+                      {anchors.map(({ dir, pt }) => (
+                        <circle 
+                          key={dir}
+                          cx={pt.x}
+                          cy={pt.y}
+                          r="7"
+                          fill="#E74C3C"
+                          stroke="white"
+                          strokeWidth="2"
+                          className={`pointer-events-auto ${
+                            dir === 'top-left' || dir === 'bottom-right' ? 'cursor-nwse-resize' : 'cursor-nesw-resize'
+                          }`}
+                          onMouseDown={(e) => handleBorderResizeMouseDown(e, el, dir)}
+                        />
+                      ))}
+                    </g>
+                  );
+                })}
               {/* 마키/선택 상자 드래그 오버레이 */}
               {selectionBoxStart && selectionBoxCurrent && (() => {
                 const x = Math.min(selectionBoxStart.x, selectionBoxCurrent.x);
@@ -2570,21 +3386,7 @@ export default function WorldMap({
                         handleElementMouseDown(e, el);
                       }
                     }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const targetId = getTopLevelGroupOrElement(el.id);
-                      if (editMode === 'select') {
-                        if (e.ctrlKey || e.metaKey || e.shiftKey) {
-                          toggleElementSelection(targetId);
-                        } else {
-                          selectSingleElement(targetId);
-                        }
-                      } else {
-                        selectSingleElement(targetId);
-                      }
-                      loadElementToEdit(el);
-                      setIsDetailOpen(true);
-                    }}
+                    onClick={(e) => handleElementClick(el, e)}
                     onDoubleClick={(e) => {
                       e.stopPropagation();
                       handleElementDoubleClick(el);
@@ -2714,6 +3516,8 @@ export default function WorldMap({
         const el = elements.find(item => item.id === selectedElementId);
         if (!el) return null;
 
+        const parentGroup = elements.find(p => p.id === el.parentMapId && p.type === 'group');
+
         return (
           <div className={`w-80 shrink-0 border-l flex flex-col justify-between ${
             isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
@@ -2728,6 +3532,27 @@ export default function WorldMap({
                   <X className="w-4 h-4" />
                 </button>
               </div>
+
+              {/* 소속 그룹 정보 */}
+              {parentGroup && (
+                <div className={`p-2.5 rounded-lg border flex items-center justify-between text-[11px] font-semibold ${
+                  isDark ? 'bg-white/[0.03] border-white/[0.08] text-gray-300' : 'bg-black/[0.02] border-black/[0.08] text-gray-600'
+                }`}>
+                  <div className="flex items-center gap-1.5 truncate mr-2">
+                    <span className="text-[10px] text-gray-500 font-bold shrink-0">소속 그룹:</span>
+                    <span className="truncate text-gray-300 dark:text-white font-bold">{parentGroup.name}</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      handleLeaveGroup(el.id);
+                    }}
+                    type="button"
+                    className="px-2 py-1 rounded bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 transition-all shrink-0 text-[10px] font-bold"
+                  >
+                    그룹에서 나오기
+                  </button>
+                </div>
+              )}
 
               {/* 기본 요약 */}
               <div className="flex flex-col gap-1.5">
@@ -2855,8 +3680,27 @@ export default function WorldMap({
                 </div>
               </div>
 
+              {/* 붓 굵기 조절 (붓 타입 전용) */}
+              {el.type === 'brush' && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="font-semibold text-gray-400">붓 굵기 (px)</label>
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="range"
+                      min="5"
+                      max="100"
+                      step="5"
+                      value={elementEditBorderWidth}
+                      onChange={e => setElementEditBorderWidth(parseInt(e.target.value))}
+                      className="w-full h-1.5 bg-[#5E6AD2]/20 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
+                    />
+                    <span className="font-mono text-xs w-6 text-right">{elementEditBorderWidth}px</span>
+                  </div>
+                </div>
+              )}
+
               {/* 투명도 조절 */}
-              {el.type === 'polygon' && (
+              {(el.type === 'polygon' || el.type === 'brush') && (
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between font-semibold text-gray-400">
                     <span>면적 투명도</span>
