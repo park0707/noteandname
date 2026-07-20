@@ -3,7 +3,7 @@ import {
   ChevronRight, ChevronDown, Layers, Plus, Move, Trash2, Unlock, ChevronsLeft, ChevronsRight, ChevronLeft, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search,
-  PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map
+  PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
@@ -46,7 +46,9 @@ export interface MapElement {
 
   // Brush 전용 속성
   brushStrokes?: Array<Array<{ x: number; y: number }>>;
+  brushStrokeObjects?: Array<{ points: Array<{ x: number; y: number }>; width: number; shape?: 'circle' | 'square' }>;
   brushWidth?: number;
+  brushShape?: 'circle' | 'square';
   
   // 상세 속성
   summary?: string;
@@ -174,7 +176,8 @@ export default function WorldMap({
 
   // --- 붓 그리기 리액트 상태 ---
   const [brushWidth, setBrushWidth] = useState<number>(20);
-  const [tempBrushStrokes, setTempBrushStrokes] = useState<Array<Array<{ x: number; y: number }>>>([]);
+  const [brushShape, setBrushShape] = useState<'circle' | 'square'>('circle');
+  const [tempBrushStrokes, setTempBrushStrokes] = useState<Array<{ points: Array<{ x: number; y: number }>; width: number; shape: 'circle' | 'square' }>>([]);
   const [currentBrushStroke, setCurrentBrushStroke] = useState<Array<{ x: number; y: number }>>([]);
   const [isDrawingBrush, setIsDrawingBrush] = useState<boolean>(false);
   const [showBrushWidthDropdown, setShowBrushWidthDropdown] = useState<boolean>(false);
@@ -453,9 +456,37 @@ export default function WorldMap({
 
   const handleGroupElements = useCallback(() => {
     if (selectedElementIds.length < 2) return;
-
     pushHistory();
 
+    // 선택된 요소들의 최상위 부모 노드들을 수집
+    const topLevelTargetIds = Array.from(new Set(selectedElementIds.map(id => getTopLevelGroupOrElement(id))));
+    const topLevelGroups = elements.filter(el => el.type === 'group' && topLevelTargetIds.includes(el.id));
+    const topLevelStandaloneEls = elements.filter(el => el.type !== 'group' && topLevelTargetIds.includes(el.id));
+
+    // 케이스 1: 기존 그룹이 정확히 1개 존재하고 독립 요소들이 선택된 경우
+    // -> 신규 그룹 생성 없이 독립 요소들을 기존 그룹의 자식 멤버로 흡수/통합!
+    if (topLevelGroups.length === 1 && topLevelStandaloneEls.length > 0) {
+      const targetGroup = topLevelGroups[0];
+      const standaloneIds = topLevelStandaloneEls.map(el => el.id);
+
+      setElements(prev => prev.map(el => {
+        if (standaloneIds.includes(el.id)) {
+          return {
+            ...el,
+            parentMapId: targetGroup.id
+          };
+        }
+        return el;
+      }));
+
+      setMapExpandedFolderIds(prev => prev.includes(targetGroup.id) ? prev : [...prev, targetGroup.id]);
+      const allMembers = collectAllMemberElements([targetGroup.id]).map(m => m.id);
+      setSelectedElementId(targetGroup.id);
+      setSelectedElementIds(allMembers);
+      return;
+    }
+
+    // 케이스 2 & 3: 복수 그룹 묶음(중첩 그룹 생성) 또는 독립 요소들 신규 그룹화
     const groupId = `group-${Date.now()}`;
     const groupName = `그룹 ${elements.filter(el => el.type === 'group').length + 1}`;
 
@@ -469,7 +500,8 @@ export default function WorldMap({
 
     setElements(prev => {
       const updated = prev.map(el => {
-        if (selectedElementIds.includes(el.id)) {
+        // 최상위 노드들만 신규 상위 그룹의 자식으로 등록 (기존 그룹 내부 자식 소속은 온전히 유지!)
+        if (topLevelTargetIds.includes(el.id)) {
           return {
             ...el,
             parentMapId: groupId
@@ -481,8 +513,10 @@ export default function WorldMap({
     });
 
     setMapExpandedFolderIds(prev => [...prev, groupId]);
-    selectSingleElement(groupId);
-  }, [selectedElementIds, elements, currentMapId, pushHistory, selectSingleElement]);
+    const newAllMembers = collectAllMemberElements([groupId]).map(m => m.id);
+    setSelectedElementId(groupId);
+    setSelectedElementIds(newAllMembers.length > 0 ? newAllMembers : [groupId]);
+  }, [selectedElementIds, elements, currentMapId, pushHistory, getTopLevelGroupOrElement, collectAllMemberElements]);
 
   const handleUngroupElements = useCallback((groupIdsToUngroup: string[], memberIdsToRelease: string[]) => {
     pushHistory();
@@ -536,7 +570,7 @@ export default function WorldMap({
     }));
   }, [elements, pushHistory]);
 
-  const handleGroupOrUngroup = useCallback(() => {
+  const handleUngroupSelected = useCallback(() => {
     if (selectedElementIds.length === 0) return;
 
     const selectedGroups = elements.filter(el => selectedElementIds.includes(el.id) && el.type === 'group');
@@ -551,10 +585,10 @@ export default function WorldMap({
 
     if (selectedGroupIds.length > 0 || selectedMemberIds.length > 0) {
       handleUngroupElements(selectedGroupIds, selectedMemberIds);
-    } else {
-      handleGroupElements();
     }
-  }, [selectedElementIds, elements, handleUngroupElements, handleGroupElements]);
+  }, [selectedElementIds, elements, handleUngroupElements]);
+
+
 
   const getCursorClass = useCallback((): string => {
     if (isPanning) return 'cursor-grabbing';
@@ -596,7 +630,16 @@ export default function WorldMap({
         handleRedo();
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'g') {
         e.preventDefault();
-        handleGroupOrUngroup();
+        if (e.shiftKey) {
+          handleUngroupSelected();
+        } else {
+          const topLevelTargetIds = Array.from(new Set(selectedElementIds.map(id => getTopLevelGroupOrElement(id))));
+          if (topLevelTargetIds.length === 1 && elements.some(el => el.id === topLevelTargetIds[0] && el.type === 'group')) {
+            handleUngroupSelected();
+          } else {
+            handleGroupElements();
+          }
+        }
       }
     };
 
@@ -604,7 +647,7 @@ export default function WorldMap({
     return () => {
       window.removeEventListener('keydown', handleGlobalKeyDown);
     };
-  }, [handleUndo, handleRedo, handleGroupOrUngroup]);
+  }, [handleUndo, handleRedo, handleGroupElements, handleUngroupSelected, selectedElementIds, elements, getTopLevelGroupOrElement]);
 
   // References
   const canvasContainerRef = useRef<HTMLDivElement>(null);
@@ -904,13 +947,44 @@ export default function WorldMap({
     let activeSelectedIds = selectedElementIds;
 
     if (e.ctrlKey || e.metaKey || e.shiftKey) {
-      // Ctrl 복수 선택 모드: 그룹 여부와 상관없이 무조건 클릭한 개별 요소(el.id)가 다중 선택 대상이 됨
+      // Ctrl 복수 선택 모드: 그룹에 속한 요소이면 첫 클릭 시 그룹 전체 자식 멤버들이 함께 복수 선택됨!
+      const groupMembers = hasGroup ? collectAllMemberElements([topGroup]).map(m => m.id) : [el.id];
+      let nextSelectedIds: string[] = [];
+
       setSelectedElementIds(prev => {
-        const filtered = hasGroup ? prev.filter(x => x !== topGroup) : prev;
-        const next = filtered.includes(el.id) ? filtered.filter(x => x !== el.id) : [...filtered, el.id];
-        setSelectedElementId(next.length > 0 ? next[next.length - 1] : null);
-        return next;
+        const isGroupFullySelected = groupMembers.every(id => prev.includes(id));
+        if (isGroupFullySelected) {
+          // 이미 그룹 전체가 선택되어 있는 상태인 경우 -> 그룹 멤버 전체 해제
+          nextSelectedIds = prev.filter(x => !groupMembers.includes(x));
+        } else {
+          // 아직 그룹이 선택되지 않은 경우 -> 그룹 멤버 전체를 복수 선택 목록에 추가
+          nextSelectedIds = Array.from(new Set([...prev, ...groupMembers]));
+        }
+        setSelectedElementId(nextSelectedIds.length > 0 ? nextSelectedIds[nextSelectedIds.length - 1] : null);
+        return nextSelectedIds;
       });
+
+      // Ctrl 복수 선택 상태에서도 선택된 요소 일괄 드래그 이동 가능하도록 초기 좌표 수집
+      setIsDraggingElements(true);
+      const canvasCoords = getCanvasCoords(e.clientX, e.clientY);
+      setElementDragStartCoords(canvasCoords);
+      setPreDragElements(JSON.parse(JSON.stringify(elements)));
+      setHasMovedDuringDrag(false);
+
+      const members = collectAllMemberElements(selectedElementIds.includes(el.id) ? selectedElementIds : [...selectedElementIds, el.id]);
+      const initialCoords: Record<string, { x: number; y: number; w?: number; h?: number; points?: Array<{ x: number; y: number }>; brushStrokes?: Array<Array<{ x: number; y: number }>> }> = {};
+      members.forEach(item => {
+        if (item.type === 'pin') {
+          initialCoords[item.id] = { x: item.x || 0, y: item.y || 0 };
+        } else if (item.type === 'border_rect' || item.type === 'border_circle') {
+          initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0, w: item.bw || 0, h: item.bh || 0 };
+        } else if (item.brushStrokes) {
+          initialCoords[item.id] = { x: 0, y: 0, brushStrokes: JSON.parse(JSON.stringify(item.brushStrokes)) };
+        } else if (item.points) {
+          initialCoords[item.id] = { x: 0, y: 0, points: JSON.parse(JSON.stringify(item.points)) };
+        }
+      });
+      setDragInitialElementsCoords(initialCoords);
       return;
     }
 
@@ -1303,7 +1377,10 @@ export default function WorldMap({
     if (editMode === 'draw_brush' && isDrawingBrush) {
       setIsDrawingBrush(false);
       if (currentBrushStroke.length > 0) {
-        setTempBrushStrokes(prev => [...prev, currentBrushStroke]);
+        setTempBrushStrokes(prev => [
+          ...prev,
+          { points: currentBrushStroke, width: brushWidth, shape: brushShape }
+        ]);
       }
       setCurrentBrushStroke([]);
       return;
@@ -1418,8 +1495,10 @@ export default function WorldMap({
       name: '새 붓 영역',
       type: 'brush',
       parentMapId: currentMapId,
-      brushStrokes: tempBrushStrokes,
+      brushStrokes: tempBrushStrokes.map(s => s.points),
+      brushStrokeObjects: tempBrushStrokes,
       brushWidth: brushWidth,
+      brushShape: brushShape,
       color: '#5E6AD2',
       opacity: 0.4,
       category: 'nature',
@@ -1675,14 +1754,7 @@ export default function WorldMap({
         setSelectedElementId(node.id);
         setSelectedElementIds(groupMembers);
       } else {
-        const topGroup = getTopLevelGroupOrElement(node.id);
-        if (topGroup !== node.id) {
-          const groupMembers = collectAllMemberElements([topGroup]).map(m => m.id);
-          setSelectedElementId(node.id);
-          setSelectedElementIds(groupMembers);
-        } else {
-          selectSingleElement(node.id);
-        }
+        selectSingleElement(node.id);
       }
       if (node.element) {
         loadElementToEdit(node.element);
@@ -1692,6 +1764,88 @@ export default function WorldMap({
         }, 50);
       }
     }
+  };
+
+  // --- 사이드바 트리 Drag & Drop 상태 및 핸들러 ---
+  const [sidebarDragSourceId, setSidebarDragSourceId] = useState<string | null>(null);
+  const [sidebarDropTargetId, setSidebarDropTargetId] = useState<string | null>(null);
+
+  const handleSidebarDragStart = (e: React.DragEvent, id: string) => {
+    e.stopPropagation();
+    setSidebarDragSourceId(id);
+    e.dataTransfer.setData('text/plain', id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleSidebarDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    if (sidebarDropTargetId !== id) {
+      setSidebarDropTargetId(id);
+    }
+  };
+
+  const handleSidebarDrop = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const sourceId = sidebarDragSourceId || e.dataTransfer.getData('text/plain');
+    setSidebarDragSourceId(null);
+    setSidebarDropTargetId(null);
+
+    if (!sourceId || sourceId === targetId) return;
+
+    const sourceEl = elements.find(item => item.id === sourceId);
+    if (!sourceEl) return;
+
+    // 자기 자신 또는 자기 하위 그룹으로 드래그 시 순환 방지
+    if (sourceEl.type === 'group') {
+      const allSubMembers = collectAllMemberElements([sourceId]).map(m => m.id);
+      if (allSubMembers.includes(targetId)) return;
+    }
+
+    pushHistory();
+
+    const targetEl = elements.find(item => item.id === targetId);
+
+    setElements(prev => {
+      const next = [...prev];
+      const sourceIndex = next.findIndex(item => item.id === sourceId);
+      if (sourceIndex === -1) return prev;
+
+      const [removed] = next.splice(sourceIndex, 1);
+
+      if (targetId === 'root') {
+        // 루트 노드로 드롭 ➔ 그룹에서 나와 최상위 노드로 탈출!
+        removed.parentMapId = currentMapId;
+        next.push(removed);
+      } else if (targetEl && targetEl.type === 'group') {
+        // 그룹 노드로 드롭 ➔ 해당 그룹 내부로 편입!
+        removed.parentMapId = targetEl.id;
+        const targetIndex = next.findIndex(item => item.id === targetId);
+        next.splice(targetIndex + 1, 0, removed);
+      } else if (targetEl) {
+        // 일반 항목으로 드롭 ➔ 타깃 노드와 동일한 부모 소속으로 배치 & 순서 재배치!
+        removed.parentMapId = targetEl.parentMapId;
+        const targetIndex = next.findIndex(item => item.id === targetId);
+        next.splice(targetIndex, 0, removed);
+      } else {
+        next.push(removed);
+      }
+
+      return next;
+    });
+
+    if (targetEl && targetEl.type === 'group') {
+      setMapExpandedFolderIds(prev => prev.includes(targetEl.id) ? prev : [...prev, targetEl.id]);
+    }
+  };
+
+  const handleSidebarDragEnd = (e: React.DragEvent) => {
+    e.preventDefault();
+    setSidebarDragSourceId(null);
+    setSidebarDropTargetId(null);
   };
 
   // --- 신규 세부 지도 레이아웃 생성 ---
@@ -1828,13 +1982,12 @@ export default function WorldMap({
 
     if (editMode === 'select') {
       if (e.ctrlKey || e.metaKey || e.shiftKey) {
-        targetId = el.id;
-        setSelectedElementIds(prev => {
-          const filtered = hasGroup ? prev.filter(x => x !== topGroup) : prev;
-          const next = filtered.includes(el.id) ? filtered.filter(x => x !== el.id) : [...filtered, el.id];
-          setSelectedElementId(next.length > 0 ? next[next.length - 1] : null);
-          return next;
-        });
+        // 이미 handleElementMouseDown 시점에 Ctrl 다중 선택 1번 처리가 완결되었으므로, 2중 토글 차단!
+        const targetEl = elements.find(x => x.id === el.id) || el;
+        loadElementToEdit(targetEl);
+        setIsDetailOpen(true);
+        focusOnElement(targetEl);
+        return;
       } else {
         if (hasGroup) {
           if (isGroupSelectedBeforeMouseDownRef.current) {
@@ -2116,9 +2269,18 @@ export default function WorldMap({
                   return (
                     <div
                       key={node.id}
+                      draggable={node.id !== 'root'}
+                      onDragStart={(e) => handleSidebarDragStart(e, node.id)}
+                      onDragOver={(e) => handleSidebarDragOver(e, node.id)}
+                      onDrop={(e) => handleSidebarDrop(e, node.id)}
+                      onDragEnd={handleSidebarDragEnd}
                       onClick={() => handleTreeNodeClick(node)}
                       style={{ paddingLeft: `${node.depth * 12 + 6}px` }}
-                      className={`flex items-center justify-between py-1 px-2 rounded text-xs cursor-pointer transition-all duration-150 ${
+                      className={`flex items-center justify-between py-1 px-2 rounded text-xs cursor-grab active:cursor-grabbing transition-all duration-150 ${
+                        sidebarDragSourceId === node.id ? 'opacity-40 scale-95 border border-dashed border-[#5E6AD2]' : ''
+                      } ${
+                        sidebarDropTargetId === node.id ? 'bg-[#5E6AD2]/30 ring-2 ring-[#7480E2] font-bold' : ''
+                      } ${
                         isCurrentMap 
                           ? (isDark ? 'bg-[#5E6AD2]/30 text-white border-l-2 border-[#7480E2]' : 'bg-[#5E6AD2]/15 text-[#5E6AD2] border-l-2 border-[#5E6AD2]')
                           : isSelectedElement
@@ -2395,6 +2557,37 @@ export default function WorldMap({
                       <div className={`absolute left-0 top-full mt-1 z-50 rounded-lg border shadow-xl p-3 flex flex-col gap-2 min-w-44 ${
                         isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
                       }`}>
+                        {/* 붓 모양 선택 토글 */}
+                        <div className="flex flex-col gap-1 mb-1">
+                          <span className="text-[10px] font-bold text-gray-400">붓 모양</span>
+                          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-black/10 dark:bg-white/5">
+                            <button
+                              type="button"
+                              onClick={() => setBrushShape('circle')}
+                              className={`flex-1 flex items-center justify-center gap-1.5 py-1 rounded text-[11px] font-semibold transition-all ${
+                                brushShape === 'circle'
+                                  ? 'bg-[#5E6AD2] text-white shadow-sm'
+                                  : isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                              }`}
+                            >
+                              <Circle className="w-3 h-3 shrink-0" />
+                              원형
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBrushShape('square')}
+                              className={`flex-1 flex items-center justify-center gap-1.5 py-1 rounded text-[11px] font-semibold transition-all ${
+                                brushShape === 'square'
+                                  ? 'bg-[#5E6AD2] text-white shadow-sm'
+                                  : isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                              }`}
+                            >
+                              <Square className="w-3 h-3 shrink-0" />
+                              네모
+                            </button>
+                          </div>
+                        </div>
+
                         <span className="text-[10px] font-bold text-gray-400">붓 굵기: {brushWidth}px</span>
                         <input
                           type="range"
@@ -2966,25 +3159,54 @@ export default function WorldMap({
 
                   return (
                     <g key={el.id}>
-                      {/* 실제 붓 영역 표현 (반투명 선) */}
-                      <path
-                        d={pathData}
-                        fill="none"
-                        stroke={isSelected ? '#E74C3C' : color}
-                        strokeWidth={brushWidthVal}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        opacity={opacity}
-                        onMouseDown={(e) => handleElementMouseDown(e, el)}
-                        onClick={(e) => handleElementClick(el, e)}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          handleElementDoubleClick(el);
-                        }}
-                        className={`transition-colors duration-200 ${
-                          editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:opacity-80'
-                        }`}
-                      />
+                      {/* 실제 붓 영역 표현 (획 별 개별 굵기 및 형태 보존) */}
+                      {el.brushStrokeObjects && el.brushStrokeObjects.length > 0 ? (
+                        el.brushStrokeObjects.map((sObj, sIdx) => {
+                          const sPathData = buildStrokesPathData([sObj.points]);
+                          const sWidth = sObj.width || el.brushWidth || 20;
+                          const sShape = sObj.shape || el.brushShape || 'circle';
+                          return (
+                            <path
+                              key={sIdx}
+                              d={sPathData}
+                              fill="none"
+                              stroke={isSelected ? '#E74C3C' : color}
+                              strokeWidth={sWidth}
+                              strokeLinecap={sShape === 'square' ? 'square' : 'round'}
+                              strokeLinejoin={sShape === 'square' ? 'miter' : 'round'}
+                              opacity={opacity}
+                              onMouseDown={(e) => handleElementMouseDown(e, el)}
+                              onClick={(e) => handleElementClick(el, e)}
+                              onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                handleElementDoubleClick(el);
+                              }}
+                              className={`transition-colors duration-200 ${
+                                editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:opacity-80'
+                              }`}
+                            />
+                          );
+                        })
+                      ) : (
+                        <path
+                          d={pathData}
+                          fill="none"
+                          stroke={isSelected ? '#E74C3C' : color}
+                          strokeWidth={brushWidthVal}
+                          strokeLinecap={el.brushShape === 'square' ? 'square' : 'round'}
+                          strokeLinejoin={el.brushShape === 'square' ? 'miter' : 'round'}
+                          opacity={opacity}
+                          onMouseDown={(e) => handleElementMouseDown(e, el)}
+                          onClick={(e) => handleElementClick(el, e)}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            handleElementDoubleClick(el);
+                          }}
+                          className={`transition-colors duration-200 ${
+                            editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:opacity-80'
+                          }`}
+                        />
+                      )}
                       {/* 드래그 및 마우스 감지를 위한 투명 캡슐 패스 */}
                       {editMode === 'select' && (
                         <path
@@ -2992,8 +3214,8 @@ export default function WorldMap({
                           fill="none"
                           stroke="transparent"
                           strokeWidth={brushWidthVal + 10}
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
+                          strokeLinecap={el.brushShape === 'square' ? 'square' : 'round'}
+                          strokeLinejoin={el.brushShape === 'square' ? 'miter' : 'round'}
                           className="cursor-move pointer-events-auto"
                           onMouseDown={(e) => handleElementMouseDown(e, el)}
                           onClick={(e) => handleElementClick(el, e)}
@@ -3009,29 +3231,57 @@ export default function WorldMap({
 
               {/* 붓 드로잉 중일 때 실시간 프리뷰 */}
               {editMode === 'draw_brush' && (tempBrushStrokes.length > 0 || currentBrushStroke.length > 0) && (
-                <path
-                  d={buildStrokesPathData([...tempBrushStrokes, currentBrushStroke])}
-                  fill="none"
-                  stroke="#5E6AD2"
-                  strokeWidth={brushWidth}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  opacity={0.4}
-                  style={{ pointerEvents: 'none' }}
-                />
+                <g style={{ pointerEvents: 'none' }}>
+                  {tempBrushStrokes.map((sObj, idx) => (
+                    <path
+                      key={idx}
+                      d={buildStrokesPathData([sObj.points])}
+                      fill="none"
+                      stroke="#5E6AD2"
+                      strokeWidth={sObj.width}
+                      strokeLinecap={sObj.shape === 'square' ? 'square' : 'round'}
+                      strokeLinejoin={sObj.shape === 'square' ? 'miter' : 'round'}
+                      opacity={0.4}
+                    />
+                  ))}
+                  {currentBrushStroke.length > 0 && (
+                    <path
+                      d={buildStrokesPathData([currentBrushStroke])}
+                      fill="none"
+                      stroke="#5E6AD2"
+                      strokeWidth={brushWidth}
+                      strokeLinecap={brushShape === 'square' ? 'square' : 'round'}
+                      strokeLinejoin={brushShape === 'square' ? 'miter' : 'round'}
+                      opacity={0.4}
+                    />
+                  )}
+                </g>
               )}
 
-              {/* 붓 드로잉 마우스 포인터 브러시 크기 가이드 */}
+              {/* 붓 드로잉 마우스 포인터 브러시 크기 가이드 (원형 vs 네모) */}
               {editMode === 'draw_brush' && hoveredPoint && (
-                <circle
-                  cx={hoveredPoint.x}
-                  cy={hoveredPoint.y}
-                  r={brushWidth / 2}
-                  fill="rgba(94, 106, 210, 0.15)"
-                  stroke="#5E6AD2"
-                  strokeWidth="1.5"
-                  style={{ pointerEvents: 'none' }}
-                />
+                brushShape === 'square' ? (
+                  <rect
+                    x={hoveredPoint.x - brushWidth / 2}
+                    y={hoveredPoint.y - brushWidth / 2}
+                    width={brushWidth}
+                    height={brushWidth}
+                    fill="rgba(94, 106, 210, 0.15)"
+                    stroke="#5E6AD2"
+                    strokeWidth="1.5"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                ) : (
+                  <circle
+                    cx={hoveredPoint.x}
+                    cy={hoveredPoint.y}
+                    r={brushWidth / 2}
+                    fill="rgba(94, 106, 210, 0.15)"
+                    stroke="#5E6AD2"
+                    strokeWidth="1.5"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )
               )}
 
               {/* 테두리 (사각형 및 원형) 레이어 */}
@@ -3375,7 +3625,7 @@ export default function WorldMap({
                 return (
                   <div 
                     key={el.id}
-                    className="absolute pointer-events-auto flex flex-col items-center gap-1 group transform -translate-x-1/2 -translate-y-1/2"
+                    className="absolute pointer-events-auto flex flex-col items-center gap-1 group transform -translate-x-1/2 -translate-y-1/2 select-none"
                     style={{
                       left: `${el.x}px`,
                       top: `${el.y}px`,
