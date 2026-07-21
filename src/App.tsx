@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { AlertConfirmProvider } from './context/AlertConfirmContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -37,6 +37,7 @@ function PublicInfoPage({ themeMode, setThemeMode }: {
   themeMode: 'dark' | 'light';
   setThemeMode: (m: 'dark' | 'light') => void;
 }) {
+  const navigate = useNavigate();
   return (
     <div className="w-full flex flex-col min-h-screen">
       <Header
@@ -47,7 +48,7 @@ function PublicInfoPage({ themeMode, setThemeMode }: {
       <main className="flex-1 px-6 py-8">
         <InfoPage
           themeMode={themeMode}
-          onClose={() => window.location.href = '/'}
+          onClose={() => navigate('/')}
         />
       </main>
     </div>

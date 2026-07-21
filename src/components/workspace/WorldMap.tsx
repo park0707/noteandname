@@ -186,6 +186,7 @@ export default function WorldMap({
   const brushDropdownRef = useRef<HTMLDivElement | null>(null);
   const borderDropdownRef = useRef<HTMLDivElement | null>(null);
   const pointDropdownRef = useRef<HTMLDivElement | null>(null);
+  const historyDropdownRef = useRef<HTMLDivElement | null>(null);
   const isGroupSelectedBeforeMouseDownRef = useRef<boolean>(false);
 
   // 드롭다운 바깥 영역 클릭 시 자동 닫기 핸들러
@@ -201,9 +202,12 @@ export default function WorldMap({
       if (pointDropdownRef.current && !pointDropdownRef.current.contains(target)) {
         setShowPointDropdown(false);
       }
+      if (historyDropdownRef.current && !historyDropdownRef.current.contains(target)) {
+        setShowHistoryDropdown(false);
+      }
     };
 
-    if (showBrushWidthDropdown || showBorderDropdown || showPointDropdown) {
+    if (showBrushWidthDropdown || showBorderDropdown || showPointDropdown || showHistoryDropdown) {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('touchstart', handleClickOutside);
     }
@@ -211,7 +215,7 @@ export default function WorldMap({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('touchstart', handleClickOutside);
     };
-  }, [showBrushWidthDropdown, showBorderDropdown, showPointDropdown]);
+  }, [showBrushWidthDropdown, showBorderDropdown, showPointDropdown, showHistoryDropdown]);
 
   // --- 이미지 업로드 배경 및 프리셋 ---
   const [customBgImage, setCustomBgImage] = useState<string | null>(null);
@@ -989,30 +993,26 @@ export default function WorldMap({
     }
 
     // Ctrl이 없는 일반 클릭/드래그 모드
-    if (hasGroup) {
-      const groupMembers = collectAllMemberElements([topGroup]).map(m => m.id);
-      const isFullySelected = groupMembers.length > 0 && groupMembers.every(id => selectedElementIds.includes(id));
-      const isSingleChildSelected = selectedElementIds.length === 1 && selectedElementIds[0] === el.id;
+    const isTargetAlreadySelected = selectedElementIds.includes(el.id);
 
-      if (isSingleChildSelected) {
-        // 이미 개별 자식 요소 1개만 단일 선택되어 있는 상태에서 드래그: 개별 요소 단독 이동!
-        isGroupSelectedBeforeMouseDownRef.current = false;
-        activeSelectedIds = [el.id];
-      } else if (isFullySelected) {
-        // 이미 그룹 전체가 선택되어 있는 상태에서 드래그: 그룹 전체 동시 이동!
-        isGroupSelectedBeforeMouseDownRef.current = true;
-        activeSelectedIds = selectedElementIds;
-      } else {
-        // 첫 마우스다운/드래그 시작: 어디를 누르든 무조건 그룹 전체 선택 및 그룹 이동!
+    if (isTargetAlreadySelected) {
+      // 이미 사이드바/Ctrl/이전 클릭 등을 통해 선택되어 있는 항목을 잡고 드래그하는 경우:
+      // 기존 선택 항목들(selectedElementIds)을 100% 온전히 유지하여 그 항목들만 이동!
+      activeSelectedIds = selectedElementIds;
+      isGroupSelectedBeforeMouseDownRef.current = hasGroup && selectedElementIds.includes(topGroup);
+    } else {
+      // 신규 요소 마우스다운/드래그 시작:
+      if (hasGroup) {
+        const groupMembers = collectAllMemberElements([topGroup]).map(m => m.id);
         isGroupSelectedBeforeMouseDownRef.current = false;
         setSelectedElementId(el.id);
         setSelectedElementIds(groupMembers);
         activeSelectedIds = groupMembers;
+      } else {
+        isGroupSelectedBeforeMouseDownRef.current = false;
+        selectSingleElement(el.id);
+        activeSelectedIds = [el.id];
       }
-    } else {
-      isGroupSelectedBeforeMouseDownRef.current = false;
-      selectSingleElement(el.id);
-      activeSelectedIds = [el.id];
     }
 
     // 요소 드래그 시작
@@ -2740,7 +2740,7 @@ export default function WorldMap({
                   {/* 좌측: 현재 시점 표시 및 목록 드롭다운 */}
                   <div className="flex items-center gap-2 relative shrink-0">
                     <span className={`shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>현재 시점:</span>
-                    <div className="relative shrink-0">
+                    <div className="relative shrink-0" ref={historyDropdownRef}>
                       <button
                         onClick={() => setShowHistoryDropdown(prev => !prev)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shrink-0 transition-all ${

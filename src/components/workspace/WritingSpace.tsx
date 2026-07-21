@@ -48,7 +48,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
     setSelectedEpisodeId,
     editorSaveStatus,
     isDark,
-    targetWordCount: targetWordCountProp = 3000,
+    targetWordCount = 3000,
   } = props;
 
   const { user } = useAuth();
@@ -118,7 +118,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
   } = useEditorFormat();
 
   // 에디터 테마는 에디터 전용 오버라이드가 있으면 적용, 없으면(system) 메인 화면의 다크/라이트 모드에서 파생
-  const editorTheme: 'dark' | 'light' | 'sepia' | 'gray' = 
+  const editorTheme: 'dark' | 'light' | 'sepia' | 'gray' =
     editorThemeOverride === 'system' ? (isDark ? 'dark' : 'light') : editorThemeOverride;
 
   // Local editor configurations & layout states
@@ -214,12 +214,12 @@ export default function WritingSpace(props: WritingSpaceProps) {
         loadedEpisodeIdRef.current = selectedEpisodeId;
         return;
       }
-      
+
       const snapKey = `novelflow_snapshots_${selectedProject.id}_${selectedEpisodeId}`;
       const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+
       if (isGuest) {
         const savedSnaps = localStorage.getItem(snapKey);
         if (savedSnaps) {
@@ -371,7 +371,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
     if (!autoSaveTimeEnabled || !selectedEpisodeId || !activeEpisode) return;
 
     const intervalMs = autoSaveTimeInterval * 60 * 1000;
-    
+
     const checkTimer = setInterval(async () => {
       const now = Date.now();
       const timeSinceLastSave = now - lastTimeSavedTimeRef.current;
@@ -402,7 +402,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
 
             setHistorySnapshots(prev => [newSnap, ...prev].slice(0, 50));
             setLastSnapshotWordCount(charCount);
-            
+
             lastTimeSavedTimeRef.current = now;
             lastTimeSavedContentRef.current = currentContent;
 
@@ -442,8 +442,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
     return () => window.removeEventListener('click', handleClosePickers);
   }, [showColorPicker, showBgColorPicker, setShowColorPicker, setShowBgColorPicker]);
 
-  // Calculations — targetWordCount는 props에서 전달받은 값 사용
-  const targetWordCount = targetWordCountProp;
+  // Calculations
   const charCountWithSpaces = activeEpisode ? activeEpisode.content.replace(/<[^>]*>/g, '').length : 0;
   const charCountWithoutSpaces = activeEpisode ? activeEpisode.content.replace(/<[^>]*>/g, '').replace(/\s/g, '').length : 0;
   const progressPercent = Math.min(100, Math.round((charCountWithSpaces / targetWordCount) * 100)) || 0;
@@ -472,34 +471,6 @@ export default function WritingSpace(props: WritingSpaceProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // 10분 주기 자동 스냅샷
-  useEffect(() => {
-    if (!selectedEpisodeId || !activeEpisode) return;
-
-    const interval = setInterval(() => {
-      if (!activeEpisode.content.trim()) return;
-
-      const timestamp = formatSnapshotTimestamp();
-      const newSnap: Snapshot = {
-        id: `snap-auto-time-${Date.now()}`,
-        timestamp,
-        name: `자동 저장 (${timestamp})`,
-        memo: '10분 주기 정기 자동 저장 스냅샷',
-        content: activeEpisode.content,
-        charCount: activeEpisode.content.replace(/<[^>]*>/g, '').length,
-        type: 'auto_time',
-        createdAt: new Date().toISOString()
-      };
-
-      setHistorySnapshots(prev => {
-        const next = [newSnap, ...prev];
-        return next.slice(0, 50); // 50개 상한
-      });
-    }, 10 * 60 * 1000);
-
-    return () => clearInterval(interval);
-  }, [selectedEpisodeId, activeEpisode]);
 
   // 검색 일치 개수 갱신
   useEffect(() => {
@@ -558,14 +529,6 @@ export default function WritingSpace(props: WritingSpaceProps) {
     showAlert('일괄 교체가 완료되었습니다.');
   };
 
-
-
-
-
-
-
-
-
   const centerTypewriterCaret = () => {
     if (!typewriterMode) return;
     setTimeout(() => {
@@ -573,7 +536,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
       if (selection && selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
         let rect = range.getBoundingClientRect();
-        
+
         // If range is collapsed and returned zero/empty rect, insert a temporary span to get coordinates
         if (range.collapsed && (!rect || rect.top === 0 || rect.height === 0)) {
           const tempSpan = document.createElement('span');
@@ -582,12 +545,12 @@ export default function WritingSpace(props: WritingSpaceProps) {
             const clone = range.cloneRange();
             clone.insertNode(tempSpan);
             rect = tempSpan.getBoundingClientRect();
-            
+
             const parent = tempSpan.parentNode;
             if (parent) {
               parent.removeChild(tempSpan);
             }
-            
+
             // Restore selection range
             selection.removeAllRanges();
             selection.addRange(range);
@@ -602,7 +565,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
             const containerRect = scrollContainer.getBoundingClientRect();
             const caretRelativeY = rect.top - containerRect.top;
             const centerY = containerRect.height / 2;
-            
+
             const targetScrollTop = scrollContainer.scrollTop + (caretRelativeY - centerY);
             scrollContainer.scrollTo({
               top: targetScrollTop,
@@ -619,7 +582,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
     setAutoSaveWordsThreshold(threshold);
     setAutoSaveTimeEnabled(timeOn);
     setAutoSaveTimeInterval(interval);
-    
+
     if (selectedProject.id) {
       const configKey = `novelflow_autosave_config_${selectedProject.id}`;
       localStorage.setItem(configKey, JSON.stringify({
@@ -662,7 +625,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
       const snapId = crypto.randomUUID();
       const snapName = `자동 저장 (${charCount}자 달성)`;
       const snapMemo = `${autoSaveWordsThreshold.toLocaleString()}자 글자 수 변동 도달 자동 저장 스냅샷`;
-      
+
       const newSnap: Snapshot = {
         id: snapId,
         timestamp,
