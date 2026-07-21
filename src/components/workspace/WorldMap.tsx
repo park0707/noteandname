@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   ChevronRight, ChevronDown, Layers, Plus, Move, Trash2, Unlock, ChevronsLeft, ChevronsRight, ChevronLeft, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
-  ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search,
+  ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search, Bookmark,
   PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
@@ -153,6 +153,26 @@ export default function WorldMap({
   const [memoEditDate, setMemoEditDate] = useState('');
   const [memoEditDescription, setMemoEditDescription] = useState('');
 
+  // --- 미니맵 (Minimap) 제어 상태 ---
+  // --- 미니맵 (Minimap) 제어 상태 ---
+  const [showMinimap, setShowMinimap] = useState(false);
+  const [minimapPos, setMinimapPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDraggingMinimap, setIsDraggingMinimap] = useState(false);
+  const [dragMinimapStart, setDragMinimapStart] = useState<{ x: number; y: number; posX: number; posY: number }>({ x: 0, y: 0, posX: 0, posY: 0 });
+  const [minimapSize, setMinimapSize] = useState<{ width: number; height: number }>({ width: 320, height: 240 });
+  const [minimapZoom, setMinimapZoom] = useState(1.0);
+  const [resizeDir, setResizeDir] = useState<'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw' | null>(null);
+  const [resizeMinimapStart, setResizeMinimapStart] = useState<{ x: number; y: number; width: number; height: number; posX: number; posY: number }>({ x: 0, y: 0, width: 320, height: 240, posX: 0, posY: 0 });
+  
+  // 미니맵 내부 마우스 드래그 캔버스 팬(Pan) 상태
+  const [isNavigatingMinimap, setIsNavigatingMinimap] = useState(false);
+  const [navMinimapStart, setNavMinimapStart] = useState<{ mouseX: number; mouseY: number; initialPanX: number; initialPanY: number; spanW: number; spanH: number; mapWidth: number; mapHeight: number }>({ mouseX: 0, mouseY: 0, initialPanX: 0, initialPanY: 0, spanW: 10000, spanH: 10000, mapWidth: 300, mapHeight: 200 });
+
+  // 미니맵 위치 기억 (북마크/웨이포인트) 상태
+  const [savedBookmarks, setSavedBookmarks] = useState<Array<{ id: string; name: string; x: number; y: number; zoom: number }>>([]);
+  const [showBookmarkModal, setShowBookmarkModal] = useState(false);
+  const [bookmarkNameInput, setBookmarkNameInput] = useState('');
+
   // --- 안개 모드 및 레이어 락 제어 ---
   const [fogVisible, setFogVisible] = useState(false);
   const [gridVisible, setGridVisible] = useState(true);
@@ -172,7 +192,79 @@ export default function WorldMap({
     characters: true // 캐릭터 마커
   });
 
-  // --- 임시 그리기 리액트 상태 ---
+  // --- 미니맵 창 드래그, 전방위 리사이즈, 미니맵 캔버스 팬(Pan) 이벤트 처리 ---
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingMinimap) {
+        const dx = e.clientX - dragMinimapStart.x;
+        const dy = e.clientY - dragMinimapStart.y;
+        setMinimapPos({
+          x: Math.max(10, Math.min(window.innerWidth - 100, dragMinimapStart.posX + dx)),
+          y: Math.max(10, Math.min(window.innerHeight - 50, dragMinimapStart.posY + dy))
+        });
+      } else if (resizeDir && resizeMinimapStart) {
+        const dx = e.clientX - resizeMinimapStart.x;
+        const dy = e.clientY - resizeMinimapStart.y;
+        
+        let newW = resizeMinimapStart.width;
+        let newH = resizeMinimapStart.height;
+        let newX = resizeMinimapStart.posX;
+        let newY = resizeMinimapStart.posY;
+
+        if (resizeDir.includes('e')) {
+          newW = Math.max(200, Math.min(750, resizeMinimapStart.width + dx));
+        }
+        if (resizeDir.includes('w')) {
+          const possibleW = resizeMinimapStart.width - dx;
+          if (possibleW >= 200 && possibleW <= 750) {
+            newW = possibleW;
+            newX = resizeMinimapStart.posX + dx;
+          }
+        }
+        if (resizeDir.includes('s')) {
+          newH = Math.max(150, Math.min(550, resizeMinimapStart.height + dy));
+        }
+        if (resizeDir.includes('n')) {
+          const possibleH = resizeMinimapStart.height - dy;
+          if (possibleH >= 150 && possibleH <= 550) {
+            newH = possibleH;
+            newY = resizeMinimapStart.posY + dy;
+          }
+        }
+
+        setMinimapSize({ width: newW, height: newH });
+        if (resizeDir.includes('w') || resizeDir.includes('n')) {
+          setMinimapPos({ x: newX, y: newY });
+        }
+      } else if (isNavigatingMinimap) {
+        const dx = e.clientX - navMinimapStart.mouseX;
+        const dy = e.clientY - navMinimapStart.mouseY;
+
+        const canvasDx = (dx / navMinimapStart.mapWidth) * navMinimapStart.spanW;
+        const canvasDy = (dy / navMinimapStart.mapHeight) * navMinimapStart.spanH;
+
+        setPan({
+          x: navMinimapStart.initialPanX + canvasDx * zoom,
+          y: navMinimapStart.initialPanY + canvasDy * zoom,
+        });
+      }
+    };
+
+    const handleMouseUp = () => {
+      if (isDraggingMinimap) setIsDraggingMinimap(false);
+      if (resizeDir) setResizeDir(null);
+      if (isNavigatingMinimap) setIsNavigatingMinimap(false);
+    };
+
+    if (isDraggingMinimap || resizeDir || isNavigatingMinimap) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingMinimap, resizeDir, isNavigatingMinimap, dragMinimapStart, resizeMinimapStart, navMinimapStart, zoom]);
   const [tempPoints, setTempPoints] = useState<Array<{ x: number; y: number }>>([]);
   const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number } | null>(null);
   const [activeAnchorPointIdx, setActiveAnchorPointIdx] = useState<number | null>(null);
@@ -683,6 +775,7 @@ export default function WorldMap({
     snapshotKey: `novelflow_worldmap_snapshots_${selectedProject.id}`,
     configKey: `novelflow_worldmap_config_${selectedProject.id}`,
     charPosKey: `novelflow_worldmap_char_pos_${selectedProject.id}`,
+    bookmarksKey: `novelflow_worldmap_bookmarks_${selectedProject.id}`,
   }), [selectedProject.id]);
 
   const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
@@ -691,13 +784,14 @@ export default function WorldMap({
   useEffect(() => {
     if (!selectedProject) return;
 
-    const { elementKey, snapshotKey, configKey, charPosKey } = getStorageKeys();
+    const { elementKey, snapshotKey, configKey, charPosKey, bookmarksKey } = getStorageKeys();
 
     const applyData = (data: {
       elements?: MapElement[];
       snapshots?: MapSnapshot[];
       config?: { customBgImage: string | null; presetBg: string; scale: MapScale };
       characterPositions?: Record<string, Record<string, { x: number; y: number; trail: Array<{ x: number; y: number }> }>>;
+      savedBookmarks?: Array<{ id: string; name: string; x: number; y: number; zoom: number }>;
     }) => {
       if (data.elements && data.elements.length > 0) {
         setElements(data.elements);
@@ -747,6 +841,10 @@ export default function WorldMap({
           }
         });
       }
+
+      if (data.savedBookmarks) {
+        setSavedBookmarks(data.savedBookmarks);
+      }
     };
 
     const loadFromLocalStorage = () => {
@@ -754,11 +852,13 @@ export default function WorldMap({
       const savedSnapshots = localStorage.getItem(snapshotKey);
       const savedConfig = localStorage.getItem(configKey);
       const savedCharPos = localStorage.getItem(charPosKey);
+      const savedBms = localStorage.getItem(bookmarksKey);
       applyData({
         elements: savedElements ? JSON.parse(savedElements) : undefined,
         snapshots: savedSnapshots ? JSON.parse(savedSnapshots) : undefined,
         config: savedConfig ? JSON.parse(savedConfig) : undefined,
         characterPositions: savedCharPos ? JSON.parse(savedCharPos) : undefined,
+        savedBookmarks: savedBms ? JSON.parse(savedBms) : undefined,
       });
     };
 
@@ -784,6 +884,7 @@ export default function WorldMap({
             snapshots?: MapSnapshot[];
             config?: { customBgImage: string | null; presetBg: string; scale: MapScale };
             characterPositions?: Record<string, Record<string, { x: number; y: number; trail: Array<{ x: number; y: number }> }>>;
+            savedBookmarks?: Array<{ id: string; name: string; x: number; y: number; zoom: number }>;
           };
           applyData(wm);
           // localStorage에도 캐시
@@ -791,6 +892,7 @@ export default function WorldMap({
           if (wm.snapshots) localStorage.setItem(snapshotKey, JSON.stringify(wm.snapshots));
           if (wm.config) localStorage.setItem(configKey, JSON.stringify(wm.config));
           if (wm.characterPositions) localStorage.setItem(charPosKey, JSON.stringify(wm.characterPositions));
+          if (wm.savedBookmarks) localStorage.setItem(bookmarksKey, JSON.stringify(wm.savedBookmarks));
         } else {
           // DB에 없으면 localStorage 캐시에서 복구 시도
           loadFromLocalStorage();
@@ -806,13 +908,14 @@ export default function WorldMap({
   // --- Supabase + localStorage 자동 저장 (debounce 2초) ---
   const saveWorldMapData = useCallback(() => {
     if (!selectedProject) return;
-    const { elementKey, snapshotKey, configKey, charPosKey } = getStorageKeys();
+    const { elementKey, snapshotKey, configKey, charPosKey, bookmarksKey } = getStorageKeys();
 
     // localStorage 즉시 갱신 (캐시)
     localStorage.setItem(elementKey, JSON.stringify(elements));
     localStorage.setItem(snapshotKey, JSON.stringify(snapshots));
     localStorage.setItem(configKey, JSON.stringify({ customBgImage, presetBg, scale }));
     localStorage.setItem(charPosKey, JSON.stringify(characterPositions));
+    localStorage.setItem(bookmarksKey, JSON.stringify(savedBookmarks));
 
     if (isGuest) return;
 
@@ -828,6 +931,7 @@ export default function WorldMap({
               snapshots,
               config: { customBgImage, presetBg, scale },
               characterPositions,
+              savedBookmarks,
             }
           })
           .eq('id', selectedProject.id);
@@ -836,13 +940,13 @@ export default function WorldMap({
         console.error('WorldMap: Supabase 저장 실패:', err);
       }
     }, 2000);
-  }, [elements, snapshots, customBgImage, presetBg, scale, characterPositions, selectedProject, getStorageKeys, isGuest]);
+  }, [elements, snapshots, customBgImage, presetBg, scale, characterPositions, savedBookmarks, selectedProject, getStorageKeys, isGuest]);
 
   // 데이터 변경 시 자동 저장 트리거
   useEffect(() => {
     saveWorldMapData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elements, snapshots, customBgImage, presetBg, scale, characterPositions]);
+  }, [elements, snapshots, customBgImage, presetBg, scale, characterPositions, savedBookmarks]);
 
   // 빈 그룹 자동 삭제 감지
   useEffect(() => {
@@ -2718,6 +2822,7 @@ export default function WorldMap({
                   {/* 스냅 & 편집 보호 */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     {[
+                      { Icon: Map, label: '미니맵 (Minimap)', checked: showMinimap, onChange: setShowMinimap },
                       { Icon: Grid3X3, label: '격자선(Grid) 표시', checked: gridVisible, onChange: setGridVisible },
                       { Icon: Magnet, label: '격자 자석 스냅', checked: gridSnapEnabled, onChange: setGridSnapEnabled },
                       { Icon: Magnet, label: '점간(Node) 자동 스냅', checked: pointSnapEnabled, onChange: setPointSnapEnabled },
@@ -4028,8 +4133,6 @@ export default function WorldMap({
                   />
                 </div>
               </div>
-
-              {/* 붓 굵기 조절 (붓 타입 전용) */}
               {el.type === 'brush' && (
                 <div className="flex flex-col gap-1.5">
                   <label className="font-semibold text-gray-400">붓 굵기 (px)</label>
@@ -4228,6 +4331,500 @@ export default function WorldMap({
           </div>
         );
       })()}
+
+      {/* ── 플로팅 미니맵 (Minimap) ── */}
+      {showMinimap && (
+        <div
+          style={{
+            position: 'fixed',
+            left: minimapPos ? `${minimapPos.x}px` : 'auto',
+            top: minimapPos ? `${minimapPos.y}px` : 'auto',
+            right: minimapPos ? 'auto' : '24px',
+            bottom: minimapPos ? 'auto' : '24px',
+            width: `${minimapSize.width}px`,
+            height: `${minimapSize.height}px`,
+          }}
+          className={`z-40 rounded-2xl border shadow-2xl backdrop-blur-md flex flex-col overflow-hidden select-none ${
+            isDraggingMinimap || resizeDir || isNavigatingMinimap ? 'transition-none' : ''
+          } ${
+            isDark ? 'bg-[#0E0F12]/90 border-white/10 text-gray-200' : 'bg-white/90 border-black/10 text-gray-800'
+          }`}
+        >
+          {/* 미니맵 헤더 (상단 드래그 이동 핸들) */}
+          <div
+            onMouseDown={(e) => {
+              const target = e.target as HTMLElement;
+              // 버튼이나 선택창 클릭 시에는 헤더 창 드래그 제외
+              if (target.tagName === 'BUTTON' || target.tagName === 'SELECT' || target.tagName === 'OPTION' || target.closest('button') || target.closest('select')) {
+                return;
+              }
+              const rect = e.currentTarget.parentElement?.getBoundingClientRect();
+              if (rect) {
+                setDragMinimapStart({
+                  x: e.clientX,
+                  y: e.clientY,
+                  posX: rect.left,
+                  posY: rect.top,
+                });
+                setIsDraggingMinimap(true);
+              }
+            }}
+            className={`px-3 py-1.5 border-b flex items-center justify-between cursor-grab active:cursor-grabbing shrink-0 select-none gap-1.5 ${
+              isDark ? 'bg-white/[0.04] border-white/10' : 'bg-black/[0.03] border-black/10'
+            }`}
+          >
+            <div className="flex items-center gap-1 text-xs font-bold text-[#7480E2]">
+              <Map className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">미니맵</span>
+            </div>
+
+            {/* 📍 기억한 위치 이동 드롭다운 */}
+            <div className="flex items-center gap-1 flex-1 max-w-[150px]">
+              <select
+                value=""
+                onChange={(e) => {
+                  const selectedId = e.target.value;
+                  if (!selectedId) return;
+                  const targetBm = savedBookmarks.find(b => b.id === selectedId);
+                  if (targetBm) {
+                    const containerW = canvasContainerRef.current ? canvasContainerRef.current.clientWidth : (typeof window !== 'undefined' ? window.innerWidth : 1200);
+                    const containerH = canvasContainerRef.current ? canvasContainerRef.current.clientHeight : (typeof window !== 'undefined' ? window.innerHeight : 800);
+                    const newPanX = (containerW / 2) - (targetBm.x * zoom);
+                    const newPanY = (containerH / 2) - (targetBm.y * zoom);
+                    setPan({ x: newPanX, y: newPanY });
+                  }
+                }}
+                className={`w-full text-[10px] px-1.5 py-0.5 rounded border outline-none cursor-pointer truncate ${
+                  isDark ? 'bg-[#1E1F22] border-white/10 text-gray-300' : 'bg-white border-black/10 text-gray-700'
+                }`}
+              >
+                {savedBookmarks.length === 0 ? (
+                  <option value="" disabled>항목 없음</option>
+                ) : (
+                  <>
+                    <option value="" disabled>📍 기억 위치 선택</option>
+                    {savedBookmarks.map(bm => (
+                      <option key={bm.id} value={bm.id}>{bm.name}</option>
+                    ))}
+                  </>
+                )}
+              </select>
+
+              {/* 현재 위치 저장 버튼 */}
+              <button
+                onClick={() => setShowBookmarkModal(true)}
+                className="p-1 rounded text-gray-400 hover:text-white hover:bg-[#5E6AD2]/30 transition-colors shrink-0"
+                title="현재 시점 위치 기억 (포인트 찍기)"
+              >
+                <Bookmark className="w-3 h-3 text-[#7480E2]" />
+              </button>
+            </div>
+
+            {/* 🔍 1. 시점 축소/확대 버튼 그룹 */}
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                onClick={() => setMinimapZoom(prev => Math.max(0.4, prev / 1.25))}
+                className="p-1 rounded text-gray-400 hover:text-white hover:bg-white/10"
+                title="시점 축소 (-)"
+              >
+                <ZoomOut className="w-3 h-3" />
+              </button>
+              <span className="text-[10px] font-mono font-bold text-gray-400 min-w-[28px] text-center select-none">
+                {Math.round(minimapZoom * 100)}%
+              </span>
+              <button
+                onClick={() => setMinimapZoom(prev => Math.min(4.0, prev * 1.25))}
+                className="p-1 rounded text-gray-400 hover:text-white hover:bg-white/10"
+                title="시점 확대 (+)"
+              >
+                <ZoomIn className="w-3 h-3" />
+              </button>
+              
+              <div className="w-[1px] h-3 bg-white/10 mx-0.5" />
+
+              <button
+                onClick={() => {
+                  setMinimapPos(null);
+                  setMinimapSize({ width: 320, height: 240 });
+                  setMinimapZoom(1.0);
+                }}
+                className="p-1 rounded text-gray-400 hover:text-white hover:bg-white/10"
+                title="위치/크기 초기화"
+              >
+                <RotateCcw className="w-3 h-3" />
+              </button>
+              <button
+                onClick={() => setShowMinimap(false)}
+                className="p-1 rounded text-gray-400 hover:text-white hover:bg-red-500/20"
+                title="닫기"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          {/* 미니맵 축소 뷰 캔버스 영역 */}
+          <div 
+            onWheel={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              if (e.deltaY < 0) {
+                setMinimapZoom(prev => Math.min(4.0, prev * 1.15));
+              } else {
+                setMinimapZoom(prev => Math.max(0.4, prev / 1.15));
+              }
+            }}
+            className="flex-1 relative overflow-hidden p-2 bg-black/20 flex items-center justify-center select-none"
+          >
+            {(() => {
+              const mapWidth = minimapSize.width - 16;
+              const mapHeight = minimapSize.height - 40;
+              
+              // 현재 선택된 맵 및 시점의 실제 활성화된 레이아웃 요소들
+              const activeEls = getAllActiveElementsForMap(currentMapId);
+
+              // 캔버스 물리 규격 (기본 10,000 x 10,000 px)
+              const BASE_W = 10000;
+
+              const containerW = canvasContainerRef.current ? canvasContainerRef.current.clientWidth : (typeof window !== 'undefined' ? window.innerWidth : 1200);
+              const containerH = canvasContainerRef.current ? canvasContainerRef.current.clientHeight : (typeof window !== 'undefined' ? window.innerHeight : 800);
+
+              // 현재 지도의 카메라 중심 캔버스 좌표 (CamX, CamY)
+              const camX = (-pan.x + containerW / 2) / zoom;
+              const camY = (-pan.y + containerH / 2) / zoom;
+
+              // 미니맵 조망 가시 범위 (minimapZoom 반영)
+              const spanW = BASE_W / minimapZoom;
+              const spanH = (BASE_W * (mapHeight / mapWidth)) / minimapZoom;
+
+              // 시점이 미니맵 중앙에 든든하게 고정되도록 viewBox 설정
+              const viewBoxX = camX - spanW / 2;
+              const viewBoxY = camY - spanH / 2;
+
+              // 화면 뷰포트 사각형 규격 (캔버스 좌표 기준)
+              const rectW = containerW / zoom;
+              const rectH = containerH / zoom;
+
+              const handleStartMinimapNav = (e: React.MouseEvent<SVGSVGElement>) => {
+                if (e.button === 2) return; // 우클릭 제외
+                
+                // 마우스 클릭 시 손으로 지도를 잡고 직접 끄는(1:1 Drag-Pan) 모드 활성화
+                setNavMinimapStart({
+                  mouseX: e.clientX,
+                  mouseY: e.clientY,
+                  initialPanX: pan.x,
+                  initialPanY: pan.y,
+                  spanW,
+                  spanH,
+                  mapWidth,
+                  mapHeight,
+                });
+                setIsNavigatingMinimap(true);
+              };
+
+              // 미니맵 배경색 통일: 빈티지일 경우 전체 배경을 갈색톤(#282319 또는 #F4ECD8)으로 통일
+              const bgColor = presetBg === 'vintage' ? (isDark ? "#282319" : "#F4ECD8") : (isDark ? "#121316" : "#E5E7EB");
+
+              return (
+                <svg
+                  width={mapWidth}
+                  height={mapHeight}
+                  viewBox={`${viewBoxX} ${viewBoxY} ${spanW} ${spanH}`}
+                  preserveAspectRatio="none"
+                  onMouseDown={handleStartMinimapNav}
+                  className="cursor-grab active:cursor-grabbing rounded border border-white/10 shadow-inner select-none overflow-hidden"
+                  style={{ backgroundColor: bgColor }}
+                >
+                  {/* 축소된 메인 배경 그리드 */}
+                  <defs>
+                    <pattern id="miniGrid" width="200" height="200" patternUnits="userSpaceOnUse">
+                      <path d="M 200 0 L 0 0 0 200" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2" />
+                    </pattern>
+                  </defs>
+                  
+                  {/* 전체 10000x10000 및 뷰포트 전체 통일 배경 */}
+                  <rect 
+                    x={viewBoxX}
+                    y={viewBoxY}
+                    width={spanW}
+                    height={spanH}
+                    fill={bgColor} 
+                  />
+
+                  {customBgImage && (
+                    <image 
+                      href={customBgImage} 
+                      x="0"
+                      y="0"
+                      width="3000" 
+                      height="2000" 
+                      opacity={0.85} 
+                      preserveAspectRatio="none"
+                    />
+                  )}
+
+                  {gridVisible && (
+                    <rect 
+                      x={viewBoxX} 
+                      y={viewBoxY} 
+                      width={spanW} 
+                      height={spanH} 
+                      fill="url(#miniGrid)" 
+                    />
+                  )}
+
+                  {/* 🌟 100% 미니맵 상에 또렷이 출력되는 모든 나의 레이아웃 요소들 🌟 */}
+                  {activeEls.map((el) => {
+                    // 1) 붓 스트로크 (brush)
+                    if (el.type === 'brush' && el.brushStrokes) {
+                      return (
+                        <g key={el.id}>
+                          {el.brushStrokes.map((stroke, sIdx) => {
+                            if (!stroke || stroke.length === 0) return null;
+                            const d = stroke.reduce((acc, pt, idx) => {
+                              return idx === 0 ? `M ${pt.x} ${pt.y}` : `${acc} L ${pt.x} ${pt.y}`;
+                            }, '');
+                            return (
+                              <path
+                                key={sIdx}
+                                d={d}
+                                fill="none"
+                                stroke={el.color || '#38BDF8'}
+                                strokeWidth={Math.max(6, (el.brushWidth || 20) * 0.8)}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                opacity={0.85}
+                              />
+                            );
+                          })}
+                        </g>
+                      );
+                    }
+
+                    // 2) 사각형/원형 테두리 (border_rect / border_circle)
+                    if (el.type === 'border_rect' && el.bx !== undefined && el.by !== undefined) {
+                      return (
+                        <rect
+                          key={el.id}
+                          x={el.bx}
+                          y={el.by}
+                          width={el.bw || 100}
+                          height={el.bh || 100}
+                          fill={el.color || '#5E6AD2'}
+                          fillOpacity={0.2}
+                          stroke={el.color || '#7480E2'}
+                          strokeWidth={Math.max(4, el.borderWidth || 4)}
+                        />
+                      );
+                    }
+                    if (el.type === 'border_circle' && el.bx !== undefined && el.by !== undefined) {
+                      const rx = (el.bw || 100) / 2;
+                      const ry = (el.bh || 100) / 2;
+                      return (
+                        <ellipse
+                          key={el.id}
+                          cx={el.bx + rx}
+                          cy={el.by + ry}
+                          rx={rx}
+                          ry={ry}
+                          fill={el.color || '#5E6AD2'}
+                          fillOpacity={0.2}
+                          stroke={el.color || '#7480E2'}
+                          strokeWidth={Math.max(4, el.borderWidth || 4)}
+                        />
+                      );
+                    }
+
+                    // 3) 영역 다각형 (polygon)
+                    if (el.type === 'polygon' && el.points && el.points.length > 0) {
+                      return (
+                        <polygon
+                          key={el.id}
+                          points={el.points.map((p) => `${p.x},${p.y}`).join(' ')}
+                          fill={el.color || '#5E6AD2'}
+                          fillOpacity={0.45}
+                          stroke={el.color || '#7480E2'}
+                          strokeWidth={Math.max(6, spanW / 400)}
+                        />
+                      );
+                    }
+
+                    // 4) 경로 (route / polyline)
+                    if (el.points && el.points.length > 0) {
+                      return (
+                        <polyline
+                          key={el.id}
+                          points={el.points.map((p) => `${p.x},${p.y}`).join(' ')}
+                          fill="none"
+                          stroke={el.color || '#38BDF8'}
+                          strokeWidth={Math.max(8, spanW / 350)}
+                        />
+                      );
+                    }
+
+                    // 5) 마커 핀 (pin)
+                    if (el.x !== undefined && el.y !== undefined) {
+                      return (
+                        <g key={el.id}>
+                          <circle
+                            cx={el.x}
+                            cy={el.y}
+                            r={Math.max(20, spanW / 120)}
+                            fill={el.color || '#EF4444'}
+                            stroke="#FFFFFF"
+                            strokeWidth={Math.max(4, spanW / 600)}
+                          />
+                          {el.name && (
+                            <text
+                              x={el.x}
+                              y={el.y + Math.max(35, spanW / 70)}
+                              textAnchor="middle"
+                              fill="#FFFFFF"
+                              fontSize={Math.max(28, spanW / 90)}
+                              fontWeight="bold"
+                              className="drop-shadow-md"
+                            >
+                              {el.name}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    }
+                    return null;
+                  })}
+
+                  {/* 🌟 미니맵 중앙 고정 시야 사각형 (Center Viewfinder) 🌟 */}
+                  <g>
+                    <rect
+                      x={camX - rectW / 2}
+                      y={camY - rectH / 2}
+                      width={rectW}
+                      height={rectH}
+                      fill="rgba(116, 128, 226, 0.25)"
+                      stroke="#FFFFFF"
+                      strokeWidth={Math.max(8, spanW / 250)}
+                      rx={8}
+                      ry={8}
+                    />
+                    <rect
+                      x={camX - rectW / 2}
+                      y={camY - rectH / 2}
+                      width={rectW}
+                      height={rectH}
+                      fill="none"
+                      stroke="#5E6AD2"
+                      strokeWidth={Math.max(3, spanW / 550)}
+                      rx={8}
+                      ry={8}
+                    />
+                    {/* 미니맵 중앙 정밀 십자선 (Center Crosshair) */}
+                    <line x1={camX - 15} y1={camY} x2={camX + 15} y2={camY} stroke="#FFFFFF" strokeWidth={3} />
+                    <line x1={camX} y1={camY - 15} x2={camX} y2={camY + 15} stroke="#FFFFFF" strokeWidth={3} />
+                  </g>
+                </svg>
+              );
+            })()}
+          </div>
+
+          {/* 🌟 미니맵 테두리 (4개 변 + 4개 모서리) 전방위 크기 조절 리사이즈 핸들 🌟 */}
+          {/* 상단 테두리 */}
+          <div
+            onMouseDown={(e) => {
+              const rect = e.currentTarget.parentElement?.getBoundingClientRect();
+              if (rect) {
+                setResizeMinimapStart({ x: e.clientX, y: e.clientY, width: minimapSize.width, height: minimapSize.height, posX: rect.left, posY: rect.top });
+                setResizeDir('n');
+              }
+            }}
+            className="absolute top-0 left-3 right-3 h-2 cursor-ns-resize z-50"
+            title="상하 크기 조절"
+          />
+          {/* 하단 테두리 */}
+          <div
+            onMouseDown={(e) => {
+              const rect = e.currentTarget.parentElement?.getBoundingClientRect();
+              if (rect) {
+                setResizeMinimapStart({ x: e.clientX, y: e.clientY, width: minimapSize.width, height: minimapSize.height, posX: rect.left, posY: rect.top });
+                setResizeDir('s');
+              }
+            }}
+            className="absolute bottom-0 left-3 right-3 h-2 cursor-ns-resize z-50"
+            title="상하 크기 조절"
+          />
+          {/* 좌측 테두리 */}
+          <div
+            onMouseDown={(e) => {
+              const rect = e.currentTarget.parentElement?.getBoundingClientRect();
+              if (rect) {
+                setResizeMinimapStart({ x: e.clientX, y: e.clientY, width: minimapSize.width, height: minimapSize.height, posX: rect.left, posY: rect.top });
+                setResizeDir('w');
+              }
+            }}
+            className="absolute left-0 top-3 bottom-3 w-2 cursor-ew-resize z-50"
+            title="좌우 크기 조절"
+          />
+          {/* 우측 테두리 */}
+          <div
+            onMouseDown={(e) => {
+              const rect = e.currentTarget.parentElement?.getBoundingClientRect();
+              if (rect) {
+                setResizeMinimapStart({ x: e.clientX, y: e.clientY, width: minimapSize.width, height: minimapSize.height, posX: rect.left, posY: rect.top });
+                setResizeDir('e');
+              }
+            }}
+            className="absolute right-0 top-3 bottom-3 w-2 cursor-ew-resize z-50"
+            title="좌우 크기 조절"
+          />
+          {/* 좌측 상단 모서리 */}
+          <div
+            onMouseDown={(e) => {
+              const rect = e.currentTarget.parentElement?.getBoundingClientRect();
+              if (rect) {
+                setResizeMinimapStart({ x: e.clientX, y: e.clientY, width: minimapSize.width, height: minimapSize.height, posX: rect.left, posY: rect.top });
+                setResizeDir('nw');
+              }
+            }}
+            className="absolute top-0 left-0 w-3.5 h-3.5 cursor-nwse-resize z-50 rounded-tl"
+            title="대각선 크기 조절"
+          />
+          {/* 우측 상단 모서리 */}
+          <div
+            onMouseDown={(e) => {
+              const rect = e.currentTarget.parentElement?.getBoundingClientRect();
+              if (rect) {
+                setResizeMinimapStart({ x: e.clientX, y: e.clientY, width: minimapSize.width, height: minimapSize.height, posX: rect.left, posY: rect.top });
+                setResizeDir('ne');
+              }
+            }}
+            className="absolute top-0 right-0 w-3.5 h-3.5 cursor-nesw-resize z-50 rounded-tr"
+            title="대각선 크기 조절"
+          />
+          {/* 좌측 하단 모서리 */}
+          <div
+            onMouseDown={(e) => {
+              const rect = e.currentTarget.parentElement?.getBoundingClientRect();
+              if (rect) {
+                setResizeMinimapStart({ x: e.clientX, y: e.clientY, width: minimapSize.width, height: minimapSize.height, posX: rect.left, posY: rect.top });
+                setResizeDir('sw');
+              }
+            }}
+            className="absolute bottom-0 left-0 w-3.5 h-3.5 cursor-nesw-resize z-50 rounded-bl"
+            title="대각선 크기 조절"
+          />
+          {/* 우측 하단 모서리 */}
+          <div
+            onMouseDown={(e) => {
+              const rect = e.currentTarget.parentElement?.getBoundingClientRect();
+              if (rect) {
+                setResizeMinimapStart({ x: e.clientX, y: e.clientY, width: minimapSize.width, height: minimapSize.height, posX: rect.left, posY: rect.top });
+                setResizeDir('se');
+              }
+            }}
+            className="absolute bottom-0 right-0 w-3.5 h-3.5 cursor-nwse-resize z-50 rounded-br"
+            title="대각선 크기 조절"
+          />
+        </div>
+      )}
 
       {/* 이력 메모 수정/관리 모달 창 */}
       {showMemoModal && currentSnapshot && (
@@ -4434,6 +5031,124 @@ export default function WorldMap({
                 className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
               >
                 레이아웃 추가
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 📍 위치 기억 (북마크/웨이포인트) 추가 모달 창 */}
+      {showBookmarkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className={`w-96 rounded-2xl border p-6 flex flex-col gap-4 shadow-2xl ${
+            isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            <div className="flex items-center justify-between pb-2 border-b border-gray-500/10">
+              <h3 className="text-sm font-bold flex items-center gap-1.5 text-[#7480E2]">
+                <Bookmark className="w-4 h-4" /> 📍 현재 지도 시점 기억
+              </h3>
+              <button 
+                onClick={() => setShowBookmarkModal(false)}
+                className="text-gray-400 hover:text-gray-200 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="flex flex-col gap-3 text-xs">
+              <p className="text-gray-400">
+                현재 카메라 중심 시점 좌표를 북마크에 등록합니다. 추후 드롭다운에서 선택하여 바로 이동할 수 있습니다.
+              </p>
+              <div className="flex flex-col gap-1">
+                <label className="font-semibold text-gray-400">장소/시점 기억 이름</label>
+                <input 
+                  type="text" 
+                  value={bookmarkNameInput} 
+                  onChange={e => setBookmarkNameInput(e.target.value)}
+                  placeholder="예: 중앙 성곽 광장, 북쪽 마법숲 입구"
+                  className={`px-3 py-2 rounded-lg border outline-none ${
+                    isDark ? 'bg-white/[0.02] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-black/[0.01] border-black/[0.08] text-black focus:border-[#5E6AD2]'
+                  }`}
+                  autoFocus
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && bookmarkNameInput.trim()) {
+                      const containerW = canvasContainerRef.current ? canvasContainerRef.current.clientWidth : (typeof window !== 'undefined' ? window.innerWidth : 1200);
+                      const containerH = canvasContainerRef.current ? canvasContainerRef.current.clientHeight : (typeof window !== 'undefined' ? window.innerHeight : 800);
+                      const camX = (-pan.x + containerW / 2) / zoom;
+                      const camY = (-pan.y + containerH / 2) / zoom;
+
+                      setSavedBookmarks(prev => [
+                        ...prev,
+                        {
+                          id: `bm-${Date.now()}`,
+                          name: `📍 ${bookmarkNameInput.trim()}`,
+                          x: camX,
+                          y: camY,
+                          zoom,
+                        }
+                      ]);
+                      setBookmarkNameInput('');
+                      setShowBookmarkModal(false);
+                    }
+                  }}
+                />
+              </div>
+
+              {/* 저장된 북마크 관리 리스트 */}
+              {savedBookmarks.length > 0 && (
+                <div className="flex flex-col gap-1 mt-1">
+                  <label className="font-semibold text-gray-400">저장된 기억 장소 목록</label>
+                  <div className="flex flex-col gap-1 max-h-32 overflow-y-auto border border-white/10 rounded-lg p-1">
+                    {savedBookmarks.map(bm => (
+                      <div key={bm.id} className="flex items-center justify-between px-2 py-1 rounded hover:bg-white/5">
+                        <span className="truncate font-semibold text-gray-300">{bm.name}</span>
+                        <button
+                          onClick={() => setSavedBookmarks(prev => prev.filter(b => b.id !== bm.id))}
+                          className="text-gray-500 hover:text-red-400 text-xs px-1 font-bold"
+                          title="삭제"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2.5 mt-2">
+              <button 
+                onClick={() => setShowBookmarkModal(false)}
+                className={`flex-1 py-2 rounded-xl font-bold border transition-colors ${
+                  isDark ? 'border-white/[0.06] hover:bg-[#1E1F22]' : 'border-black/[0.06] hover:bg-gray-100'
+                }`}
+              >
+                취소
+              </button>
+              <button 
+                onClick={() => {
+                  if (!bookmarkNameInput.trim()) return;
+                  const containerW = canvasContainerRef.current ? canvasContainerRef.current.clientWidth : (typeof window !== 'undefined' ? window.innerWidth : 1200);
+                  const containerH = canvasContainerRef.current ? canvasContainerRef.current.clientHeight : (typeof window !== 'undefined' ? window.innerHeight : 800);
+                  const camX = (-pan.x + containerW / 2) / zoom;
+                  const camY = (-pan.y + containerH / 2) / zoom;
+
+                  setSavedBookmarks(prev => [
+                    ...prev,
+                    {
+                      id: `bm-${Date.now()}`,
+                      name: `📍 ${bookmarkNameInput.trim()}`,
+                      x: camX,
+                      y: camY,
+                      zoom,
+                    }
+                  ]);
+                  setBookmarkNameInput('');
+                  setShowBookmarkModal(false);
+                }}
+                className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
+              >
+                위치 저장
               </button>
             </div>
           </div>
