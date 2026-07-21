@@ -17,6 +17,7 @@ export interface MapSnapshot {
   name: string;
   date: string;
   description: string;
+  createdTime?: string;
 }
 
 export interface MapElement {
@@ -134,9 +135,9 @@ export default function WorldMap({
   
   // --- 타임라인 스냅샷 상태 ---
   const [snapshots, setSnapshots] = useState<MapSnapshot[]>([
-    { id: 'snap-default', order: 0, name: '1권 시작 기준', date: '작중 932년 4월', description: '평화로운 아이론 왕국 영토와 가문 세력권.' },
-    { id: 'snap-war', order: 1, name: '동부 요새 함락 사건', date: '작중 932년 10월', description: '제국의 흑마법 기습 침공으로 동부 요새가 함락되고 소실됨.' },
-    { id: 'snap-fall', order: 2, name: '제국 연합군 병합 완료', date: '작중 933년 6월', description: '아이론 북동부 요충지가 완전히 함락되어 제국 영토로 편입됨.' }
+    { id: 'snap-default', order: 0, name: '1권 시작 기준', date: '작중 932년 4월', description: '평화로운 아이론 왕국 영토와 가문 세력권.', createdTime: '26-07-21, 09:00' },
+    { id: 'snap-war', order: 1, name: '동부 요새 함락 사건', date: '작중 932년 10월', description: '제국의 흑마법 기습 침공으로 동부 요새가 함락되고 소실됨.', createdTime: '26-07-21, 09:15' },
+    { id: 'snap-fall', order: 2, name: '제국 연합군 병합 완료', date: '작중 933년 6월', description: '아이론 북동부 요충지가 완전히 함락되어 제국 영토로 편입됨.', createdTime: '26-07-21, 09:30' }
   ]);
   const [activeSnapshotId, setActiveSnapshotId] = useState<string>('snap-fall');
   const activeSnapshotIdx = snapshots.findIndex(s => s.id === activeSnapshotId) === -1 ? 0 : snapshots.findIndex(s => s.id === activeSnapshotId);
@@ -144,7 +145,7 @@ export default function WorldMap({
 
   const [isSnapshotEditUnlocked, setIsSnapshotEditUnlocked] = useState(false);
   const isLatestSnapshot = snapshots.length > 0 && activeSnapshotId === snapshots[snapshots.length - 1].id;
-  const isReadOnly = activeSnapshotId !== 'snap-default' && !isLatestSnapshot && !isSnapshotEditUnlocked;
+  const isReadOnly = !isLatestSnapshot && !isSnapshotEditUnlocked;
 
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
   const [showMemoModal, setShowMemoModal] = useState(false);
@@ -2086,13 +2087,23 @@ export default function WorldMap({
   // --- 신규 스냅샷 추가 ---
   const handleCreateSnapshot = () => {
     if (!newSnapshotName.trim()) return;
+
+    const now = new Date();
+    const yy = String(now.getFullYear()).slice(-2);
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const hh = String(now.getHours()).padStart(2, '0');
+    const min = String(now.getMinutes()).padStart(2, '0');
+    const createdTime = `${yy}-${mm}-${dd}, ${hh}:${min}`;
+
     const nextId = `snap-${Date.now()}`;
     const newSnap: MapSnapshot = {
       id: nextId,
       order: snapshots.length,
       name: newSnapshotName,
       date: newSnapshotDate,
-      description: newSnapshotDesc
+      description: newSnapshotDesc,
+      createdTime
     };
     setSnapshots(prev => [...prev, newSnap]);
     setActiveSnapshotId(nextId);
@@ -2737,6 +2748,25 @@ export default function WorldMap({
               {/* ── 시점 탭 ── */}
               {activeHeaderTab === 'timeline' && (
                 <div className="flex items-center justify-between gap-6 shrink-0 min-w-max select-none">
+                  <style>{`
+                    @keyframes novela-circular-marquee-anim {
+                      0% {
+                        transform: translateX(0%);
+                      }
+                      7.14% {
+                        transform: translateX(0%);
+                      }
+                      100% {
+                        transform: translateX(-50%);
+                      }
+                    }
+                    .novela-circular-marquee {
+                      display: inline-flex;
+                      white-space: nowrap;
+                      animation: novela-circular-marquee-anim 14s linear infinite;
+                      will-change: transform;
+                    }
+                  `}</style>
                   {/* 좌측: 현재 시점 표시 및 목록 드롭다운 */}
                   <div className="flex items-center gap-2 relative shrink-0">
                     <span className={`shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>현재 시점:</span>
@@ -2749,13 +2779,29 @@ export default function WorldMap({
                             : isDark ? 'border-white/[0.08] hover:bg-white/[0.04]' : 'border-black/[0.08] hover:bg-black/[0.04]'
                         }`}
                       >
-                        <span className="shrink-0">{activeSnapshotId && activeSnapshotId !== 'snap-default' ? snapshots.find(s => s.id === activeSnapshotId)?.name : '기본 상태'}</span>
+                        {(() => {
+                          const currentName = activeSnapshotId && activeSnapshotId !== 'snap-default' 
+                            ? (snapshots.find(s => s.id === activeSnapshotId)?.name || '기본 상태')
+                            : '기본 상태';
+                          
+                          if (currentName.length <= 11) {
+                            return <span className="truncate inline-block">{currentName}</span>;
+                          }
+                          return (
+                            <div className="overflow-hidden whitespace-nowrap inline-flex relative max-w-[190px]">
+                              <div className="novela-circular-marquee inline-flex shrink-0">
+                                <span className="shrink-0 font-bold">{currentName}&nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                                <span className="shrink-0 font-bold">{currentName}&nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                              </div>
+                            </div>
+                          );
+                        })()}
                         <ChevronDown className="w-3.5 h-3.5 opacity-60 shrink-0" />
                       </button>
 
                       {/* 이력 목록 드롭다운 */}
                       {showHistoryDropdown && (
-                        <div className={`absolute top-full left-0 mt-1.5 w-72 rounded-xl border p-2 shadow-2xl z-50 flex flex-col gap-1 max-h-80 overflow-y-auto ${
+                        <div className={`absolute top-full left-0 mt-1.5 w-80 rounded-xl border p-2 shadow-2xl z-50 flex flex-col gap-1 max-h-80 overflow-y-auto ${
                           isDark ? 'bg-[#141517] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
                         }`}>
                           <button
@@ -2765,7 +2811,7 @@ export default function WorldMap({
                             }}
                             className={`w-full text-left px-2 py-1.5 rounded-lg hover:bg-white/[0.04] transition-colors ${activeSnapshotId === 'snap-default' ? 'text-[#7480E2] font-bold bg-[#5E6AD2]/10' : ''}`}
                           >
-                            기본 상태 (편집 가능)
+                            기본 상태
                           </button>
                           <div className={`h-px my-1 ${isDark ? 'bg-white/[0.06]' : 'bg-black/[0.06]'}`} />
                           {snapshots.length === 0 || (snapshots.length === 1 && snapshots[0].id === 'snap-default') ? (
@@ -2789,13 +2835,31 @@ export default function WorldMap({
                                       activeSnapshotId === snap.id ? 'text-[#7480E2] font-bold' : ''
                                     }`}
                                   >
-                                    <span className="truncate w-full">{snap.name}</span>
+                                    <div className="flex items-center justify-between gap-1.5 w-full overflow-hidden">
+                                      {snap.name.length <= 10 ? (
+                                        <span className="truncate flex-1 font-medium">{snap.name}</span>
+                                      ) : (
+                                        <div className="overflow-hidden whitespace-nowrap inline-flex relative flex-1 min-w-0 max-w-[190px]">
+                                          <div className="novela-circular-marquee inline-flex shrink-0">
+                                            <span className="shrink-0 font-medium">{snap.name}&nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                                            <span className="shrink-0 font-medium">{snap.name}&nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                                          </div>
+                                        </div>
+                                      )}
+                                      {snap.createdTime && (
+                                        <span className="text-[11px] font-semibold text-[#7480E2] shrink-0 font-mono tracking-tight ml-auto">
+                                          {snap.createdTime}
+                                        </span>
+                                      )}
+                                    </div>
                                     {snap.description && (
                                       <span className="text-[10px] text-gray-400 line-clamp-2 mt-0.5 whitespace-pre-wrap leading-tight font-normal text-left">
                                         {snap.description.length > 50 ? `${snap.description.slice(0, 50)}...` : snap.description}
                                       </span>
                                     )}
-                                    <span className="text-[9px] text-gray-500 font-mono mt-0.5">{snap.date}</span>
+                                    {snap.date && (
+                                      <span className="text-[9px] text-gray-500 font-mono mt-0.5">{snap.date}</span>
+                                    )}
                                   </button>
                                   
                                   <button
@@ -4204,7 +4268,7 @@ export default function WorldMap({
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="font-semibold text-gray-400">작중 캘린더 시간대</label>
+                <label className="font-semibold text-gray-400">작중 캘린더 시간대 <span className="text-[10px] font-normal text-gray-500">(선택)</span></label>
                 <input 
                   type="text" 
                   value={newSnapshotDate} 
@@ -4217,12 +4281,12 @@ export default function WorldMap({
               </div>
 
               <div className="flex flex-col gap-1">
-                <label className="font-semibold text-gray-400">사건 서사 전개 요약</label>
+                <label className="font-semibold text-gray-400">이력 메모 <span className="text-[10px] font-normal text-gray-500">(선택)</span></label>
                 <textarea 
                   rows={3}
                   value={newSnapshotDesc} 
                   onChange={e => setNewSnapshotDesc(e.target.value)}
-                  placeholder="시점 변경 시 작가에게 브리핑될 사건 전개 설정입니다."
+                  placeholder="해당 시점에 대한 사건 전개 및 메모를 자유롭게 기입하세요."
                   className={`px-3 py-1.5 rounded-lg border outline-none resize-none ${
                     isDark ? 'bg-white/[0.02] border-white/[0.08] text-white' : 'bg-black/[0.01] border-black/[0.08] text-black'
                   }`}
