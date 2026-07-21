@@ -1037,6 +1037,42 @@ export default function WorldMap({
     return result;
   };
 
+  // --- 붓 드로잉 외곽 가장자리(Edge) 자석 스냅 연산 함수 ---
+  const applyBrushEdgeSnapping = (coords: { x: number; y: number }, brushWidthVal: number): { x: number; y: number } => {
+    let result = { ...coords };
+    if (!gridSnapEnabled || gridSize <= 0) return result;
+
+    const radius = brushWidthVal / 2;
+    const left = coords.x - radius;
+    const right = coords.x + radius;
+    const top = coords.y - radius;
+    const bottom = coords.y + radius;
+
+    const snapLeft = Math.round(left / gridSize) * gridSize;
+    const snapRight = Math.round(right / gridSize) * gridSize;
+    const snapTop = Math.round(top / gridSize) * gridSize;
+    const snapBottom = Math.round(bottom / gridSize) * gridSize;
+
+    const diffLeft = Math.abs(snapLeft - left);
+    const diffRight = Math.abs(snapRight - right);
+    const diffTop = Math.abs(snapTop - top);
+    const diffBottom = Math.abs(snapBottom - bottom);
+
+    if (diffLeft <= diffRight) {
+      result.x = snapLeft + radius;
+    } else {
+      result.x = snapRight - radius;
+    }
+
+    if (diffTop <= diffBottom) {
+      result.y = snapTop + radius;
+    } else {
+      result.y = snapBottom - radius;
+    }
+
+    return result;
+  };
+
   // --- 마우스 휠 줌 핸들러 ---
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -1326,17 +1362,18 @@ export default function WorldMap({
     const snapped = applySnapping(currentCoords);
     setHoveredPoint(snapped);
 
-    // 붓 그리기 모드 드래그 중인 경우
+    // 붓 그리기 모드 드래그 중인 경우 (가장자리 자석 스냅 적용)
     if (editMode === 'draw_brush' && isDrawingBrush) {
+      const brushEdgeSnapped = applyBrushEdgeSnapping(currentCoords, brushWidth);
       setCurrentBrushStroke(prev => {
         if (prev.length > 0) {
           const last = prev[prev.length - 1];
-          const dist = Math.hypot(snapped.x - last.x, snapped.y - last.y);
+          const dist = Math.hypot(brushEdgeSnapped.x - last.x, brushEdgeSnapped.y - last.y);
           if (dist < 3 / zoom) {
             return prev;
           }
         }
-        return [...prev, snapped];
+        return [...prev, brushEdgeSnapped];
       });
       return;
     }
@@ -1430,13 +1467,73 @@ export default function WorldMap({
       return;
     }
 
-    // 요소 전체 드래그 이동
+    // 요소 전체 드래그 이동 (테두리 기준 자석 스냅 연동)
     if (isDraggingElements && elementDragStartCoords) {
-      const dx = currentCoords.x - elementDragStartCoords.x;
-      const dy = currentCoords.y - elementDragStartCoords.y;
-      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+      const rawDx = currentCoords.x - elementDragStartCoords.x;
+      const rawDy = currentCoords.y - elementDragStartCoords.y;
+
+      if (Math.abs(rawDx) > 1 || Math.abs(rawDy) > 1) {
         setHasMovedDuringDrag(true);
       }
+
+      let finalDx = rawDx;
+      let finalDy = rawDy;
+
+      // 격자 자석 스냅 활성화 시: 선택된 요소들의 통합 Bounding Box 테두리가 격자선에 딱 착붙도록 보정
+      if (gridSnapEnabled && gridSize > 0 && Object.keys(dragInitialElementsCoords).length > 0) {
+        let origMinX = Infinity, origMaxX = -Infinity;
+        let origMinY = Infinity, origMaxY = -Infinity;
+
+        Object.values(dragInitialElementsCoords).forEach(initial => {
+          if (initial.x !== undefined && initial.y !== undefined) {
+            origMinX = Math.min(origMinX, initial.x);
+            origMaxX = Math.max(origMaxX, initial.x);
+            origMinY = Math.min(origMinY, initial.y);
+            origMaxY = Math.max(origMaxY, initial.y);
+          }
+          if (initial.w !== undefined && initial.h !== undefined && initial.x !== undefined && initial.y !== undefined) {
+            origMaxX = Math.max(origMaxX, initial.x + initial.w);
+            origMaxY = Math.max(origMaxY, initial.y + initial.h);
+          }
+          if (initial.points) {
+            initial.points.forEach(pt => {
+              origMinX = Math.min(origMinX, pt.x);
+              origMaxX = Math.max(origMaxX, pt.x);
+              origMinY = Math.min(origMinY, pt.y);
+              origMaxY = Math.max(origMaxY, pt.y);
+            });
+          }
+          if (initial.brushStrokes) {
+            initial.brushStrokes.forEach(stroke => stroke.forEach(pt => {
+              origMinX = Math.min(origMinX, pt.x);
+              origMaxX = Math.max(origMaxX, pt.x);
+              origMinY = Math.min(origMinY, pt.y);
+              origMaxY = Math.max(origMaxY, pt.y);
+            }));
+          }
+        });
+
+        if (isFinite(origMinX) && isFinite(origMinY)) {
+          const curMinX = origMinX + rawDx;
+          const curMaxX = origMaxX + rawDx;
+          const curMinY = origMinY + rawDy;
+          const curMaxY = origMaxY + rawDy;
+
+          const snapLeft = Math.round(curMinX / gridSize) * gridSize;
+          const snapRight = Math.round(curMaxX / gridSize) * gridSize;
+          const snapTop = Math.round(curMinY / gridSize) * gridSize;
+          const snapBottom = Math.round(curMaxY / gridSize) * gridSize;
+
+          const diffLeft = Math.abs(snapLeft - curMinX);
+          const diffRight = Math.abs(snapRight - curMaxX);
+          const diffTop = Math.abs(snapTop - curMinY);
+          const diffBottom = Math.abs(snapBottom - curMaxY);
+
+          finalDx = diffLeft <= diffRight ? (snapLeft - origMinX) : (snapRight - origMaxX);
+          finalDy = diffTop <= diffBottom ? (snapTop - origMinY) : (snapBottom - origMaxY);
+        }
+      }
+
       setElements(prev => prev.map(item => {
         const initial = dragInitialElementsCoords[item.id];
         if (!initial) return item;
@@ -1444,29 +1541,29 @@ export default function WorldMap({
         if (item.type === 'pin') {
           return {
             ...item,
-            x: initial.x + dx,
-            y: initial.y + dy
+            x: initial.x + finalDx,
+            y: initial.y + finalDy
           };
         } else if (item.type === 'border_rect' || item.type === 'border_circle') {
           return {
             ...item,
-            bx: initial.x + dx,
-            by: initial.y + dy
+            bx: initial.x + finalDx,
+            by: initial.y + finalDy
           };
         } else if (item.brushStrokes && initial.brushStrokes) {
           return {
             ...item,
             brushStrokes: initial.brushStrokes.map(stroke => stroke.map(pt => ({
-              x: pt.x + dx,
-              y: pt.y + dy
+              x: pt.x + finalDx,
+              y: pt.y + finalDy
             })))
           };
         } else if (item.points && initial.points) {
           return {
             ...item,
             points: initial.points.map(pt => ({
-              x: pt.x + dx,
-              y: pt.y + dy
+              x: pt.x + finalDx,
+              y: pt.y + finalDy
             }))
           };
         }
