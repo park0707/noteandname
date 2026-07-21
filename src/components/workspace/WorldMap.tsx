@@ -149,6 +149,9 @@ export default function WorldMap({
 
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
   const [showMemoModal, setShowMemoModal] = useState(false);
+  const [memoEditName, setMemoEditName] = useState('');
+  const [memoEditDate, setMemoEditDate] = useState('');
+  const [memoEditDescription, setMemoEditDescription] = useState('');
 
   // --- 안개 모드 및 레이어 락 제어 ---
   const [fogVisible, setFogVisible] = useState(false);
@@ -2113,6 +2116,24 @@ export default function WorldMap({
     setNewSnapshotDesc('');
   };
 
+  // --- 버전 관리: 스냅샷 이력 메모/설정 저장 ---
+  const handleSaveSnapshotMemo = () => {
+    if (!currentSnapshot) return;
+    setSnapshots(prev =>
+      prev.map(snap =>
+        snap.id === currentSnapshot.id
+          ? {
+              ...snap,
+              name: memoEditName.trim() || snap.name,
+              date: memoEditDate.trim(),
+              description: memoEditDescription.trim(),
+            }
+          : snap
+      )
+    );
+    setShowMemoModal(false);
+  };
+
   // --- 버전 관리: 스냅샷 삭제 ---
   const handleDeleteSnapshot = async (id: string, name: string) => {
     if (id === 'snap-default') return;
@@ -2831,18 +2852,19 @@ export default function WorldMap({
                                       setActiveSnapshotId(snap.id);
                                       setShowHistoryDropdown(false);
                                     }}
-                                    className={`flex-1 text-left px-2 py-1.5 transition-colors flex flex-col min-w-0 ${
+                                    className={`flex-1 text-left px-2.5 py-2 transition-colors flex flex-col gap-1 min-w-0 ${
                                       activeSnapshotId === snap.id ? 'text-[#7480E2] font-bold' : ''
                                     }`}
                                   >
+                                    {/* 1행: 이름 & 생성 타임스탬프 */}
                                     <div className="flex items-center justify-between gap-1.5 w-full overflow-hidden">
                                       {snap.name.length <= 10 ? (
-                                        <span className="truncate flex-1 font-medium">{snap.name}</span>
+                                        <span className="truncate flex-1 font-semibold text-xs">{snap.name}</span>
                                       ) : (
                                         <div className="overflow-hidden whitespace-nowrap inline-flex relative flex-1 min-w-0 max-w-[190px]">
                                           <div className="novela-circular-marquee inline-flex shrink-0">
-                                            <span className="shrink-0 font-medium">{snap.name}&nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp;</span>
-                                            <span className="shrink-0 font-medium">{snap.name}&nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                                            <span className="shrink-0 font-semibold text-xs">{snap.name}&nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                                            <span className="shrink-0 font-semibold text-xs">{snap.name}&nbsp;&nbsp;&nbsp;&nbsp;•&nbsp;&nbsp;&nbsp;&nbsp;</span>
                                           </div>
                                         </div>
                                       )}
@@ -2852,13 +2874,19 @@ export default function WorldMap({
                                         </span>
                                       )}
                                     </div>
-                                    {snap.description && (
-                                      <span className="text-[10px] text-gray-400 line-clamp-2 mt-0.5 whitespace-pre-wrap leading-tight font-normal text-left">
-                                        {snap.description.length > 50 ? `${snap.description.slice(0, 50)}...` : snap.description}
+
+                                    {/* 2행: 작중 연도 (메모 위로 이동 & 폰트 확대) */}
+                                    {snap.date && (
+                                      <span className="text-[11px] text-gray-400 font-mono leading-tight block truncate">
+                                        {snap.date}
                                       </span>
                                     )}
-                                    {snap.date && (
-                                      <span className="text-[9px] text-gray-500 font-mono mt-0.5">{snap.date}</span>
+
+                                    {/* 3행: 이력 메모 (1줄 한정 truncate & 폰트 확대) */}
+                                    {snap.description && (
+                                      <span className="text-xs text-gray-300 font-normal truncate w-full block leading-tight text-left">
+                                        {snap.description}
+                                      </span>
                                     )}
                                   </button>
                                   
@@ -2883,7 +2911,14 @@ export default function WorldMap({
                     {/* 이력 메모 버튼 */}
                     {activeSnapshotId && (
                       <button
-                        onClick={() => setShowMemoModal(true)}
+                        onClick={() => {
+                          if (currentSnapshot) {
+                            setMemoEditName(currentSnapshot.name || '');
+                            setMemoEditDate(currentSnapshot.date || '');
+                            setMemoEditDescription(currentSnapshot.description || '');
+                          }
+                          setShowMemoModal(true);
+                        }}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border shrink-0 transition-all ${
                           isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
                         }`}
@@ -4194,43 +4229,79 @@ export default function WorldMap({
         );
       })()}
 
-      {/* 이력 메모 조회 모달 창 */}
-      {showMemoModal && (
+      {/* 이력 메모 수정/관리 모달 창 */}
+      {showMemoModal && currentSnapshot && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className={`w-[450px] rounded-2xl border p-6 flex flex-col gap-4 shadow-2xl ${
+          <div className={`w-[460px] rounded-2xl border p-6 flex flex-col gap-4 shadow-2xl ${
             isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
           }`}>
             <div className="flex items-center justify-between pb-2 border-b border-gray-500/10">
-              <h3 className="text-sm font-bold text-[#7480E2]">
-                <span>{currentSnapshot.name}</span>
+              <h3 className="text-sm font-bold text-[#7480E2] flex items-center gap-1.5">
+                <span>📝 시점 이력 메모 및 설정 수정</span>
               </h3>
               <button 
                 onClick={() => setShowMemoModal(false)}
-                className="text-gray-400 hover:text-gray-200"
+                className="text-gray-400 hover:text-gray-200 text-xs font-bold"
               >
-                <X className="w-4 h-4" />
+                ✕
               </button>
             </div>
 
             <div className="flex flex-col gap-3 text-xs">
-              <div className="flex justify-between items-center text-[10px] text-gray-500 font-mono">
-                <span>작중 일시: {currentSnapshot.date}</span>
+              <div className="flex flex-col gap-1">
+                <label className="font-semibold text-gray-400">시점 이력 이름</label>
+                <input 
+                  type="text" 
+                  value={memoEditName} 
+                  onChange={e => setMemoEditName(e.target.value)}
+                  placeholder="이력 이름을 입력하세요."
+                  className={`px-3 py-1.5 rounded-lg border outline-none ${
+                    isDark ? 'bg-white/[0.02] border-white/[0.08] text-white' : 'bg-black/[0.01] border-black/[0.08] text-black'
+                  }`}
+                />
               </div>
-              <div className={`p-4 rounded-xl border whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto ${
-                isDark ? 'bg-white/[0.02] border-white/[0.08] text-gray-300' : 'bg-black/[0.01] border-black/[0.08] text-gray-700'
-              }`}>
-                {currentSnapshot.description || '작성된 이력 메모가 없습니다.'}
+
+              <div className="flex flex-col gap-1">
+                <label className="font-semibold text-gray-400">작중 캘린더 시간대 <span className="text-[10px] font-normal text-gray-500">(선택)</span></label>
+                <input 
+                  type="text" 
+                  value={memoEditDate} 
+                  onChange={e => setMemoEditDate(e.target.value)}
+                  placeholder="예: 제국력 104년 8월"
+                  className={`px-3 py-1.5 rounded-lg border outline-none ${
+                    isDark ? 'bg-white/[0.02] border-white/[0.08] text-white' : 'bg-black/[0.01] border-black/[0.08] text-black'
+                  }`}
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="font-semibold text-gray-400">이력 메모 <span className="text-[10px] font-normal text-gray-500">(선택)</span></label>
+                <textarea 
+                  rows={4}
+                  value={memoEditDescription} 
+                  onChange={e => setMemoEditDescription(e.target.value)}
+                  placeholder="시점 변경 시 참조될 사건 전개 및 상세 이력 메모를 수정/기입하세요."
+                  className={`px-3 py-2 rounded-lg border outline-none resize-none leading-relaxed ${
+                    isDark ? 'bg-white/[0.02] border-white/[0.08] text-white' : 'bg-black/[0.01] border-black/[0.08] text-black'
+                  }`}
+                />
               </div>
             </div>
 
-            <div className="flex gap-2 mt-4 pt-3 border-t border-gray-500/10">
+            <div className="flex gap-2.5 mt-2">
               <button 
                 onClick={() => setShowMemoModal(false)}
                 className={`flex-1 py-2 rounded-xl font-bold border transition-colors ${
                   isDark ? 'border-white/[0.06] hover:bg-[#1E1F22] text-gray-300' : 'border-black/[0.06] hover:bg-gray-100 text-gray-700'
                 }`}
               >
-                닫기
+                취소
+              </button>
+              <button 
+                onClick={handleSaveSnapshotMemo}
+                className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
+              >
+                저장
               </button>
             </div>
           </div>
