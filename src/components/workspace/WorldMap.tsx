@@ -176,7 +176,26 @@ export default function WorldMap({
   // --- 안개 모드 및 레이어 락 제어 ---
   const [fogVisible, setFogVisible] = useState(false);
   const [gridVisible, setGridVisible] = useState(true);
+  const [gridSize, setGridSize] = useState<number>(40);
   const [gridSnapEnabled, setGridSnapEnabled] = useState(false);
+  const [showGridMenu, setShowGridMenu] = useState(false);
+  const gridMenuRef = useRef<HTMLDivElement>(null);
+
+  // 격자 메뉴 바깥 클릭 감지
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (gridMenuRef.current && !gridMenuRef.current.contains(event.target as globalThis.Node)) {
+        setShowGridMenu(false);
+      }
+    };
+    if (showGridMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showGridMenu]);
+
   const [pointSnapEnabled, setPointSnapEnabled] = useState(true);
   const [lockLayers, setLockLayers] = useState({
     background: true,
@@ -789,7 +808,7 @@ export default function WorldMap({
     const applyData = (data: {
       elements?: MapElement[];
       snapshots?: MapSnapshot[];
-      config?: { customBgImage: string | null; presetBg: string; scale: MapScale };
+      config?: { customBgImage: string | null; presetBg: string; scale: MapScale; gridSize?: number };
       characterPositions?: Record<string, Record<string, { x: number; y: number; trail: Array<{ x: number; y: number }> }>>;
       savedBookmarks?: Array<{ id: string; name: string; x: number; y: number; zoom: number }>;
     }) => {
@@ -821,6 +840,9 @@ export default function WorldMap({
         setCustomBgImage(data.config.customBgImage || null);
         setPresetBg((data.config.presetBg as 'vintage' | 'cosmic' | 'grid') || 'vintage');
         setScale(data.config.scale || { pixels: 100, value: 50, unit: 'km' });
+        if (data.config.gridSize && typeof data.config.gridSize === 'number') {
+          setGridSize(Math.max(5, Math.min(1000, data.config.gridSize)));
+        }
       }
 
       if (data.characterPositions && Object.keys(data.characterPositions).length > 0) {
@@ -882,7 +904,7 @@ export default function WorldMap({
           const wm = data.worldmap_data as {
             elements?: MapElement[];
             snapshots?: MapSnapshot[];
-            config?: { customBgImage: string | null; presetBg: string; scale: MapScale };
+            config?: { customBgImage: string | null; presetBg: string; scale: MapScale; gridSize?: number };
             characterPositions?: Record<string, Record<string, { x: number; y: number; trail: Array<{ x: number; y: number }> }>>;
             savedBookmarks?: Array<{ id: string; name: string; x: number; y: number; zoom: number }>;
           };
@@ -913,7 +935,7 @@ export default function WorldMap({
     // localStorage 즉시 갱신 (캐시)
     localStorage.setItem(elementKey, JSON.stringify(elements));
     localStorage.setItem(snapshotKey, JSON.stringify(snapshots));
-    localStorage.setItem(configKey, JSON.stringify({ customBgImage, presetBg, scale }));
+    localStorage.setItem(configKey, JSON.stringify({ customBgImage, presetBg, scale, gridSize }));
     localStorage.setItem(charPosKey, JSON.stringify(characterPositions));
     localStorage.setItem(bookmarksKey, JSON.stringify(savedBookmarks));
 
@@ -929,7 +951,7 @@ export default function WorldMap({
             worldmap_data: {
               elements,
               snapshots,
-              config: { customBgImage, presetBg, scale },
+              config: { customBgImage, presetBg, scale, gridSize },
               characterPositions,
               savedBookmarks,
             }
@@ -940,13 +962,13 @@ export default function WorldMap({
         console.error('WorldMap: Supabase 저장 실패:', err);
       }
     }, 2000);
-  }, [elements, snapshots, customBgImage, presetBg, scale, characterPositions, savedBookmarks, selectedProject, getStorageKeys, isGuest]);
+  }, [elements, snapshots, customBgImage, presetBg, scale, gridSize, characterPositions, savedBookmarks, selectedProject, getStorageKeys, isGuest]);
 
   // 데이터 변경 시 자동 저장 트리거
   useEffect(() => {
     saveWorldMapData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elements, snapshots, customBgImage, presetBg, scale, characterPositions, savedBookmarks]);
+  }, [elements, snapshots, customBgImage, presetBg, scale, gridSize, characterPositions, savedBookmarks]);
 
   // 빈 그룹 자동 삭제 감지
   useEffect(() => {
@@ -1008,7 +1030,6 @@ export default function WorldMap({
     
     // 2. 격자 스냅
     if (gridSnapEnabled) {
-      const gridSize = 40;
       result.x = Math.round(result.x / gridSize) * gridSize;
       result.y = Math.round(result.y / gridSize) * gridSize;
     }
@@ -2325,9 +2346,6 @@ export default function WorldMap({
             <circle cx="2" cy="2" r="0.8" fill="#E5A93B" opacity="0.4" />
             <circle cx="6" cy="6" r="0.8" fill="#D4AC0D" opacity="0.4" />
           </pattern>
-          <pattern id="grid-pattern" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke={isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.04)"} strokeWidth="1" />
-          </pattern>
         </defs>
       </svg>
 
@@ -2821,9 +2839,144 @@ export default function WorldMap({
                 <div className="flex items-center gap-4 flex-nowrap shrink-0 text-xs">
                   {/* 스냅 & 편집 보호 */}
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {/* 미니맵 토글 버튼 */}
+                    <button
+                      onClick={() => setShowMinimap(!showMinimap)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
+                        showMinimap
+                          ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
+                          : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
+                      }`}
+                    >
+                      <Map className="w-3.5 h-3.5 shrink-0" />
+                      미니맵 (Minimap)
+                    </button>
+
+                    {/* 격자선 표시 일체형 분할 버튼 (붓 그리기/테두리 스타일) */}
+                    <div ref={gridMenuRef} className="relative inline-flex items-stretch shrink-0">
+                      <div className={`flex items-center rounded-lg border shrink-0 transition-all duration-150 ${
+                        gridVisible
+                          ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
+                          : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
+                      }`}>
+                        {/* 격자선 표시 토글 */}
+                        <button
+                          type="button"
+                          onClick={() => setGridVisible(!gridVisible)}
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-l-lg hover:bg-white/10 transition-colors"
+                        >
+                          <Grid3X3 className="w-3.5 h-3.5 shrink-0" />
+                          격자선(Grid) 표시
+                        </button>
+
+                        {/* 구분선 */}
+                        <div className={`w-px h-3.5 shrink-0 ${gridVisible ? 'bg-[#5E6AD2]/40' : isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+                        {/* 격자 크기 및 세부 항목 팝오버 열기 버튼 (▾) */}
+                        <button
+                          type="button"
+                          onClick={() => setShowGridMenu(prev => !prev)}
+                          className={`px-2 py-1.5 text-xs font-semibold rounded-r-lg hover:bg-white/10 transition-colors flex items-center justify-center gap-0.5 ${
+                            showGridMenu ? 'bg-white/10' : ''
+                          }`}
+                          title="격자 크기 및 세부 항목 조절"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                        </button>
+                      </div>
+
+                      {/* 격자 세부 항목 드롭다운 팝오버 */}
+                      {showGridMenu && (
+                        <div className={`absolute top-full left-0 mt-1.5 w-64 p-3 rounded-xl shadow-2xl border z-50 transition-all ${
+                          isDark ? 'bg-[#14161B] border-white/10 text-gray-200' : 'bg-white border-black/10 text-gray-800'
+                        }`}>
+                          <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
+                            <span className="text-xs font-bold flex items-center gap-1.5">
+                              <Grid3X3 className="w-3.5 h-3.5 text-[#7480E2]" />
+                              격자선 세부 항목
+                            </span>
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min="5"
+                                max="1000"
+                                value={gridSize === 0 ? '' : gridSize}
+                                onChange={(e) => {
+                                  const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                  if (!isNaN(val) && val <= 1000) setGridSize(val);
+                                }}
+                                onBlur={() => {
+                                  setGridSize(prev => Math.max(5, Math.min(1000, prev || 40)));
+                                }}
+                                className={`w-14 px-1 py-0.5 text-right font-mono text-xs font-bold rounded border bg-transparent ${
+                                  isDark ? 'border-white/20 text-[#7480E2]' : 'border-black/20 text-[#5E6AD2]'
+                                }`}
+                              />
+                              <span className="text-xs font-bold text-gray-400">px</span>
+                            </div>
+                          </div>
+
+                          {/* 1. 격자 크기 슬라이더 (10px ~ 500px) */}
+                          <div className="space-y-1.5 mb-3">
+                            <div className="flex justify-between text-[11px] text-gray-400">
+                              <span>간격 조절</span>
+                              <span>10px ~ 500px</span>
+                            </div>
+                            <input
+                              type="range"
+                              min="10"
+                              max="500"
+                              step="5"
+                              value={gridSize}
+                              onChange={(e) => setGridSize(Number(e.target.value))}
+                              className="w-full h-1.5 bg-gray-600/40 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
+                            />
+                          </div>
+
+                          {/* 2. 자주 사용하는 프리셋 버튼 */}
+                          <div className="space-y-1 mb-3">
+                            <span className="text-[10px] font-semibold text-gray-400">빠른 선택:</span>
+                            <div className="grid grid-cols-4 gap-1">
+                              {[10, 20, 40, 50, 100, 200, 500].map((size) => (
+                                <button
+                                  key={size}
+                                  onClick={() => setGridSize(size)}
+                                  className={`py-1 text-[10px] font-bold rounded border transition-colors ${
+                                    gridSize === size
+                                      ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]'
+                                      : isDark ? 'border-white/10 bg-white/[0.04] hover:bg-white/10 text-gray-300' : 'border-black/10 bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                  }`}
+                                >
+                                  {size}px
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* 3. 자석 스냅 토글 */}
+                          <div className="pt-2 border-t border-white/10">
+                            <button
+                              onClick={() => setGridSnapEnabled(!gridSnapEnabled)}
+                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                                gridSnapEnabled
+                                  ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
+                                  : isDark ? 'border-white/10 text-gray-400 hover:bg-white/5' : 'border-black/10 text-gray-600 hover:bg-black/5'
+                              }`}
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <Magnet className="w-3.5 h-3.5 shrink-0" />
+                                격자 자석 스냅
+                              </span>
+                              <span className="text-[10px] font-bold">
+                                {gridSnapEnabled ? 'ON' : 'OFF'}
+                              </span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     {[
-                      { Icon: Map, label: '미니맵 (Minimap)', checked: showMinimap, onChange: setShowMinimap },
-                      { Icon: Grid3X3, label: '격자선(Grid) 표시', checked: gridVisible, onChange: setGridVisible },
                       { Icon: Magnet, label: '격자 자석 스냅', checked: gridSnapEnabled, onChange: setGridSnapEnabled },
                       { Icon: Magnet, label: '점간(Node) 자동 스냅', checked: pointSnapEnabled, onChange: setPointSnapEnabled },
                       { Icon: Lock, label: '배경 이미지 잠금', checked: lockLayers.background, onChange: (v: boolean) => setLockLayers(prev => ({ ...prev, background: v })) },
@@ -3192,52 +3345,56 @@ export default function WorldMap({
           }`}
         >
           
-          {/* SVG 드로잉 및 패닝 컨테이너 */}
+          {/* SVG 드로잉 및 패닝 컨테이너 (GPU 가속 & 지연 무무 1:1 추종) */}
           <div 
-            className="absolute transform-gpu origin-top-left transition-transform duration-75 pointer-events-none"
+            className="absolute transform-gpu origin-top-left pointer-events-none"
             style={{
-              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+              transform: `translate3d(${pan.x}px, ${pan.y}px, 0px) scale(${zoom})`,
+              willChange: 'transform',
               width: '10000px',
               height: '10000px'
             }}
           >
-            {/* 1. 배경 격자 Grid 렌더링 */}
-            {gridVisible && (
-              <rect width="100%" height="100%" fill="url(#grid-pattern)" />
-            )}
+            {/* 메인 SVG 드로잉/배경/격자 레이어 (LOD 모아레 방지 연산 포함) */}
+            {(() => {
+              // 줌아웃 시 격자 과밀(모아레 현상) 방지 LOD 계산
+              let effectiveGridSize = gridSize;
+              while (effectiveGridSize * zoom < 14 && effectiveGridSize < gridSize * 32) {
+                effectiveGridSize *= 2;
+              }
 
-            {/* 2. 지도 배경 이미지 */}
-            {customBgImage ? (
-              <image 
-                href={customBgImage} 
-                width="2000" 
-                height="1500" 
-                opacity="0.85" 
-                style={{ pointerEvents: 'none' }}
-              />
-            ) : presetBg === 'vintage' ? (
-              <rect 
-                width="3000" 
-                height="2000" 
-                fill={isDark ? "#282319" : "#F4ECD8"} 
-                stroke={isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)"} 
-                strokeWidth="10"
-                opacity="0.9"
-              />
-            ) : presetBg === 'cosmic' ? (
-              <rect 
-                width="3000" 
-                height="2000" 
-                fill="#0A0D14" 
-                opacity="0.95"
-              />
-            ) : null}
+              return (
+                <svg 
+                  className="absolute inset-0 w-full h-full overflow-visible"
+                  style={{ pointerEvents: 'auto' }}
+                >
+                  <defs>
+                    <pattern id="grid-pattern" width={effectiveGridSize} height={effectiveGridSize} patternUnits="userSpaceOnUse">
+                      <path 
+                        d={`M 0 0 H ${effectiveGridSize} M 0 0 V ${effectiveGridSize}`} 
+                        fill="none" 
+                        stroke={isDark ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.22)"} 
+                        strokeWidth={Math.max(1, 1.2 / zoom)} 
+                        shapeRendering="geometricPrecision"
+                      />
+                    </pattern>
+                  </defs>
 
-            {/* 3. SVG 면적/선 드로잉 */}
-            <svg 
-              className="absolute inset-0 w-full h-full overflow-visible"
-              style={{ pointerEvents: 'auto' }}
-            >
+              {/* 1. 커스텀 지도 배경 이미지 (있을 경우만) */}
+              {customBgImage && (
+                <image 
+                  href={customBgImage} 
+                  width="2000" 
+                  height="1500" 
+                  opacity="0.85" 
+                  style={{ pointerEvents: 'none' }}
+                />
+              )}
+
+              {/* 2. 배경 격자 Grid 렌더링 (무한 레이아웃 커버리지 x=-100000 y=-100000 w=300000 h=300000) */}
+              {gridVisible && (
+                <rect x="-100000" y="-100000" width="300000" height="300000" fill="url(#grid-pattern)" style={{ pointerEvents: 'none' }} />
+              )}
               {/* 다각형 면적 레이어 */}
               {layerVisibility.political && getAllActiveElementsForMap(currentMapId)
                 .filter(el => el.type === 'polygon')
@@ -3806,6 +3963,8 @@ export default function WorldMap({
                 );
               })()}
             </svg>
+              );
+            })()}
 
             {/* 4. 절대 배치형 거점 핀(Pin Marker) 리스트 */}
             {layerVisibility.political && getAllActiveElementsForMap(currentMapId)
@@ -4537,8 +4696,8 @@ export default function WorldMap({
                 >
                   {/* 축소된 메인 배경 그리드 */}
                   <defs>
-                    <pattern id="miniGrid" width="200" height="200" patternUnits="userSpaceOnUse">
-                      <path d="M 200 0 L 0 0 0 200" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2" />
+                    <pattern id="miniGrid" width={gridSize * 4} height={gridSize * 4} patternUnits="userSpaceOnUse">
+                      <path d={`M 0 0 H ${gridSize * 4} M 0 0 V ${gridSize * 4}`} fill="none" stroke={isDark ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.12)"} strokeWidth="1.5" shapeRendering="crispEdges" />
                     </pattern>
                   </defs>
                   

@@ -177,7 +177,13 @@
 
 ## 8. 기술 구현 스택 및 아키텍처
 
-### 8.1 프론트엔드 라이브러리 구성
+### 8.1 무한 격자(Infinite Grid) & Level of Detail (LOD) 렌더링 스펙
+- **Moiré(모아레) 찌그러짐 100% 완전 방지**:
+  - `shape-rendering="geometricPrecision"`을 지정하여 안티앨리어싱 올림/내림 라운딩에 따른 체크 무늬 찌그러짐을 제거.
+  - **LOD 스케일링 계산식**: 줌아웃 시 `screenGridSize = gridSize * zoom`이 14px 미만으로 과밀해지면 `effectiveGridSize`를 2x, 4x, 8x로 동적 확대 렌더링함.
+  - 지도를 크게 축소하거나 확대해도 화면상 격자 간격이 14px 미만으로 촘촘해지지 않아 시각적 노이즈나 모아레 패턴이 물리적으로 결코 발생하지 않음.
+
+### 8.2 프론트엔드 라이브러리 구성
 - **지도 캔버스 & 좌표계**: `Leaflet.js` + `CRS.Simple`
 - **폴리곤 그리기 및 꼭짓점 편집**: `Leaflet-Geoman`
 - **React 래퍼**: `react-leaflet`
