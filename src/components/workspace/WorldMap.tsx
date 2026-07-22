@@ -100,6 +100,9 @@ export default function WorldMap({
   const { showAlert, showConfirm } = useAlertConfirm();
   const { user } = useAuth();
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // base64 imageAttachment → ObjectURL 캐시 (렌더링 성능 최적화: 브라우저 Decoded Image Cache 활용)
+  const blobUrlCacheRef = useRef<{ [key: string]: string }>({});
+
 
   // --- 계층형 뎁스 상태 ---
   const [mapPath, setMapPath] = useState<Array<{ id: string; name: string }>>([
@@ -363,7 +366,39 @@ export default function WorldMap({
   const [showBgUploadModal, setShowBgUploadModal] = useState(false);
   const [bgUploadError, setBgUploadError] = useState<string | null>(null);
 
+  /**
+   * base64 Data URL을 브라우저 ObjectURL로 변환하여 캐싱합니다.
+   * SVG <image> 요소에서 직접 base64 문자열을 사용하면 드래그 시 매 프레임마다
+   * 대용량 문자열을 재파싱/재래스터화하여 심각한 렌더링 지연이 발생합니다.
+   * ObjectURL은 브라우저 Decoded Image Cache를 활용하여 이 비용을 원천 차단합니다.
+   */
+  const getImageRenderUrl = (base64DataUrl: string | undefined): string | undefined => {
+    if (!base64DataUrl) return undefined;
+    // 이미 ObjectURL인 경우 (blob:) 그대로 반환
+    if (base64DataUrl.startsWith('blob:')) return base64DataUrl;
+    
+    const cache = blobUrlCacheRef.current;
+    if (cache[base64DataUrl]) return cache[base64DataUrl];
+
+    // base64 → Blob → ObjectURL 변환
+    try {
+      const [header, data] = base64DataUrl.split(',');
+      const mimeMatch = header.match(/:(.*?);/);
+      const mime = mimeMatch ? mimeMatch[1] : 'image/png';
+      const binary = atob(data);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], { type: mime });
+      const objectUrl = URL.createObjectURL(blob);
+      cache[base64DataUrl] = objectUrl;
+      return objectUrl;
+    } catch {
+      return base64DataUrl; // 변환 실패 시 원본 사용
+    }
+  };
+
   const handleImageFile = (file: File) => {
+
     if (!file) return;
 
     if (!file.type.startsWith('image/')) {
@@ -1514,8 +1549,11 @@ export default function WorldMap({
 
     // 테두리 리사이즈 드래그 중인 경우
     if (activeBorderResizeDirection && selectedElementId && elementDragStartCoords) {
-      const dx = snapped.x - elementDragStartCoords.x;
-      const dy = snapped.y - elementDragStartCoords.y;
+      // 이미지 요소 리사이즈 시 스냅 없이 순수 물리 좌표 사용 (Pixel-Perfect 제어)
+      const isResizingImage = elements.find(el => el.id === selectedElementId)?.type === 'image';
+      const resizeCoords = isResizingImage ? currentCoords : snapped;
+      const dx = resizeCoords.x - elementDragStartCoords.x;
+      const dy = resizeCoords.y - elementDragStartCoords.y;
       
       setElements(prev => prev.map(item => {
         if (item.id !== selectedElementId) return item;
@@ -1669,7 +1707,10 @@ export default function WorldMap({
       }
 
       // 점간(Node) 자석 스냅 활성화 시: 드래그 중인 핀 및 꼭짓점이 다른 요소의 점에 접근하면 1:1 자석 착붙
-      if (pointSnapEnabled && Object.keys(dragInitialElementsCoords).length > 0) {
+      // (이미지 요소가 포함된 경우 점간 스냅 제외 - 이미지는 자유 이동이 필요)
+      const isDraggingOnlyImages = Object.keys(dragInitialElementsCoords).length > 0 &&
+        Object.keys(dragInitialElementsCoords).every(id => elements.find(el => el.id === id)?.type === 'image');
+      if (pointSnapEnabled && Object.keys(dragInitialElementsCoords).length > 0 && !isDraggingOnlyImages) {
         const snapThreshold = 14 / zoom;
         let minPtDist = snapThreshold;
         let nodeSnappedPt: { x: number; y: number } | null = null;
@@ -2002,6 +2043,9 @@ export default function WorldMap({
         targetX = el.bx;
         targetY = el.by;
       }
+    } else if (el.type === 'image' && el.bx !== undefined && el.by !== undefined) {
+      targetX = el.bx + (el.bw ?? 400) / 2;
+      targetY = el.by + (el.bh ?? 300) / 2;
     } else if (el.type === 'brush' && el.brushStrokes) {
       const bbox = getBrushBoundingBox(el.brushStrokes);
       targetX = bbox.minX + bbox.w / 2;
@@ -3811,19 +3855,30 @@ export default function WorldMap({
                   if (!isVisible) return null;
 
                   const isSelected = isElementSelected(el.id);
+                  const isDraggingThis = isSelected && isDraggingElements;
+                  const bx = el.bx ?? 0;
+                  const by = el.by ?? 0;
                   const bw = el.bw || 400;
                   const bh = el.bh || 300;
+                  // base64 → ObjectURL 변환 (브라우저 Decoded Image Cache 활용으로 repaint 비용 차단)
+                  const renderUrl = getImageRenderUrl(el.imageAttachment);
 
                   return (
-                    <g 
+                    <g
                       key={el.id}
+                      // SVG x/y 속성 직접 수정(Reflow 유발) 대신 translate3d로 GPU Composite 레이어 이동
+                      style={{
+                        transform: `translate(${bx}px, ${by}px)`,
+                        // 드래그 중인 경우 will-change: transform으로 GPU 레이어 미리 승격
+                        willChange: isDraggingThis ? 'transform' : 'auto',
+                      }}
                       onMouseEnter={() => setHoveredElementId(el.id)}
                       onMouseLeave={() => setHoveredElementId(null)}
                     >
                       <image
-                        href={el.imageAttachment}
-                        x={el.bx}
-                        y={el.by}
+                        href={renderUrl}
+                        x={0}
+                        y={0}
                         width={bw}
                         height={bh}
                         preserveAspectRatio="none"
@@ -3834,16 +3889,18 @@ export default function WorldMap({
                           e.stopPropagation();
                           handleElementDoubleClick(el);
                         }}
-                        style={{ pointerEvents: 'auto' }}
-                        className={`transition-all duration-200 ${
-                          isSelected ? 'outline outline-2 outline-[#E74C3C]' : 'hover:outline hover:outline-1 hover:outline-white/50'
-                        } ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
+                        style={{
+                          pointerEvents: 'auto',
+                          // transition 완전 제거: 드래그 시 200ms 보간 충돌로 cursor를 못 따라오는 현상 방지
+                          transition: 'none',
+                        }}
+                        className={`${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
                       />
                       {/* 선택 상태일 때만 외곽선 가이드라인 표시 */}
                       {isSelected && (
                         <rect
-                          x={el.bx}
-                          y={el.by}
+                          x={0}
+                          y={0}
                           width={bw}
                           height={bh}
                           fill="none"
@@ -5302,7 +5359,7 @@ export default function WorldMap({
                       return (
                         <image
                           key={`mini-img-${el.id}`}
-                          href={el.imageAttachment}
+                          href={getImageRenderUrl(el.imageAttachment)}
                           x={el.bx}
                           y={el.by}
                           width={el.bw || 400}
