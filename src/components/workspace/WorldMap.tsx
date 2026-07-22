@@ -3,7 +3,8 @@ import {
   ChevronRight, ChevronDown, Layers, Plus, Move, Trash2, Unlock, ChevronsLeft, ChevronsRight, ChevronLeft, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search, Bookmark,
-  PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square
+  PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square,
+  Upload, AlertTriangle, Image
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
@@ -23,7 +24,7 @@ export interface MapSnapshot {
 export interface MapElement {
   id: string;
   name: string;
-  type: 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group' | 'brush';
+  type: 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group' | 'brush' | 'image';
   parentMapId: string; // 계층 구조 연동을 위함 (기본 'root')
   
   // Pin 전용 속성
@@ -211,9 +212,12 @@ export default function WorldMap({
     characters: true // 캐릭터 마커
   });
 
+  // --- 마우스 호버 시 항목 이름 오버레이 상태 ---
+  const [hoveredElementId, setHoveredElementId] = useState<string | null>(null);
+
   // --- 사이드바 항목 종류 필터 상태 ---
   const [selectedSidebarTypes, setSelectedSidebarTypes] = useState<string[]>([
-    'pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle'
+    'pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle', 'image'
   ]);
   const [showSidebarFilterDropdown, setShowSidebarFilterDropdown] = useState(false);
   const sidebarFilterRef = useRef<HTMLDivElement>(null);
@@ -355,8 +359,63 @@ export default function WorldMap({
   }, [showBrushWidthDropdown, showBorderDropdown, showPointDropdown, showHistoryDropdown]);
 
   // --- 이미지 업로드 배경 및 프리셋 ---
-  const [customBgImage, setCustomBgImage] = useState<string | null>(null);
   const [presetBg, setPresetBg] = useState<'vintage' | 'cosmic' | 'grid'>('vintage');
+  const [showBgUploadModal, setShowBgUploadModal] = useState(false);
+  const [bgUploadError, setBgUploadError] = useState<string | null>(null);
+
+  const handleImageFile = (file: File) => {
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setBgUploadError('이미지 파일만 업로드할 수 있습니다.');
+      return;
+    }
+
+    const maxSize = 1 * 1024 * 1024; // 1MB
+    if (file.size > maxSize) {
+      setBgUploadError(`용량 제한(1MB)을 초과했습니다. (선택한 파일: ${(file.size / (1024 * 1024)).toFixed(2)}MB)`);
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64Data = e.target?.result as string;
+      if (base64Data) {
+        pushHistory();
+        
+        const containerW = canvasContainerRef.current ? canvasContainerRef.current.clientWidth : 1200;
+        const containerH = canvasContainerRef.current ? canvasContainerRef.current.clientHeight : 800;
+        const camX = (-pan.x + containerW / 2) / zoom;
+        const camY = (-pan.y + containerH / 2) / zoom;
+        const width = 400;
+        const height = 300;
+
+        const newImageElement: MapElement = {
+          id: `image-${Date.now()}`,
+          name: `배경 이미지 ${elements.filter(el => el.type === 'image').length + 1}`,
+          type: 'image',
+          parentMapId: currentMapId,
+          bx: camX - width / 2,
+          by: camY - height / 2,
+          bw: width,
+          bh: height,
+          imageAttachment: base64Data,
+          opacity: 0.85,
+          tags: []
+        };
+
+        setElements(prev => [...prev, newImageElement]);
+        setBgUploadError(null);
+        setShowBgUploadModal(false); // 업로드 즉시 적용 후 창 닫기
+      } else {
+        setBgUploadError('이미지를 읽는 데 실패했습니다.');
+      }
+    };
+    reader.onerror = () => {
+      setBgUploadError('파일을 읽는 과정에서 오류가 발생했습니다.');
+    };
+    reader.readAsDataURL(file);
+  };
 
   // --- 스케일바 및 거리 측정 상태 ---
   const [scale, setScale] = useState<MapScale>({ pixels: 100, value: 50, unit: 'km' });
@@ -859,7 +918,6 @@ export default function WorldMap({
       }
 
       if (data.config) {
-        setCustomBgImage(data.config.customBgImage || null);
         setPresetBg((data.config.presetBg as 'vintage' | 'cosmic' | 'grid') || 'vintage');
         setScale(data.config.scale || { pixels: 100, value: 50, unit: 'km' });
         if (data.config.gridSize && typeof data.config.gridSize === 'number') {
@@ -957,7 +1015,7 @@ export default function WorldMap({
     // localStorage 즉시 갱신 (캐시)
     localStorage.setItem(elementKey, JSON.stringify(elements));
     localStorage.setItem(snapshotKey, JSON.stringify(snapshots));
-    localStorage.setItem(configKey, JSON.stringify({ customBgImage, presetBg, scale, gridSize }));
+    localStorage.setItem(configKey, JSON.stringify({ customBgImage: null, presetBg, scale, gridSize }));
     localStorage.setItem(charPosKey, JSON.stringify(characterPositions));
     localStorage.setItem(bookmarksKey, JSON.stringify(savedBookmarks));
 
@@ -973,7 +1031,7 @@ export default function WorldMap({
             worldmap_data: {
               elements,
               snapshots,
-              config: { customBgImage, presetBg, scale, gridSize },
+              config: { customBgImage: null, presetBg, scale, gridSize },
               characterPositions,
               savedBookmarks,
             }
@@ -984,13 +1042,13 @@ export default function WorldMap({
         console.error('WorldMap: Supabase 저장 실패:', err);
       }
     }, 2000);
-  }, [elements, snapshots, customBgImage, presetBg, scale, gridSize, characterPositions, savedBookmarks, selectedProject, getStorageKeys, isGuest]);
+  }, [elements, snapshots, presetBg, scale, gridSize, characterPositions, savedBookmarks, selectedProject, getStorageKeys, isGuest]);
 
   // 데이터 변경 시 자동 저장 트리거
   useEffect(() => {
     saveWorldMapData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elements, snapshots, customBgImage, presetBg, scale, gridSize, characterPositions, savedBookmarks]);
+  }, [elements, snapshots, presetBg, scale, gridSize, characterPositions, savedBookmarks]);
 
   // 빈 그룹 자동 삭제 감지
   useEffect(() => {
@@ -1221,7 +1279,7 @@ export default function WorldMap({
       members.forEach(item => {
         if (item.type === 'pin') {
           initialCoords[item.id] = { x: item.x || 0, y: item.y || 0 };
-        } else if (item.type === 'border_rect' || item.type === 'border_circle') {
+        } else if (item.type === 'border_rect' || item.type === 'border_circle' || item.type === 'image') {
           initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0, w: item.bw || 0, h: item.bh || 0 };
         } else if (item.brushStrokes) {
           initialCoords[item.id] = { x: 0, y: 0, brushStrokes: JSON.parse(JSON.stringify(item.brushStrokes)) };
@@ -1269,7 +1327,7 @@ export default function WorldMap({
     members.forEach(item => {
       if (item.type === 'pin') {
         initialCoords[item.id] = { x: item.x || 0, y: item.y || 0 };
-      } else if (item.type === 'border_rect' || item.type === 'border_circle') {
+      } else if (item.type === 'border_rect' || item.type === 'border_circle' || item.type === 'image') {
         initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0, w: item.bw || 0, h: item.bh || 0 };
       } else if (item.brushStrokes) {
         initialCoords[item.id] = { x: 0, y: 0, brushStrokes: JSON.parse(JSON.stringify(item.brushStrokes)) };
@@ -1469,7 +1527,7 @@ export default function WorldMap({
         const initW = initial.w ?? 0;
         const initH = initial.h ?? 0;
         
-        if (item.type === 'border_rect' || item.type === 'brush') {
+        if (item.type === 'border_rect' || item.type === 'brush' || item.type === 'image') {
           x1 = initial.x;
           y1 = initial.y;
           x2 = initial.x + initW;
@@ -1521,7 +1579,7 @@ export default function WorldMap({
             ...item,
             brushStrokes: nextStrokes
           };
-        } else if (item.type === 'border_rect') {
+        } else if (item.type === 'border_rect' || item.type === 'image') {
           return {
             ...item,
             bx: newX1,
@@ -1659,7 +1717,7 @@ export default function WorldMap({
             x: initial.x + finalDx,
             y: initial.y + finalDy
           };
-        } else if (item.type === 'border_rect' || item.type === 'border_circle') {
+        } else if (item.type === 'border_rect' || item.type === 'border_circle' || item.type === 'image') {
           return {
             ...item,
             bx: initial.x + finalDx,
@@ -2004,7 +2062,7 @@ export default function WorldMap({
   interface FlatTreeNode {
     id: string;
     name: string;
-    type: 'root' | 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group' | 'brush';
+    type: 'root' | 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group' | 'brush' | 'image';
     depth: number;
     childMapId?: string;
     parentMapId?: string;
@@ -2636,7 +2694,7 @@ export default function WorldMap({
                     <button
                       type="button"
                       onClick={() => {
-                        const allTypes = ['pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle'];
+                        const allTypes = ['pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle', 'image'];
                         const isAllChecked = allTypes.every(t => selectedSidebarTypes.includes(t));
                         if (isAllChecked) {
                           setSelectedSidebarTypes([]);
@@ -2650,7 +2708,7 @@ export default function WorldMap({
                     >
                       <input 
                         type="checkbox"
-                        checked={['pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle'].every(t => selectedSidebarTypes.includes(t))}
+                        checked={['pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle', 'image'].every(t => selectedSidebarTypes.includes(t))}
                         readOnly
                         className="accent-[#5E6AD2] cursor-pointer w-3.5 h-3.5"
                       />
@@ -2664,7 +2722,8 @@ export default function WorldMap({
                       { label: '📍 포인트 (거점)', types: ['pin'] },
                       { label: '🖌️ 붓 영역', types: ['brush'] },
                       { label: '▰ 영역 (다각형/테두리)', types: ['polygon', 'border_rect', 'border_circle'] },
-                      { label: '⏂ 경로선 (교역로)', types: ['route'] }
+                      { label: '⏂ 경로선 (교역로)', types: ['route'] },
+                      { label: '🖼️ 배경 이미지', types: ['image'] }
                     ].map(item => {
                       const isChecked = item.types.every(t => selectedSidebarTypes.includes(t));
                       return (
@@ -2727,6 +2786,8 @@ export default function WorldMap({
                     icon = '□';
                   } else if (node.type === 'border_circle') {
                     icon = '○';
+                  } else if (node.type === 'image') {
+                    icon = '🖼️';
                   }
 
                   return (
@@ -3311,6 +3372,23 @@ export default function WorldMap({
                       </button>
                     ))}
                   </div>
+
+                  <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+                  {/* 배경 이미지 추가 버튼 */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBgUploadError(null);
+                      setShowBgUploadModal(true);
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
+                      isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.05]'
+                    }`}
+                  >
+                    <Upload className="w-3.5 h-3.5 shrink-0 text-current" />
+                    배경 업로드
+                  </button>
                   
                   {/* 완료/초기화 (드로잉 중일 때만 노출) */}
                   {(tempPoints.length > 0 || tempBrushStrokes.length > 0) && (
@@ -3724,16 +3802,60 @@ export default function WorldMap({
                     </pattern>
                   </defs>
 
-              {/* 1. 커스텀 지도 배경 이미지 (있을 경우만) */}
-              {customBgImage && (
-                <image 
-                  href={customBgImage} 
-                  width="2000" 
-                  height="1500" 
-                  opacity="0.85" 
-                  style={{ pointerEvents: 'none' }}
-                />
-              )}
+              {/* 1. 복수 개 업로드 가능한 이미지 요소 레이어 */}
+              {selectedSidebarTypes.includes('image') && getAllActiveElementsForMap(currentMapId)
+                .filter(el => el.type === 'image')
+                .map(el => {
+                  const state = el.statesBySnapshot?.[activeSnapshotId];
+                  const isVisible = state ? state.visible : true;
+                  if (!isVisible) return null;
+
+                  const isSelected = isElementSelected(el.id);
+                  const bw = el.bw || 400;
+                  const bh = el.bh || 300;
+
+                  return (
+                    <g 
+                      key={el.id}
+                      onMouseEnter={() => setHoveredElementId(el.id)}
+                      onMouseLeave={() => setHoveredElementId(null)}
+                    >
+                      <image
+                        href={el.imageAttachment}
+                        x={el.bx}
+                        y={el.by}
+                        width={bw}
+                        height={bh}
+                        preserveAspectRatio="none"
+                        opacity={el.opacity !== undefined ? el.opacity : 0.85}
+                        onMouseDown={(e) => handleElementMouseDown(e, el)}
+                        onClick={(e) => handleElementClick(el, e)}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          handleElementDoubleClick(el);
+                        }}
+                        style={{ pointerEvents: 'auto' }}
+                        className={`transition-all duration-200 ${
+                          isSelected ? 'outline outline-2 outline-[#E74C3C]' : 'hover:outline hover:outline-1 hover:outline-white/50'
+                        } ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
+                      />
+                      {/* 선택 상태일 때만 외곽선 가이드라인 표시 */}
+                      {isSelected && (
+                        <rect
+                          x={el.bx}
+                          y={el.by}
+                          width={bw}
+                          height={bh}
+                          fill="none"
+                          stroke="#E74C3C"
+                          strokeWidth="1.5"
+                          strokeDasharray="4,3"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      )}
+                    </g>
+                  );
+                })}
 
               {/* 2. 배경 격자 Grid 렌더링 (무한 레이아웃 커버리지 x=-100000 y=-100000 w=300000 h=300000) */}
               {gridVisible && (
@@ -3753,7 +3875,11 @@ export default function WorldMap({
                   const isSelected = isElementSelected(el.id);
 
                   return (
-                    <g key={el.id}>
+                    <g 
+                      key={el.id}
+                      onMouseEnter={() => setHoveredElementId(el.id)}
+                      onMouseLeave={() => setHoveredElementId(null)}
+                    >
                       {/* 본체 채우기 */}
                       <polygon 
                         points={ptsString}
@@ -3810,7 +3936,11 @@ export default function WorldMap({
                   
                   // SVG 폴리라인 좌표
                   return (
-                    <g key={el.id}>
+                    <g 
+                      key={el.id}
+                      onMouseEnter={() => setHoveredElementId(el.id)}
+                      onMouseLeave={() => setHoveredElementId(null)}
+                    >
                       <polyline 
                         points={ptsString}
                         fill="none"
@@ -3863,7 +3993,11 @@ export default function WorldMap({
                   const pathData = buildStrokesPathData(el.brushStrokes || []);
 
                   return (
-                    <g key={el.id}>
+                    <g 
+                      key={el.id}
+                      onMouseEnter={() => setHoveredElementId(el.id)}
+                      onMouseLeave={() => setHoveredElementId(null)}
+                    >
                       {/* 실제 붓 영역 표현 (획 별 개별 굵기 및 형태 보존) */}
                       {el.brushStrokeObjects && el.brushStrokeObjects.length > 0 ? (
                         el.brushStrokeObjects.map((sObj, sIdx) => {
@@ -4007,7 +4141,11 @@ export default function WorldMap({
 
                   if (el.type === 'border_rect') {
                     return (
-                      <g key={el.id}>
+                      <g 
+                        key={el.id}
+                        onMouseEnter={() => setHoveredElementId(el.id)}
+                        onMouseLeave={() => setHoveredElementId(null)}
+                      >
                         <rect
                           x={el.bx}
                           y={el.by}
@@ -4044,7 +4182,11 @@ export default function WorldMap({
                     );
                   } else {
                     return (
-                      <g key={el.id}>
+                      <g 
+                        key={el.id}
+                        onMouseEnter={() => setHoveredElementId(el.id)}
+                        onMouseLeave={() => setHoveredElementId(null)}
+                      >
                         <ellipse
                           cx={el.bx}
                           cy={el.by}
@@ -4226,7 +4368,7 @@ export default function WorldMap({
               
               {/* 선택된 테두리(rect / circle) 및 붓(brush)의 리사이즈 드래그 핸들 (Anchor Points) */}
               {editMode === 'select' && selectedElementId && elements
-                .filter(el => el.id === selectedElementId && (el.type === 'border_rect' || el.type === 'border_circle' || el.type === 'brush'))
+                .filter(el => el.id === selectedElementId && (el.type === 'border_rect' || el.type === 'border_circle' || el.type === 'brush' || el.type === 'image'))
                 .map(el => {
                   let tl = { x: 0, y: 0 };
                   let tr = { x: 0, y: 0 };
@@ -4247,7 +4389,7 @@ export default function WorldMap({
                     tr = { x: boxX + boxW, y: boxY };
                     bl = { x: boxX, y: boxY + boxH };
                     br = { x: boxX + boxW, y: boxY + boxH };
-                  } else if (el.type === 'border_rect') {
+                  } else if (el.type === 'border_rect' || el.type === 'image') {
                     const bx = el.bx || 0;
                     const by = el.by || 0;
                     const bw = el.bw || 0;
@@ -4334,6 +4476,75 @@ export default function WorldMap({
               );
             })()}
 
+            {/* 호버 라벨 오버레이 팝업 (IIFE 바깥 스코프 배치로 컴파일 에러 예방) */}
+            {hoveredElementId && (() => {
+              const el = elements.find(x => x.id === hoveredElementId);
+              if (!el) return null;
+
+              const getLabelWidth = (text: string): number => {
+                let width = 0;
+                for (let i = 0; i < text.length; i++) {
+                  const code = text.charCodeAt(i);
+                  if (code >= 0 && code <= 128) {
+                    width += 10;
+                  } else {
+                    width += 16;
+                  }
+                }
+                return width + 16;
+              };
+
+              let pos = { x: 0, y: 0 };
+              if (el.type === 'pin') {
+                pos = { x: el.x || 0, y: (el.y || 0) - 35 };
+              } else if (el.type === 'polygon' || el.type === 'route') {
+                const pts = el.points || [];
+                if (pts.length > 0) {
+                  let minX = pts[0].x;
+                  let minY = pts[0].y;
+                  pts.forEach(p => {
+                    if (p.x < minX) minX = p.x;
+                    if (p.y < minY) minY = p.y;
+                  });
+                  pos = { x: minX, y: minY - 20 };
+                }
+              } else if (el.type === 'brush' && el.brushStrokes) {
+                const bbox = getBrushBoundingBox(el.brushStrokes);
+                pos = { x: bbox.minX, y: bbox.minY - 20 };
+              } else if (el.type === 'border_rect' || el.type === 'image') {
+                pos = { x: el.bx || 0, y: (el.by || 0) - 20 };
+              } else if (el.type === 'border_circle') {
+                pos = { x: (el.bx || 0) - (el.bw || 0), y: (el.by || 0) - (el.bh || 0) - 20 };
+              }
+
+              return (
+                <svg className="absolute inset-0 w-full h-full overflow-visible pointer-events-none select-none">
+                  <g>
+                    <rect
+                      x={pos.x - 6}
+                      y={pos.y - 18}
+                      rx="6"
+                      fill={isDark ? "#121316" : "#FFFFFF"}
+                      stroke="#5E6AD2"
+                      strokeWidth="1.5"
+                      opacity="0.95"
+                      height="28"
+                      width={getLabelWidth(el.name)}
+                    />
+                    <text
+                      x={pos.x}
+                      y={pos.y}
+                      fontSize="15"
+                      fontWeight="bold"
+                      fill={isDark ? "#A5B4FC" : "#4F46E5"}
+                    >
+                      {el.name}
+                    </text>
+                  </g>
+                </svg>
+              );
+            })()}
+
             {/* 4. 절대 배치형 거점 핀(Pin Marker) 리스트 */}
             {layerVisibility.political && selectedSidebarTypes.includes('pin') && getAllActiveElementsForMap(currentMapId)
               .filter(el => el.type === 'pin')
@@ -4372,6 +4583,8 @@ export default function WorldMap({
                       e.stopPropagation();
                       handleElementDoubleClick(el);
                     }}
+                    onMouseEnter={() => setHoveredElementId(el.id)}
+                    onMouseLeave={() => setHoveredElementId(null)}
                   >
                     <div 
                       className={`p-2 rounded-full shadow-lg transition-transform hover:scale-115 flex items-center justify-center border-2 ${
@@ -5078,17 +5291,27 @@ export default function WorldMap({
                     fill={bgColor} 
                   />
 
-                  {customBgImage && (
-                    <image 
-                      href={customBgImage} 
-                      x="0"
-                      y="0"
-                      width="3000" 
-                      height="2000" 
-                      opacity={0.85} 
-                      preserveAspectRatio="none"
-                    />
-                  )}
+                  {/* 미니맵 복수 이미지 요소 렌더링 */}
+                  {selectedSidebarTypes.includes('image') && getAllActiveElementsForMap(currentMapId)
+                    .filter(el => el.type === 'image')
+                    .map(el => {
+                      const state = el.statesBySnapshot?.[activeSnapshotId];
+                      const isVisible = state ? state.visible : true;
+                      if (!isVisible) return null;
+
+                      return (
+                        <image
+                          key={`mini-img-${el.id}`}
+                          href={el.imageAttachment}
+                          x={el.bx}
+                          y={el.by}
+                          width={el.bw || 400}
+                          height={el.bh || 300}
+                          opacity={el.opacity !== undefined ? el.opacity : 0.85}
+                          preserveAspectRatio="none"
+                        />
+                      );
+                    })}
 
                   {gridVisible && (
                     <rect 
@@ -5676,6 +5899,114 @@ export default function WorldMap({
                 className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white transition-all shadow-lg shadow-[#5E6AD2]/20"
               >
                 위치 저장
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBgUploadModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div 
+            className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${
+              isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+            }`}
+          >
+            <div className="flex justify-between items-center pb-3 border-b border-white/10 mb-4">
+              <h3 className="text-sm font-bold flex items-center gap-2">
+                <Upload className="w-4 h-4 text-[#5E6AD2]" />
+                배경 이미지 업로드
+              </h3>
+              <button 
+                onClick={() => setShowBgUploadModal(false)}
+                className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                  isDark ? 'hover:bg-white/5 text-gray-400 hover:text-white' : 'hover:bg-black/5 text-gray-500 hover:text-gray-900'
+                }`}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* 저작권 경고 안내 박스 */}
+              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-500 flex gap-2.5">
+                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                <div className="text-[11px] leading-relaxed">
+                  <span className="font-bold">저작권 및 법적 책임 고지</span>
+                  <p className="mt-0.5 text-amber-500/80">
+                    업로드하는 배경 이미지 파일의 저작권 위반으로 발생하는 모든 법적 책임은 사용자 본인에게 있습니다. 저작권이 침해되지 않는 안전한 이미지만 업로드해 주세요.
+                  </p>
+                </div>
+              </div>
+
+              {/* 용량 제한 안내 박스 */}
+              <div className="p-3 rounded-xl bg-[#5E6AD2]/10 border border-[#5E6AD2]/20 text-[#7480E2] flex gap-2.5">
+                <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="text-[11px] leading-relaxed">
+                  <span className="font-bold">업로드 규격</span>
+                  <p className="mt-0.5 text-gray-400">
+                    서버 성능 및 최적화를 위해 <span className="font-bold text-white">1MB 이하</span>의 이미지 파일(<span className="font-mono">jpg, png, webp</span> 등)만 지원합니다.
+                  </p>
+                </div>
+              </div>
+
+              {/* 드롭존 및 파일 선택 인풋 */}
+              <div 
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const files = e.dataTransfer.files;
+                  if (files && files.length > 0) {
+                    handleImageFile(files[0]);
+                  }
+                }}
+                className={`border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-all duration-150 ${
+                  isDark 
+                    ? 'border-white/10 hover:border-[#5E6AD2]/50 bg-white/[0.02] hover:bg-white/[0.04]' 
+                    : 'border-black/10 hover:border-[#5E6AD2]/50 bg-black/[0.01] hover:bg-black/[0.03]'
+                }`}
+                onClick={() => document.getElementById('bg-image-file-input')?.click()}
+              >
+                <input
+                  id="bg-image-file-input"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const files = e.target.files;
+                    if (files && files.length > 0) {
+                      handleImageFile(files[0]);
+                    }
+                  }}
+                  className="hidden"
+                />
+                
+                <Image className="w-7 h-7 text-gray-500" />
+                <div className="text-center">
+                  <p className="text-xs font-semibold text-gray-300">클릭하거나 이미지를 여기에 끌어다 놓으세요</p>
+                  <p className="text-[10px] text-gray-500 mt-0.5">JPG, PNG, WEBP (최대 1MB)</p>
+                </div>
+              </div>
+
+              {/* 에러 메시지 표시 */}
+              {bgUploadError && (
+                <div className="text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 p-2.5 rounded-lg text-center flex items-center justify-center gap-1.5">
+                  <span>⚠️</span> {bgUploadError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2.5 mt-5 pt-3 border-t border-white/10">
+              <button 
+                onClick={() => setShowBgUploadModal(false)}
+                className={`w-full py-2 rounded-xl font-bold border transition-colors text-xs ${
+                  isDark ? 'border-white/[0.06] hover:bg-[#1E1F22]' : 'border-black/[0.06] hover:bg-gray-100'
+                }`}
+              >
+                닫기
               </button>
             </div>
           </div>
