@@ -211,6 +211,28 @@ export default function WorldMap({
     characters: true // 캐릭터 마커
   });
 
+  // --- 사이드바 항목 종류 필터 상태 ---
+  const [selectedSidebarTypes, setSelectedSidebarTypes] = useState<string[]>([
+    'pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle'
+  ]);
+  const [showSidebarFilterDropdown, setShowSidebarFilterDropdown] = useState(false);
+  const sidebarFilterRef = useRef<HTMLDivElement>(null);
+
+  // 사이드바 필터 바깥 클릭 감지
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (sidebarFilterRef.current && !sidebarFilterRef.current.contains(event.target as globalThis.Node)) {
+        setShowSidebarFilterDropdown(false);
+      }
+    };
+    if (showSidebarFilterDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showSidebarFilterDropdown]);
+
   // --- 미니맵 창 드래그, 전방위 리사이즈, 미니맵 캔버스 팬(Pan) 이벤트 처리 ---
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -1994,8 +2016,14 @@ export default function WorldMap({
     const list: FlatTreeNode[] = [];
     
     const traverse = (mapId: string, currentPath: Array<{ id: string; name: string }>, depth: number) => {
-      // 모든 요소를 순회하도록 원래대로 복원
-      const mapElements = elements.filter(el => el.parentMapId === mapId);
+      // 모든 요소를 순회하되, 핀/영역/경로/붓 등 실제 항목은 종류 필터에 맞춰 필터링
+      const mapElements = elements.filter(el => {
+        if (el.parentMapId !== mapId) return false;
+        if ((el.childMapId && el.childMapId !== '') || el.type === 'group') {
+          return true;
+        }
+        return selectedSidebarTypes.includes(el.type);
+      });
       
       for (const el of mapElements) {
         list.push({
@@ -2580,6 +2608,95 @@ export default function WorldMap({
                       : 'bg-black/[0.01] border-black/[0.08] text-black placeholder-gray-400 focus:border-[#5E6AD2]'
                   }`}
                 />
+              </div>
+
+              {/* 항목 종류 필터 팝오버 (검색창 하단 단독 배치 및 여백 적용) */}
+              <div className="relative mt-2 mb-3 px-0.5" ref={sidebarFilterRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowSidebarFilterDropdown(!showSidebarFilterDropdown)}
+                  className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                    isDark 
+                      ? 'bg-white/[0.02] border-white/[0.08] hover:bg-white/[0.06] text-gray-300' 
+                      : 'bg-black/[0.01] border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Settings2 className="w-3 h-3 text-[#7480E2]" />
+                    종류 필터
+                  </span>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${showSidebarFilterDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showSidebarFilterDropdown && (
+                  <div className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-lg border shadow-xl p-3 flex flex-col gap-1.5 ${
+                    isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+                  }`}>
+                    {/* 모두 토글 */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allTypes = ['pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle'];
+                        const isAllChecked = allTypes.every(t => selectedSidebarTypes.includes(t));
+                        if (isAllChecked) {
+                          setSelectedSidebarTypes([]);
+                        } else {
+                          setSelectedSidebarTypes(allTypes);
+                        }
+                      }}
+                      className={`flex items-center gap-2 w-full text-left py-1 px-1.5 rounded text-[11px] font-bold transition-colors ${
+                        isDark ? 'hover:bg-white/[0.05]' : 'hover:bg-black/[0.04]'
+                      }`}
+                    >
+                      <input 
+                        type="checkbox"
+                        checked={['pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle'].every(t => selectedSidebarTypes.includes(t))}
+                        readOnly
+                        className="accent-[#5E6AD2] cursor-pointer w-3.5 h-3.5"
+                      />
+                      모두
+                    </button>
+                    
+                    <div className={`w-full h-px my-0.5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+                    {/* 개별 종류 필터 목록 */}
+                    {[
+                      { label: '📍 포인트 (거점)', types: ['pin'] },
+                      { label: '🖌️ 붓 영역', types: ['brush'] },
+                      { label: '▰ 영역 (다각형/테두리)', types: ['polygon', 'border_rect', 'border_circle'] },
+                      { label: '⏂ 경로선 (교역로)', types: ['route'] }
+                    ].map(item => {
+                      const isChecked = item.types.every(t => selectedSidebarTypes.includes(t));
+                      return (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSidebarTypes(prev => {
+                              const alreadyHas = item.types.every(t => prev.includes(t));
+                              if (alreadyHas) {
+                                return prev.filter(t => !item.types.includes(t));
+                              } else {
+                                return Array.from(new Set([...prev, ...item.types]));
+                              }
+                            });
+                          }}
+                          className={`flex items-center gap-2 w-full text-left py-1 px-1.5 rounded text-[11px] font-medium transition-colors ${
+                            isDark ? 'hover:bg-white/[0.05]' : 'hover:bg-black/[0.04]'
+                          }`}
+                        >
+                          <input 
+                            type="checkbox"
+                            checked={isChecked}
+                            readOnly
+                            className="accent-[#5E6AD2] cursor-pointer w-3.5 h-3.5"
+                          />
+                          {item.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className={`flex flex-col gap-0.5 max-h-full overflow-y-auto rounded-xl p-1.5 ${
@@ -3623,7 +3740,7 @@ export default function WorldMap({
                 <rect x="-100000" y="-100000" width="300000" height="300000" fill="url(#grid-pattern)" style={{ pointerEvents: 'none' }} />
               )}
               {/* 다각형 면적 레이어 */}
-              {layerVisibility.political && getAllActiveElementsForMap(currentMapId)
+              {layerVisibility.political && selectedSidebarTypes.includes('polygon') && getAllActiveElementsForMap(currentMapId)
                 .filter(el => el.type === 'polygon')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
@@ -3680,7 +3797,7 @@ export default function WorldMap({
                 })}
 
               {/* 경로선 레이어 */}
-              {layerVisibility.routes && getAllActiveElementsForMap(currentMapId)
+              {layerVisibility.routes && selectedSidebarTypes.includes('route') && getAllActiveElementsForMap(currentMapId)
                 .filter(el => el.type === 'route')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
@@ -3731,7 +3848,7 @@ export default function WorldMap({
                 })}
 
               {/* 붓 그리기 영역 레이어 */}
-              {layerVisibility.political && getAllActiveElementsForMap(currentMapId)
+              {layerVisibility.political && selectedSidebarTypes.includes('brush') && getAllActiveElementsForMap(currentMapId)
                 .filter(el => el.type === 'brush')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
@@ -3873,7 +3990,7 @@ export default function WorldMap({
               )}
 
               {/* 테두리 (사각형 및 원형) 레이어 */}
-              {layerVisibility.political && getAllActiveElementsForMap(currentMapId)
+              {layerVisibility.political && selectedSidebarTypes.includes('polygon') && getAllActiveElementsForMap(currentMapId)
                 .filter(el => el.type === 'border_rect' || el.type === 'border_circle')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
@@ -4218,7 +4335,7 @@ export default function WorldMap({
             })()}
 
             {/* 4. 절대 배치형 거점 핀(Pin Marker) 리스트 */}
-            {layerVisibility.political && getAllActiveElementsForMap(currentMapId)
+            {layerVisibility.political && selectedSidebarTypes.includes('pin') && getAllActiveElementsForMap(currentMapId)
               .filter(el => el.type === 'pin')
               .map(el => {
                 const state = el.statesBySnapshot?.[activeSnapshotId];
