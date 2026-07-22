@@ -373,7 +373,7 @@ export default function WorldMap({
   // --- 사이드바 접기/펼치기 ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // --- 헤더 탭 선택 상태 (null이면 서브패널 닫힘) ---
-  const [activeHeaderTab, setActiveHeaderTab] = useState<'draw' | 'settings' | 'timeline' | 'measure' | null>('draw');
+  const [activeHeaderTab, setActiveHeaderTab] = useState<'tool' | 'draw' | 'timeline' | 'settings' | null>('tool');
   // --- 지도 계층 트리 폴더 접기/펼치기 상태 ---
   const [mapExpandedFolderIds, setMapExpandedFolderIds] = useState<string[]>(['root']);
 
@@ -2704,10 +2704,10 @@ export default function WorldMap({
             {/* 탭 버튼 그룹 */}
             <div className="flex items-center gap-1 shrink-0">
               {([
-                { id: 'draw',     Icon: PenTool,   label: '도구'   },
-                { id: 'settings', Icon: Settings2,  label: '설정'   },
-                { id: 'timeline', Icon: History,    label: '시점'   },
-                { id: 'measure',  Icon: Ruler,      label: '측정'   },
+                { id: 'tool',     Icon: Sparkles,  label: '도구'   },
+                { id: 'draw',     Icon: PenTool,   label: '그리기' },
+                { id: 'timeline', Icon: History,   label: '시점'   },
+                { id: 'settings', Icon: Settings2, label: '설정'   },
               ] as const).map(({ id, Icon, label }) => {
                 const isActive = activeHeaderTab === id;
                 return (
@@ -2758,13 +2758,12 @@ export default function WorldMap({
           {activeHeaderTab && (
             <div className={`relative z-30 px-4 py-2.5 flex items-center gap-4 flex-nowrap overflow-visible animate-in slide-in-from-top-1 duration-150 ${isDark ? 'bg-white/[0.01]' : 'bg-black/[0.01]'}`}>
 
-              {/* ── 도구 탭 ── */}
-              {activeHeaderTab === 'draw' && (
+              {/* ── 1. 도구 탭 ── */}
+              {activeHeaderTab === 'tool' && (
                 <div className="flex items-center gap-1.5 flex-nowrap shrink-0">
                   {[
                     { mode: 'select',           Icon: Sparkles,   label: '선택/편집' },
                     { mode: 'pan',              Icon: Move,       label: '이동/손바닥' },
-                    { mode: 'add_pin',          Icon: MapPin,     label: '핀 거점' },
                   ].map(({ mode, Icon, label }) => (
                     <button
                       key={mode}
@@ -2778,6 +2777,60 @@ export default function WorldMap({
                       <Icon className="w-3.5 h-3.5 shrink-0" />{label}
                     </button>
                   ))}
+
+                  <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+                  {/* 미니맵 토글 버튼 */}
+                  <button
+                    onClick={() => setShowMinimap(!showMinimap)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
+                      showMinimap
+                        ? 'bg-[#5E6AD2]/15 border-[#5E6AD2]/30 text-[#7480E2]'
+                        : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.05]'
+                    }`}
+                  >
+                    <Eye className="w-3.5 h-3.5 shrink-0" />
+                    미니맵 {showMinimap ? '표시 중' : '숨김'}
+                  </button>
+
+                  <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+                  {/* 거리 측정 도구 */}
+                  <button
+                    onClick={() => { setEditMode('measure'); setTempPoints([]); setTempBrushStrokes([]); setCurrentBrushStroke([]); }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
+                      editMode === 'measure'
+                        ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-sm'
+                        : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
+                    }`}
+                  >
+                    <Ruler className="w-3.5 h-3.5 shrink-0" />
+                    거리 측정
+                  </button>
+                  {editMode === 'measure' && measurePoints.length > 1 && (
+                    <span className={`text-xs font-bold shrink-0 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {calculateDistanceInfo()}
+                    </span>
+                  )}
+                  {editMode === 'measure' && measurePoints.length > 0 && (
+                    <button onClick={() => setMeasurePoints([])} className="px-2 py-1 rounded-lg bg-red-500/15 text-red-400 text-[10px] font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors shrink-0">측정 초기화</button>
+                  )}
+                </div>
+              )}
+
+              {/* ── 2. 그리기 탭 ── */}
+              {activeHeaderTab === 'draw' && (
+                <div className="flex items-center gap-2 flex-nowrap shrink-0">
+                  <button
+                    onClick={() => { setEditMode('add_pin'); setTempPoints([]); setTempBrushStrokes([]); setCurrentBrushStroke([]); }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all duration-150 ${
+                      editMode === 'add_pin'
+                        ? 'bg-[#5E6AD2] text-white shadow-sm'
+                        : isDark ? 'text-gray-300 hover:text-white hover:bg-white/[0.06]' : 'text-gray-600 hover:text-gray-900 hover:bg-black/[0.05]'
+                    }`}
+                  >
+                    <MapPin className="w-3.5 h-3.5 shrink-0" />핀 거점
+                  </button>
 
                   {/* 포인트 도구 (선 긋기 / 영역 그리기 드롭다운 포함) */}
                   <div ref={pointDropdownRef} className="relative inline-flex items-stretch shrink-0">
@@ -3014,89 +3067,48 @@ export default function WorldMap({
                       </div>
                     )}
                   </div>
-                  
-                  {/* 완료/초기화 (드로잉 중일 때만 노출) */}
-                  {(tempPoints.length > 0 || tempBrushStrokes.length > 0) && (
-                    <>
-                      <div className={`w-px h-5 shrink-0 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
-                      <button onClick={() => { setTempPoints([]); setTempBrushStrokes([]); setCurrentBrushStroke([]); }} className="px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors shrink-0">초기화</button>
-                      <button onClick={editMode === 'draw_brush' ? finalizeBrush : editMode === 'draw_polygon' ? finalizePolygon : finalizeRoute} className="px-2.5 py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition-colors shrink-0">완료 {editMode === 'draw_brush' ? `(${tempBrushStrokes.length}획)` : `(${tempPoints.length}점)`}</button>
-                    </>
-                  )}
-                </div>
-              )}
 
-              {/* ── 설정 탭 ── */}
-              {activeHeaderTab === 'settings' && (
-                <div className="flex items-center gap-4 flex-nowrap shrink-0 text-xs">
-                  {/* 스냅 & 편집 보호 */}
+                  <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+                  {/* 격자선 설정 */}
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {/* 미니맵 토글 버튼 */}
-                    <button
-                      onClick={() => setShowMinimap(!showMinimap)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
-                        showMinimap
-                          ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
-                          : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
-                      }`}
-                    >
-                      <Map className="w-3.5 h-3.5 shrink-0" />
-                      미니맵 (Minimap)
-                    </button>
-
-                    {/* 격자선 표시 일체형 분할 버튼 (붓 그리기/테두리 스타일) */}
                     <div ref={gridMenuRef} className="relative inline-flex items-stretch shrink-0">
-                      <div className={`flex items-center rounded-lg border shrink-0 transition-all duration-150 ${
+                      <div className={`flex items-center rounded-lg shrink-0 transition-all duration-150 ${
                         gridVisible
-                          ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
-                          : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
+                          ? 'bg-[#5E6AD2]/10 border border-[#5E6AD2]/30 text-[#7480E2]'
+                          : isDark ? 'border border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border border-black/[0.08] text-gray-600 hover:bg-black/[0.05]'
                       }`}>
-                        {/* 격자선 표시 토글 */}
                         <button
                           type="button"
                           onClick={() => setGridVisible(!gridVisible)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-l-lg hover:bg-white/10 transition-colors"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-l-lg hover:bg-white/10"
                         >
                           <Grid3X3 className="w-3.5 h-3.5 shrink-0" />
-                          격자선(Grid) 표시
+                          격자선 ({gridSize}px)
                         </button>
-
-                        {/* 구분선 */}
-                        <div className={`w-px h-3.5 shrink-0 ${gridVisible ? 'bg-[#5E6AD2]/40' : isDark ? 'bg-white/10' : 'bg-black/10'}`} />
-
-                        {/* 격자 크기 및 세부 항목 팝오버 열기 버튼 (▾) */}
+                        <div className={`w-px h-3.5 shrink-0 ${gridVisible ? 'bg-white/20' : isDark ? 'bg-white/10' : 'bg-black/10'}`} />
                         <button
                           type="button"
                           onClick={() => setShowGridMenu(prev => !prev)}
-                          className={`px-2 py-1.5 text-xs font-semibold rounded-r-lg hover:bg-white/10 transition-colors flex items-center justify-center gap-0.5 ${
-                            showGridMenu ? 'bg-white/10' : ''
-                          }`}
-                          title="격자 크기 및 세부 항목 조절"
+                          className="px-1.5 py-1.5 text-xs font-semibold rounded-r-lg hover:bg-white/10 flex items-center justify-center"
                         >
                           <ChevronDown className="w-3.5 h-3.5 shrink-0" />
                         </button>
                       </div>
 
-                      {/* 격자 세부 항목 드롭다운 팝오버 */}
                       {showGridMenu && (
-                        <div className={`absolute top-full left-0 mt-1.5 w-64 p-3 rounded-xl shadow-2xl border z-50 transition-all ${
-                          isDark ? 'bg-[#14161B] border-white/10 text-gray-200' : 'bg-white border-black/10 text-gray-800'
+                        <div className={`absolute left-0 top-full mt-1.5 w-60 rounded-xl border p-3.5 shadow-2xl z-50 flex flex-col gap-2.5 animate-in fade-in-50 zoom-in-95 ${
+                          isDark ? 'bg-[#141517] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
                         }`}>
-                          <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10">
-                            <span className="text-xs font-bold flex items-center gap-1.5">
-                              <Grid3X3 className="w-3.5 h-3.5 text-[#7480E2]" />
-                              격자선 세부 항목
-                            </span>
+                          <div className="flex justify-between items-center pb-1.5 border-b border-white/10">
+                            <span className="text-[11px] font-bold text-gray-400">격자 간격 수치 입력</span>
                             <div className="flex items-center gap-1">
                               <input
                                 type="number"
                                 min="5"
                                 max="1000"
-                                value={gridSize === 0 ? '' : gridSize}
-                                onChange={(e) => {
-                                  const val = e.target.value === '' ? 0 : Number(e.target.value);
-                                  if (!isNaN(val) && val <= 1000) setGridSize(val);
-                                }}
+                                value={gridSize}
+                                onChange={(e) => setGridSize(Number(e.target.value))}
                                 onBlur={() => {
                                   setGridSize(prev => Math.max(5, Math.min(1000, prev || 40)));
                                 }}
@@ -3108,8 +3120,7 @@ export default function WorldMap({
                             </div>
                           </div>
 
-                          {/* 1. 격자 크기 슬라이더 (10px ~ 500px) */}
-                          <div className="space-y-1.5 mb-3">
+                          <div className="space-y-1.5 mb-1">
                             <div className="flex justify-between text-[11px] text-gray-400">
                               <span>간격 조절</span>
                               <span>10px ~ 500px</span>
@@ -3125,8 +3136,7 @@ export default function WorldMap({
                             />
                           </div>
 
-                          {/* 2. 자주 사용하는 프리셋 버튼 */}
-                          <div className="space-y-1 mb-3">
+                          <div className="space-y-1 mb-1">
                             <span className="text-[10px] font-semibold text-gray-400">빠른 선택:</span>
                             <div className="grid grid-cols-4 gap-1">
                               {[10, 20, 40, 50, 100, 200, 500].map((size) => (
@@ -3145,7 +3155,6 @@ export default function WorldMap({
                             </div>
                           </div>
 
-                          {/* 3. 자석 스냅 토글 */}
                           <div className="pt-2 border-t border-white/10">
                             <button
                               onClick={() => setGridSnapEnabled(!gridSnapEnabled)}
@@ -3171,7 +3180,6 @@ export default function WorldMap({
                     {[
                       { Icon: Magnet, label: '격자 자석 스냅', checked: gridSnapEnabled, onChange: setGridSnapEnabled },
                       { Icon: Magnet, label: '점간(Node) 자동 스냅', checked: pointSnapEnabled, onChange: setPointSnapEnabled },
-                      { Icon: Lock, label: '배경 이미지 잠금', checked: lockLayers.background, onChange: (v: boolean) => setLockLayers(prev => ({ ...prev, background: v })) },
                     ].map(({ Icon, label, checked, onChange }) => (
                       <button
                         key={label}
@@ -3186,10 +3194,59 @@ export default function WorldMap({
                       </button>
                     ))}
                   </div>
+                  
+                  {/* 완료/초기화 (드로잉 중일 때만 노출) */}
+                  {(tempPoints.length > 0 || tempBrushStrokes.length > 0) && (
+                    <>
+                      <div className={`w-px h-5 shrink-0 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+                      <button onClick={() => { setTempPoints([]); setTempBrushStrokes([]); setCurrentBrushStroke([]); }} className="px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors shrink-0">초기화</button>
+                      <button onClick={editMode === 'draw_brush' ? finalizeBrush : editMode === 'draw_polygon' ? finalizePolygon : finalizeRoute} className="px-2.5 py-1.5 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition-colors shrink-0">완료 {editMode === 'draw_brush' ? `(${tempBrushStrokes.length}획)` : `(${tempPoints.length}점)`}</button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ── 설정 탭 ── */}
+              {activeHeaderTab === 'settings' && (
+                <div className="flex items-center gap-3 shrink-0 text-xs">
+                  {/* 배경 이미지 잠금 */}
+                  <button
+                    onClick={() => setLockLayers(prev => ({ ...prev, background: !prev.background }))}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
+                      lockLayers.background
+                        ? 'bg-orange-500/15 border-orange-500/30 text-orange-400 font-bold'
+                        : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
+                    }`}
+                  >
+                    <Lock className="w-3.5 h-3.5 shrink-0" />
+                    배경 이미지 {lockLayers.background ? '잠김' : '잠금 해제됨'}
+                  </button>
+
+                  {/* 레이어 잠금 제어 */}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className={`text-[10px] font-bold shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>레이어 잠금:</span>
+                    {[
+                      { label: '영역 잠금', checked: lockLayers.regions, onChange: (v: boolean) => setLockLayers(prev => ({ ...prev, regions: v })) },
+                      { label: '핀 거점 잠금', checked: lockLayers.pins, onChange: (v: boolean) => setLockLayers(prev => ({ ...prev, pins: v })) },
+                    ].map(({ label, checked, onChange }) => (
+                      <button
+                        key={label}
+                        onClick={() => onChange(!checked)}
+                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
+                          checked
+                            ? 'bg-red-500/15 border-red-500/30 text-red-400 font-bold'
+                            : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
+                        }`}
+                      >
+                        <Lock className="w-3.5 h-3.5 shrink-0" />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
 
                   <div className={`w-px h-5 shrink-0 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
 
-                  {/* 레이어 표시 토글 */}
+                  {/* 표시 레이어 필터 */}
                   <div className="flex items-center gap-1.5 shrink-0">
                     <span className={`text-[10px] font-bold shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>표시 레이어:</span>
                     {[
@@ -3202,13 +3259,13 @@ export default function WorldMap({
                       <button
                         key={label}
                         onClick={() => onChange(!checked)}
-                        className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
+                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
                           checked
                             ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
                             : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
                         }`}
                       >
-                        {checked ? <Eye className="w-3 h-3 shrink-0" /> : <EyeOff className="w-3 h-3 shrink-0" />}
+                        {checked ? <Eye className="w-3.5 h-3.5 shrink-0" /> : <EyeOff className="w-3.5 h-3.5 shrink-0" />}
                         {label}
                       </button>
                     ))}
@@ -3494,29 +3551,7 @@ export default function WorldMap({
                 </div>
               )}
 
-              {/* ── 측정 탭 ── */}
-              {activeHeaderTab === 'measure' && (
-                <div className="flex items-center gap-3 shrink-0 text-xs">
-                  <button
-                    onClick={() => { setEditMode('measure'); setMeasurePoints([]); }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border font-semibold shrink-0 transition-all duration-150 ${
-                      editMode === 'measure'
-                        ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white'
-                        : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'
-                    }`}
-                  >
-                    <Ruler className="w-3.5 h-3.5 shrink-0" /> 거리 측정 모드 활성화
-                  </button>
-                  {measurePoints.length > 1 && (
-                    <span className={`font-bold shrink-0 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      {calculateDistanceInfo()}
-                    </span>
-                  )}
-                  {measurePoints.length > 0 && (
-                    <button onClick={() => setMeasurePoints([])} className="px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 text-xs font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors shrink-0">측정 초기화</button>
-                  )}
-                </div>
-              )}
+
 
             </div>
           )}
