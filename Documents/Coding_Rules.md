@@ -124,6 +124,9 @@
 | 2026-07-22 | 사이드바에서 이미지 클릭해도 위치 이동 안 됨 | `focusOnElement()` 함수에 `image` 타입 분기 누락 | `image` 타입 분기 추가 (`bx + bw/2`, `by + bh/2` 중심 좌표 사용) |
 | 2026-07-22 | `useRef<Map<string, string>>(new Map())` TypeScript 에러 | TypeScript가 제네릭 Map을 제대로 인식 못함 | `useRef<{ [key: string]: string }>({})` 로 변경 |
 | 2026-07-22 | `hoveredElementId` TS6133 미사용 변수 에러 | state 값을 읽지 않고 선언만 한 경우 | `const [, setHoveredElementId]` 패턴으로 값 생략 |
+| 2026-07-22 | 격자(그리드) 라인이 갑자기 소멸하거나 미출력됨 | 30만 px 크기의 대용량 사각형 렌더링 시 브라우저가 성능 보호를 위해 SVG 렌더 생략 및 안티앨리어싱 정렬 어긋남 | 현재 보이는 뷰포트 영역만 동적 연산하는 Dynamic Viewport Grid Rendering 기법 적용 및 `shapeRendering="crispEdges"` 튜닝 적용 |
+| 2026-07-22 | 줌 배율 표시부를 수동 편집할 수 없음 | 배율 스팬 텍스트를 인풋으로 교체하여 직접 타이핑 가능하도록 기획 요건 추가 | `isEditingZoom` / `zoomInputVal` 상태 구현 및 유효성 위반 시 이전 값 복구 시스템 구축 |
+| 2026-07-22 | 점간 자석 스냅 켜진 상태에서 보라색 점이 좌측 상단(0,0)에서 날아옴 | SVG `<circle>` 요소에 CSS `animate-ping` (scale keyframe) 적용 시 SVG 기본 origin (0,0) 기준 이동 잔상 착시 발생 | `animate-ping` 제거 후 해당 스냅 좌표(`cx, cy`)에 즉시 또렷하게 노출되도록 고정 인디케이터로 수정 |
 
 ---
 

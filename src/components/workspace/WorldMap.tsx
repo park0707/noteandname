@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   ChevronRight, ChevronDown, Layers, Plus, Move, Trash2, Unlock, ChevronsLeft, ChevronsRight, ChevronLeft, 
   MapPin, Swords, Castle, Mountain, Sparkles, 
@@ -374,7 +374,7 @@ export default function WorldMap({
    * 대용량 문자열을 재파싱/재래스터화하여 심각한 렌더링 지연이 발생합니다.
    * ObjectURL은 브라우저 Decoded Image Cache를 활용하여 이 비용을 원천 차단합니다.
    */
-  const getImageRenderUrl = (base64DataUrl: string | undefined): string | undefined => {
+  const getImageRenderUrl = useCallback((base64DataUrl: string | undefined): string | undefined => {
     if (!base64DataUrl) return undefined;
     // 이미 ObjectURL인 경우 (blob:) 그대로 반환
     if (base64DataUrl.startsWith('blob:')) return base64DataUrl;
@@ -397,7 +397,11 @@ export default function WorldMap({
     } catch {
       return base64DataUrl; // 변환 실패 시 원본 사용
     }
-  };
+  }, []);
+  
+  // --- 줌 수동 편집 상태 ---
+  const [isEditingZoom, setIsEditingZoom] = useState(false);
+  const [zoomInputVal, setZoomInputVal] = useState('');
 
   const handleImageFile = (file: File) => {
 
@@ -650,6 +654,11 @@ export default function WorldMap({
     return all;
   }, [elements]);
 
+  // 현재 맵(currentMapId) 기준 활성 요소 목록 메모이제이션 (매 렌더마다 반복 필터링하는 연산 오버헤드 원천 제거)
+  const currentActiveElements: MapElement[] = useMemo(() => {
+    return getAllActiveElementsForMap(currentMapId);
+  }, [getAllActiveElementsForMap, currentMapId]);
+
   const getElementsInSelectionBox = useCallback((
     start: { x: number; y: number },
     current: { x: number; y: number }
@@ -659,7 +668,7 @@ export default function WorldMap({
     const x2 = Math.max(start.x, current.x);
     const y2 = Math.max(start.y, current.y);
 
-    const activeEls = getAllActiveElementsForMap(currentMapId);
+    const activeEls = currentActiveElements;
     const selected: string[] = [];
 
     activeEls.forEach(el => {
@@ -689,7 +698,7 @@ export default function WorldMap({
     });
 
     return selected;
-  }, [currentMapId, getAllActiveElementsForMap]);
+  }, [currentActiveElements]);
 
   const handleGroupElements = useCallback(() => {
     if (selectedElementIds.length < 2) return;
@@ -2970,7 +2979,56 @@ export default function WorldMap({
               <div className={`w-px h-4 shrink-0 ${isDark ? 'bg-white/10' : 'bg-black/10'} hidden md:block`} />
               <div className={`flex items-center rounded-xl overflow-hidden text-xs border shrink-0 ${isDark ? 'border-white/[0.08] bg-black/20' : 'border-black/[0.08]'}`}>
                 <button onClick={() => setZoom(prev => Math.max(0.1, prev - 0.2))} className={`p-1.5 transition-colors shrink-0 ${isDark ? 'hover:bg-white/[0.06] text-gray-400 hover:text-white' : 'hover:bg-black/[0.04] text-gray-500'}`}><ZoomOut className="w-3.5 h-3.5 shrink-0" /></button>
-                <span className="px-2 font-mono text-[10px] font-bold text-[#7480E2] shrink-0">{Math.round(zoom * 100)}%</span>
+                {isEditingZoom ? (
+                  <input
+                    type="text"
+                    value={zoomInputVal}
+                    onChange={(e) => {
+                      // 규칙 2: 전부 지우는 것(빈 문자열)과 숫자 입력만 허용
+                      const val = e.target.value;
+                      if (val === '' || /^\d+$/.test(val)) {
+                        setZoomInputVal(val);
+                      }
+                    }}
+                    onBlur={() => {
+                      // 규칙 2, 3: 외부 클릭 시 반영 또는 복구
+                      setIsEditingZoom(false);
+                      const parsed = parseInt(zoomInputVal, 10);
+                      if (isNaN(parsed) || parsed < 10 || parsed > 400) {
+                        // 규칙 1, 2: 범위가 아니거나 숫자가 아니거나(전부 지우고 외부 클릭) 이전 값 복구
+                        return;
+                      }
+                      setZoom(parsed / 100);
+                    }}
+                    onKeyDown={(e) => {
+                      // 규칙 3: Enter 시 반영
+                      if (e.key === 'Enter') {
+                        setIsEditingZoom(false);
+                        const parsed = parseInt(zoomInputVal, 10);
+                        if (isNaN(parsed) || parsed < 10 || parsed > 400) {
+                          // 규칙 1: 범위가 아니거나 숫자가 아니면 이전 값 복구
+                          return;
+                        }
+                        setZoom(parsed / 100);
+                      } else if (e.key === 'Escape') {
+                        setIsEditingZoom(false);
+                      }
+                    }}
+                    autoFocus
+                    className="w-12 text-center font-mono text-[10px] font-bold text-[#7480E2] bg-transparent border-none outline-none focus:ring-0 px-1"
+                  />
+                ) : (
+                  <span 
+                    onClick={() => {
+                      setZoomInputVal(String(Math.round(zoom * 100)));
+                      setIsEditingZoom(true);
+                    }}
+                    className="px-2 font-mono text-[10px] font-bold text-[#7480E2] shrink-0 cursor-pointer hover:bg-[#5E6AD2]/10 rounded transition-colors duration-150 py-0.5"
+                    title="클릭하여 직접 줌 배율 수정 (10% ~ 400%)"
+                  >
+                    {Math.round(zoom * 100)}%
+                  </span>
+                )}
                 <button onClick={() => setZoom(prev => Math.min(4, prev + 0.2))} className={`p-1.5 transition-colors shrink-0 ${isDark ? 'hover:bg-white/[0.06] text-gray-400 hover:text-white' : 'hover:bg-black/[0.04] text-gray-500'}`}><ZoomIn className="w-3.5 h-3.5 shrink-0" /></button>
               </div>
               <button onClick={handleUndo} disabled={undoStack.length === 0} title="실행 취소 (Ctrl+Z)" className={`p-1.5 rounded-lg border transition-colors shrink-0 ${undoStack.length === 0 ? 'opacity-30 cursor-not-allowed border-gray-500/20 text-gray-500' : isDark ? 'border-white/[0.08] hover:bg-white/[0.06] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'}`}><RotateCcw className="w-3.5 h-3.5 shrink-0" /></button>
@@ -3857,15 +3915,15 @@ export default function WorldMap({
                       <path 
                         d={`M 0 0 H ${effectiveGridSize} M 0 0 V ${effectiveGridSize}`} 
                         fill="none" 
-                        stroke={isDark ? "rgba(255,255,255,0.28)" : "rgba(0,0,0,0.22)"} 
+                        stroke={isDark ? "rgba(255,255,255,0.42)" : "rgba(0,0,0,0.32)"} 
                         strokeWidth={Math.max(1, 1.2 / zoom)} 
-                        shapeRendering="geometricPrecision"
+                        shapeRendering="crispEdges"
                       />
                     </pattern>
                   </defs>
 
               {/* 1. 복수 개 업로드 가능한 이미지 요소 레이어 */}
-              {selectedSidebarTypes.includes('image') && getAllActiveElementsForMap(currentMapId)
+              {selectedSidebarTypes.includes('image') && currentActiveElements
                 .filter(el => el.type === 'image')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
@@ -3932,12 +3990,30 @@ export default function WorldMap({
                   );
                 })}
 
-              {/* 2. 배경 격자 Grid 렌더링 (무한 레이아웃 커버리지 x=-100000 y=-100000 w=300000 h=300000) */}
-              {gridVisible && (
-                <rect x="-100000" y="-100000" width="300000" height="300000" fill="url(#grid-pattern)" style={{ pointerEvents: 'none' }} />
-              )}
+              {/* 2. 배경 격자 Grid 렌더링 (Dynamic Viewport Grid Rendering으로 초거대 크기 브라우저 렌더링 디스카드 버그 원천 해결 및 GPU 래스터 부하 최소화) */}
+              {gridVisible && (() => {
+                const containerW = canvasContainerRef.current ? canvasContainerRef.current.clientWidth : (typeof window !== 'undefined' ? window.innerWidth : 1200);
+                const containerH = canvasContainerRef.current ? canvasContainerRef.current.clientHeight : (typeof window !== 'undefined' ? window.innerHeight : 800);
+                
+                const pad = 200;
+                const x = -pan.x / zoom - pad;
+                const y = -pan.y / zoom - pad;
+                const w = containerW / zoom + pad * 2;
+                const h = containerH / zoom + pad * 2;
+                
+                return (
+                  <rect 
+                    x={x} 
+                    y={y} 
+                    width={w} 
+                    height={h} 
+                    fill="url(#grid-pattern)" 
+                    style={{ pointerEvents: 'none' }} 
+                  />
+                );
+              })()}
               {/* 다각형 면적 레이어 */}
-              {layerVisibility.political && selectedSidebarTypes.includes('polygon') && getAllActiveElementsForMap(currentMapId)
+              {layerVisibility.political && selectedSidebarTypes.includes('polygon') && currentActiveElements
                 .filter(el => el.type === 'polygon')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
@@ -3998,7 +4074,7 @@ export default function WorldMap({
                 })}
 
               {/* 경로선 레이어 */}
-              {layerVisibility.routes && selectedSidebarTypes.includes('route') && getAllActiveElementsForMap(currentMapId)
+              {layerVisibility.routes && selectedSidebarTypes.includes('route') && currentActiveElements
                 .filter(el => el.type === 'route')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
@@ -4053,7 +4129,7 @@ export default function WorldMap({
                 })}
 
               {/* 붓 그리기 영역 레이어 */}
-              {layerVisibility.political && selectedSidebarTypes.includes('brush') && getAllActiveElementsForMap(currentMapId)
+              {layerVisibility.political && selectedSidebarTypes.includes('brush') && currentActiveElements
                 .filter(el => el.type === 'brush')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
@@ -4199,7 +4275,7 @@ export default function WorldMap({
               )}
 
               {/* 테두리 (사각형 및 원형) 레이어 */}
-              {layerVisibility.political && selectedSidebarTypes.includes('polygon') && getAllActiveElementsForMap(currentMapId)
+              {layerVisibility.political && selectedSidebarTypes.includes('polygon') && currentActiveElements
                 .filter(el => el.type === 'border_rect' || el.type === 'border_circle')
                 .map(el => {
                   const state = el.statesBySnapshot?.[activeSnapshotId];
@@ -4351,23 +4427,22 @@ export default function WorldMap({
                 />
               )}
 
-              {/* 점간(Node) 자석 스냅 핑(Ping) 시각적 가이드 인디케이터 */}
+              {/* 점간(Node) 자석 스냅 시각적 가이드 인디케이터 (animate-ping 제거로 (0,0) 이동 잔상 원천 차단) */}
               {hoveredPoint && hoveredPoint.isPointSnapped && (
                 <g className="pointer-events-none">
                   <circle
                     cx={hoveredPoint.x}
                     cy={hoveredPoint.y}
-                    r={12 / zoom}
+                    r={10 / zoom}
                     fill="none"
                     stroke="#A855F7"
                     strokeWidth={2 / zoom}
-                    className="animate-ping"
-                    opacity="0.8"
+                    opacity="0.85"
                   />
                   <circle
                     cx={hoveredPoint.x}
                     cy={hoveredPoint.y}
-                    r={6 / zoom}
+                    r={5 / zoom}
                     fill="#A855F7"
                     stroke="white"
                     strokeWidth={1.5 / zoom}
@@ -4551,32 +4626,45 @@ export default function WorldMap({
               );
             })()}
 
-            {/* 호버 라벨 오버레이 팝업 (마우스 포인터 우측 상단 노출, 글자 크기 2배 확대, 이름보기 toggle 지원) */}
+            {/* 호버 라벨 오버레이 팝업 (하한선 2배 확장 Min 16px 보장) */}
             {showElementNames && hoveredElementId && (() => {
               const el = elements.find(x => x.id === hoveredElementId);
               if (!el) return null;
+
+              // 화면 배율 하한선을 2배 확장하여 (Min 16px) 화면 확대 시에도 16px 미만으로 작아지지 않게 보장
+              const effectiveZoomForLabel = Math.max(1.0, zoom);
+              const targetScreenFontSize = Math.max(16, Math.min(22, Math.round(16 / Math.pow(effectiveZoomForLabel, 0.45))));
+              const effectiveFontSize = targetScreenFontSize / zoom;
+              const fontScale = effectiveFontSize / 16;
+
+              const labelHeight = 28 * fontScale;
+              const labelRx = 5 * fontScale;
+              const strokeWidth = 1.3 * fontScale;
 
               const getLabelWidth = (text: string): number => {
                 let width = 0;
                 for (let i = 0; i < text.length; i++) {
                   const code = text.charCodeAt(i);
                   if (code >= 0 && code <= 128) {
-                    width += 22;
+                    width += 10 * fontScale;
                   } else {
-                    width += 36;
+                    width += 18 * fontScale;
                   }
                 }
-                return width + 40;
+                return width + (18 * fontScale);
               };
+
+              const offsetX = 12 * fontScale;
+              const offsetY = 12 * fontScale;
 
               let pos = { x: 0, y: 0 };
               if (hoveredMousePos) {
                 // 마우스 커서의 바로 우측 상단에 띄우기
-                pos = { x: hoveredMousePos.x + 18, y: hoveredMousePos.y - 20 };
+                pos = { x: hoveredMousePos.x + offsetX, y: hoveredMousePos.y - offsetY };
               } else {
                 // Fallback (요소 앵커 위치)
                 if (el.type === 'pin') {
-                  pos = { x: (el.x || 0) + 16, y: (el.y || 0) - 30 };
+                  pos = { x: (el.x || 0) + offsetX, y: (el.y || 0) - (18 * fontScale) };
                 } else if (el.type === 'polygon' || el.type === 'route') {
                   const pts = el.points || [];
                   if (pts.length > 0) {
@@ -4586,36 +4674,36 @@ export default function WorldMap({
                       if (p.x > maxX) maxX = p.x;
                       if (p.y < minY) minY = p.y;
                     });
-                    pos = { x: maxX + 10, y: minY - 20 };
+                    pos = { x: maxX + offsetX, y: minY - (12 * fontScale) };
                   }
                 } else if (el.type === 'brush' && el.brushStrokes) {
                   const bbox = getBrushBoundingBox(el.brushStrokes);
-                  pos = { x: bbox.maxX + 10, y: bbox.minY - 20 };
+                  pos = { x: bbox.maxX + offsetX, y: bbox.minY - (12 * fontScale) };
                 } else if (el.type === 'border_rect' || el.type === 'image') {
-                  pos = { x: (el.bx || 0) + (el.bw || 0) + 10, y: (el.by || 0) - 20 };
+                  pos = { x: (el.bx || 0) + (el.bw || 0) + offsetX, y: (el.by || 0) - (12 * fontScale) };
                 } else if (el.type === 'border_circle') {
-                  pos = { x: (el.bx || 0) + (el.bw || 0) + 10, y: (el.by || 0) - (el.bh || 0) - 20 };
+                  pos = { x: (el.bx || 0) + (el.bw || 0) + offsetX, y: (el.by || 0) - (el.bh || 0) - (12 * fontScale) };
                 }
               }
 
               return (
                 <svg className="absolute inset-0 w-full h-full overflow-visible pointer-events-none select-none">
-                  <g filter="drop-shadow(0px 4px 10px rgba(0,0,0,0.4))">
+                  <g filter="drop-shadow(0px 3px 6px rgba(0,0,0,0.35))">
                     <rect
                       x={pos.x}
-                      y={pos.y - 40}
-                      rx="12"
+                      y={pos.y - (20 * fontScale)}
+                      rx={labelRx}
                       fill={isDark ? "#121316" : "#FFFFFF"}
                       stroke="#5E6AD2"
-                      strokeWidth="3"
+                      strokeWidth={strokeWidth}
                       opacity="0.96"
-                      height="56"
+                      height={labelHeight}
                       width={getLabelWidth(el.name)}
                     />
                     <text
-                      x={pos.x + 20}
-                      y={pos.y - 2}
-                      fontSize="32"
+                      x={pos.x + (9 * fontScale)}
+                      y={pos.y - (2 * fontScale)}
+                      fontSize={effectiveFontSize}
                       fontWeight="800"
                       fill={isDark ? "#A5B4FC" : "#4F46E5"}
                     >
@@ -4627,7 +4715,7 @@ export default function WorldMap({
             })()}
 
             {/* 4. 절대 배치형 거점 핀(Pin Marker) 리스트 */}
-            {layerVisibility.political && selectedSidebarTypes.includes('pin') && getAllActiveElementsForMap(currentMapId)
+            {layerVisibility.political && selectedSidebarTypes.includes('pin') && currentActiveElements
               .filter(el => el.type === 'pin')
               .map(el => {
                 const state = el.statesBySnapshot?.[activeSnapshotId];
@@ -5373,7 +5461,7 @@ export default function WorldMap({
                   />
 
                   {/* 미니맵 복수 이미지 요소 렌더링 */}
-                  {selectedSidebarTypes.includes('image') && getAllActiveElementsForMap(currentMapId)
+                  {selectedSidebarTypes.includes('image') && currentActiveElements
                     .filter(el => el.type === 'image')
                     .map(el => {
                       const state = el.statesBySnapshot?.[activeSnapshotId];
