@@ -4,7 +4,7 @@ import {
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search, Bookmark,
   PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square,
-  Upload, AlertTriangle, Image
+  Upload, AlertTriangle, Image, Tag
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
@@ -215,8 +215,10 @@ export default function WorldMap({
     characters: true // 캐릭터 마커
   });
 
-  // --- 마우스 호버 시 항목 이름 오버레이 상태 ---
+  // --- 마우스 호버 시 항목 이름 오버레이 상태 및 이름보기 토글 ---
   const [hoveredElementId, setHoveredElementId] = useState<string | null>(null);
+  const [hoveredMousePos, setHoveredMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [showElementNames, setShowElementNames] = useState(true);
 
   // --- 사이드바 항목 종류 필터 상태 ---
   const [selectedSidebarTypes, setSelectedSidebarTypes] = useState<string[]>([
@@ -1530,6 +1532,7 @@ export default function WorldMap({
     const currentCoords = getCanvasCoords(e.clientX, e.clientY);
     const snapped = applySnapping(currentCoords);
     setHoveredPoint(snapped);
+    setHoveredMousePos(currentCoords);
 
     // 붓 그리기 모드 드래그 중인 경우 (가장자리 자석 스냅 적용)
     if (editMode === 'draw_brush' && isDrawingBrush) {
@@ -3015,6 +3018,19 @@ export default function WorldMap({
                     미니맵 {showMinimap ? '표시 중' : '숨김'}
                   </button>
 
+                  {/* 이름보기 토글 버튼 */}
+                  <button
+                    onClick={() => setShowElementNames(!showElementNames)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
+                      showElementNames
+                        ? 'bg-[#5E6AD2]/15 border-[#5E6AD2]/30 text-[#7480E2]'
+                        : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.05]'
+                    }`}
+                  >
+                    <Tag className="w-3.5 h-3.5 shrink-0" />
+                    이름보기 {showElementNames ? '켜짐' : '꺼짐'}
+                  </button>
+
                   <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
 
                   {/* 거리 측정 도구 */}
@@ -3400,6 +3416,7 @@ export default function WorldMap({
                     </div>
 
                     {[
+                      { Icon: Tag, label: '이름보기', checked: showElementNames, onChange: setShowElementNames },
                       { Icon: Magnet, label: '격자 자석 스냅', checked: gridSnapEnabled, onChange: setGridSnapEnabled },
                       { Icon: Magnet, label: '점간(Node) 자동 스냅', checked: pointSnapEnabled, onChange: setPointSnapEnabled },
                     ].map(({ Icon, label, checked, onChange }) => (
@@ -3493,6 +3510,7 @@ export default function WorldMap({
                       { label: '정치/국경', checked: layerVisibility.political, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, political: v })) },
                       { label: '이동 교역로', checked: layerVisibility.routes, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, routes: v })) },
                       { label: '인물 위치', checked: layerVisibility.characters, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, characters: v })) },
+                      { label: '요소 이름', checked: showElementNames, onChange: setShowElementNames },
                       { label: '안개(Fog)', checked: fogVisible, onChange: setFogVisible },
                     ].map(({ label, checked, onChange }) => (
                       <button
@@ -4533,8 +4551,8 @@ export default function WorldMap({
               );
             })()}
 
-            {/* 호버 라벨 오버레이 팝업 (IIFE 바깥 스코프 배치로 컴파일 에러 예방) */}
-            {hoveredElementId && (() => {
+            {/* 호버 라벨 오버레이 팝업 (마우스 포인터 우측 상단 노출, 글자 크기 2배 확대, 이름보기 toggle 지원) */}
+            {showElementNames && hoveredElementId && (() => {
               const el = elements.find(x => x.id === hoveredElementId);
               if (!el) return null;
 
@@ -4543,56 +4561,62 @@ export default function WorldMap({
                 for (let i = 0; i < text.length; i++) {
                   const code = text.charCodeAt(i);
                   if (code >= 0 && code <= 128) {
-                    width += 10;
+                    width += 22;
                   } else {
-                    width += 16;
+                    width += 36;
                   }
                 }
-                return width + 16;
+                return width + 40;
               };
 
               let pos = { x: 0, y: 0 };
-              if (el.type === 'pin') {
-                pos = { x: el.x || 0, y: (el.y || 0) - 35 };
-              } else if (el.type === 'polygon' || el.type === 'route') {
-                const pts = el.points || [];
-                if (pts.length > 0) {
-                  let minX = pts[0].x;
-                  let minY = pts[0].y;
-                  pts.forEach(p => {
-                    if (p.x < minX) minX = p.x;
-                    if (p.y < minY) minY = p.y;
-                  });
-                  pos = { x: minX, y: minY - 20 };
+              if (hoveredMousePos) {
+                // 마우스 커서의 바로 우측 상단에 띄우기
+                pos = { x: hoveredMousePos.x + 18, y: hoveredMousePos.y - 20 };
+              } else {
+                // Fallback (요소 앵커 위치)
+                if (el.type === 'pin') {
+                  pos = { x: (el.x || 0) + 16, y: (el.y || 0) - 30 };
+                } else if (el.type === 'polygon' || el.type === 'route') {
+                  const pts = el.points || [];
+                  if (pts.length > 0) {
+                    let maxX = pts[0].x;
+                    let minY = pts[0].y;
+                    pts.forEach(p => {
+                      if (p.x > maxX) maxX = p.x;
+                      if (p.y < minY) minY = p.y;
+                    });
+                    pos = { x: maxX + 10, y: minY - 20 };
+                  }
+                } else if (el.type === 'brush' && el.brushStrokes) {
+                  const bbox = getBrushBoundingBox(el.brushStrokes);
+                  pos = { x: bbox.maxX + 10, y: bbox.minY - 20 };
+                } else if (el.type === 'border_rect' || el.type === 'image') {
+                  pos = { x: (el.bx || 0) + (el.bw || 0) + 10, y: (el.by || 0) - 20 };
+                } else if (el.type === 'border_circle') {
+                  pos = { x: (el.bx || 0) + (el.bw || 0) + 10, y: (el.by || 0) - (el.bh || 0) - 20 };
                 }
-              } else if (el.type === 'brush' && el.brushStrokes) {
-                const bbox = getBrushBoundingBox(el.brushStrokes);
-                pos = { x: bbox.minX, y: bbox.minY - 20 };
-              } else if (el.type === 'border_rect' || el.type === 'image') {
-                pos = { x: el.bx || 0, y: (el.by || 0) - 20 };
-              } else if (el.type === 'border_circle') {
-                pos = { x: (el.bx || 0) - (el.bw || 0), y: (el.by || 0) - (el.bh || 0) - 20 };
               }
 
               return (
                 <svg className="absolute inset-0 w-full h-full overflow-visible pointer-events-none select-none">
-                  <g>
+                  <g filter="drop-shadow(0px 4px 10px rgba(0,0,0,0.4))">
                     <rect
-                      x={pos.x - 6}
-                      y={pos.y - 18}
-                      rx="6"
+                      x={pos.x}
+                      y={pos.y - 40}
+                      rx="12"
                       fill={isDark ? "#121316" : "#FFFFFF"}
                       stroke="#5E6AD2"
-                      strokeWidth="1.5"
-                      opacity="0.95"
-                      height="28"
+                      strokeWidth="3"
+                      opacity="0.96"
+                      height="56"
                       width={getLabelWidth(el.name)}
                     />
                     <text
-                      x={pos.x}
-                      y={pos.y}
-                      fontSize="15"
-                      fontWeight="bold"
+                      x={pos.x + 20}
+                      y={pos.y - 2}
+                      fontSize="32"
+                      fontWeight="800"
                       fill={isDark ? "#A5B4FC" : "#4F46E5"}
                     >
                       {el.name}
