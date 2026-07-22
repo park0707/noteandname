@@ -285,7 +285,7 @@ export default function WorldMap({
     };
   }, [isDraggingMinimap, resizeDir, isNavigatingMinimap, dragMinimapStart, resizeMinimapStart, navMinimapStart, zoom]);
   const [tempPoints, setTempPoints] = useState<Array<{ x: number; y: number }>>([]);
-  const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number } | null>(null);
+  const [hoveredPoint, setHoveredPoint] = useState<{ x: number; y: number; isPointSnapped?: boolean } | null>(null);
   const [activeAnchorPointIdx, setActiveAnchorPointIdx] = useState<number | null>(null);
   const [activeBorderResizeDirection, setActiveBorderResizeDirection] = useState<'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | null>(null);
 
@@ -999,37 +999,91 @@ export default function WorldMap({
     return { x, y };
   };
   // --- 스냅(Snapping) 연산 함수 ---
-  const applySnapping = (coords: { x: number; y: number }): { x: number; y: number } => {
+  const applySnapping = (coords: { x: number; y: number }, excludeElementId?: string): { x: number; y: number; isPointSnapped?: boolean } => {
     let result = { ...coords };
     
-    // 1. 포인트 스냅 (기존 요소들의 꼭짓점 및 핀 좌표와 가깝다면 자동 자석 효과)
+    // 1. 점간(Node) 포인트 스냅 (기존 모든 요소들의 꼭짓점, 핀, 붓 궤적 지점, 테두리 코너/중심점과 가깝다면 자동 자석 효과)
     if (pointSnapEnabled) {
-      const snapThreshold = 12 / zoom; // 화면상 일정한 자석 임계 거리
+      const snapThreshold = 14 / zoom; // 화면상 일정한 자석 임계 거리
+      let minDistance = snapThreshold;
+      let snappedPt: { x: number; y: number } | null = null;
+
       for (const el of elements) {
         if (el.parentMapId !== currentMapId) continue;
-        
-        // 핀형 요소 체크
+        if (excludeElementId && el.id === excludeElementId) continue;
+
+        // 핀형 요소 (pin)
         if (el.type === 'pin' && el.x !== undefined && el.y !== undefined) {
           const dist = Math.hypot(coords.x - el.x, coords.y - el.y);
-          if (dist < snapThreshold) {
-            return { x: el.x, y: el.y };
+          if (dist < minDistance) {
+            minDistance = dist;
+            snappedPt = { x: el.x, y: el.y };
           }
         }
         
-        // 다각형 꼭짓점 체크
+        // 영역/경로 꼭짓점 (polygon, route)
         if (el.points) {
           for (const pt of el.points) {
             const dist = Math.hypot(coords.x - pt.x, coords.y - pt.y);
-            if (dist < snapThreshold) {
-              return { x: pt.x, y: pt.y };
+            if (dist < minDistance) {
+              minDistance = dist;
+              snappedPt = { x: pt.x, y: pt.y };
+            }
+          }
+        }
+
+        // 붓 궤적 지점들 (brushStrokes)
+        if (el.brushStrokes) {
+          for (const stroke of el.brushStrokes) {
+            for (const pt of stroke) {
+              const dist = Math.hypot(coords.x - pt.x, coords.y - pt.y);
+              if (dist < minDistance) {
+                minDistance = dist;
+                snappedPt = { x: pt.x, y: pt.y };
+              }
+            }
+          }
+        }
+
+        // 사각/원형 테두리 코너 & 중심점 (border_rect, border_circle)
+        if ((el.type === 'border_rect' || el.type === 'border_circle') && el.bx !== undefined && el.by !== undefined) {
+          const bw = el.bw || 100;
+          const bh = el.bh || 100;
+          const corners = [
+            { x: el.bx, y: el.by },
+            { x: el.bx + bw, y: el.by },
+            { x: el.bx, y: el.by + bh },
+            { x: el.bx + bw, y: el.by + bh },
+            { x: el.bx + bw / 2, y: el.by + bh / 2 }
+          ];
+          for (const pt of corners) {
+            const dist = Math.hypot(coords.x - pt.x, coords.y - pt.y);
+            if (dist < minDistance) {
+              minDistance = dist;
+              snappedPt = { x: pt.x, y: pt.y };
             }
           }
         }
       }
+
+      // 캐릭터 위치 (characterPositions)
+      if (activeSnapshotId && characterPositions[activeSnapshotId]) {
+        Object.values(characterPositions[activeSnapshotId]).forEach(pos => {
+          const dist = Math.hypot(coords.x - pos.x, coords.y - pos.y);
+          if (dist < minDistance) {
+            minDistance = dist;
+            snappedPt = { x: pos.x, y: pos.y };
+          }
+        });
+      }
+
+      if (snappedPt) {
+        return { x: snappedPt.x, y: snappedPt.y, isPointSnapped: true };
+      }
     }
     
     // 2. 격자 스냅
-    if (gridSnapEnabled) {
+    if (gridSnapEnabled && gridSize > 0) {
       result.x = Math.round(result.x / gridSize) * gridSize;
       result.y = Math.round(result.y / gridSize) * gridSize;
     }
@@ -1534,6 +1588,45 @@ export default function WorldMap({
         }
       }
 
+      // 점간(Node) 자석 스냅 활성화 시: 드래그 중인 핀 및 꼭짓점이 다른 요소의 점에 접근하면 1:1 자석 착붙
+      if (pointSnapEnabled && Object.keys(dragInitialElementsCoords).length > 0) {
+        const snapThreshold = 14 / zoom;
+        let minPtDist = snapThreshold;
+        let nodeSnappedPt: { x: number; y: number } | null = null;
+        let ptDx = finalDx;
+        let ptDy = finalDy;
+
+        for (const [elId, initial] of Object.entries(dragInitialElementsCoords)) {
+          const checkPoints: Array<{ x: number; y: number }> = [];
+          if (initial.x !== undefined && initial.y !== undefined) {
+            checkPoints.push({ x: initial.x, y: initial.y });
+          }
+          if (initial.points && Array.isArray(initial.points)) {
+            (initial.points as Array<{ x: number; y: number }>).forEach(pt => checkPoints.push(pt));
+          }
+
+          for (const pt of checkPoints) {
+            const curPt = { x: pt.x + rawDx, y: pt.y + rawDy };
+            const snapped = applySnapping(curPt, elId);
+            if (snapped.isPointSnapped) {
+              const dist = Math.hypot(snapped.x - curPt.x, snapped.y - curPt.y);
+              if (dist < minPtDist) {
+                minPtDist = dist;
+                ptDx = snapped.x - pt.x;
+                ptDy = snapped.y - pt.y;
+                nodeSnappedPt = { x: snapped.x, y: snapped.y };
+              }
+            }
+          }
+        }
+
+        if (nodeSnappedPt !== null) {
+          finalDx = ptDx;
+          finalDy = ptDy;
+          setHoveredPoint({ x: nodeSnappedPt.x, y: nodeSnappedPt.y, isPointSnapped: true });
+        }
+      }
+
       setElements(prev => prev.map(item => {
         const initial = dragInitialElementsCoords[item.id];
         if (!initial) return item;
@@ -1584,12 +1677,14 @@ export default function WorldMap({
       return;
     }
 
-    // 다각형 꼭짓점 드래그 편집 모드
+    // 다각형 꼭짓점 드래그 편집 모드 (점간 자석 스냅 및 핑 인디케이터 연동)
     if (editMode === 'select' && activeAnchorPointIdx !== null && selectedElementId) {
+      const anchorSnapped = applySnapping(currentCoords, selectedElementId);
+      setHoveredPoint(anchorSnapped);
       setElements(prev => prev.map(el => {
         if (el.id === selectedElementId && el.points) {
           const nextPoints = [...el.points];
-          nextPoints[activeAnchorPointIdx] = snapped;
+          nextPoints[activeAnchorPointIdx] = { x: anchorSnapped.x, y: anchorSnapped.y };
           return { ...el, points: nextPoints };
         }
         return el;
@@ -3885,6 +3980,30 @@ export default function WorldMap({
                   strokeWidth="3.5"
                   strokeDasharray="5,5"
                 />
+              )}
+
+              {/* 점간(Node) 자석 스냅 핑(Ping) 시각적 가이드 인디케이터 */}
+              {hoveredPoint && hoveredPoint.isPointSnapped && (
+                <g className="pointer-events-none">
+                  <circle
+                    cx={hoveredPoint.x}
+                    cy={hoveredPoint.y}
+                    r={12 / zoom}
+                    fill="none"
+                    stroke="#A855F7"
+                    strokeWidth={2 / zoom}
+                    className="animate-ping"
+                    opacity="0.8"
+                  />
+                  <circle
+                    cx={hoveredPoint.x}
+                    cy={hoveredPoint.y}
+                    r={6 / zoom}
+                    fill="#A855F7"
+                    stroke="white"
+                    strokeWidth={1.5 / zoom}
+                  />
+                </g>
               )}
 
               {/* 임시 그리기 다각형 및 가이드선 */}
