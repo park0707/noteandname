@@ -533,6 +533,7 @@ export default function WorldMap({
   const [showEpModal, setShowEpModal] = useState(false);
   const [epSearchInput, setEpSearchInput] = useState('');
   const [epFolderOpen, setEpFolderOpen] = useState<Set<string>>(new Set());
+  const [lastSelectedSidebarId, setLastSelectedSidebarId] = useState<string | null>(null);
 
   const [isEditingOpacity, setIsEditingOpacity] = useState(false);
   const [opacityInputVal, setOpacityInputVal] = useState('');
@@ -2501,11 +2502,12 @@ export default function WorldMap({
     return list;
   };
 
-  // --- 트리 노드 클릭 시 해당 지도/요소로 이동 ---
-  const handleTreeNodeClick = (node: FlatTreeNode) => {
+  // --- 트리 노드 클릭 시 해당 지도/요소로 이동 (Ctrl: 다중선택, Shift: 범위선택) ---
+  const handleTreeNodeClick = (node: FlatTreeNode, e?: React.MouseEvent) => {
     if (node.id === 'root') {
       setMapPath([{ id: 'root', name: '세계 지도' }]);
       selectSingleElement(null);
+      setLastSelectedSidebarId(null);
       setIsDetailOpen(false);
       return;
     }
@@ -2513,9 +2515,68 @@ export default function WorldMap({
     if (node.childMapId && node.childMapId !== '') {
       setMapPath([...node.path, { id: node.childMapId, name: node.name }]);
       selectSingleElement(null);
+      setLastSelectedSidebarId(null);
       setIsDetailOpen(false);
+      return;
+    }
+
+    setMapPath(node.path);
+
+    // 현재 표시 중인 전체 사이드바 플랫 노드 트리를 가져옴
+    const currentNodes = buildFlatTree().filter(n => !layoutSearchQuery || n.name.toLowerCase().includes(layoutSearchQuery.toLowerCase()));
+
+    if (e && (e.ctrlKey || e.metaKey)) {
+      // 1. Ctrl / Cmd 누르고 클릭 시: 누른 항목들만 추가/해제 개별 토글 다중 선택
+      const targetIds = node.type === 'group' 
+        ? collectAllMemberElements([node.id]).map(m => m.id)
+        : [node.id];
+
+      setSelectedElementIds(prev => {
+        const isAlreadySelected = prev.includes(node.id);
+        if (isAlreadySelected) {
+          return prev.filter(id => !targetIds.includes(id));
+        } else {
+          return Array.from(new Set([...prev, ...targetIds]));
+        }
+      });
+      setSelectedElementId(node.id);
+      setLastSelectedSidebarId(node.id);
+    } else if (e && e.shiftKey && lastSelectedSidebarId) {
+      // 2. Shift 누르고 클릭 시: 이전 선택 항목부터 현재 항목 사이의 모든 항목 다중 선택 (범위 선택)
+      const startIdx = currentNodes.findIndex(n => n.id === lastSelectedSidebarId);
+      const endIdx = currentNodes.findIndex(n => n.id === node.id);
+
+      if (startIdx !== -1 && endIdx !== -1) {
+        const from = Math.min(startIdx, endIdx);
+        const to = Math.max(startIdx, endIdx);
+        const rangeNodes = currentNodes.slice(from, to + 1);
+
+        let allRangeIds: string[] = [];
+        rangeNodes.forEach(n => {
+          if (n.id === 'root') return;
+          if (n.type === 'group') {
+            const members = collectAllMemberElements([n.id]).map(m => m.id);
+            allRangeIds.push(...members);
+          } else {
+            allRangeIds.push(n.id);
+          }
+        });
+        allRangeIds = Array.from(new Set(allRangeIds));
+
+        setSelectedElementIds(allRangeIds);
+        setSelectedElementId(node.id);
+      } else {
+        if (node.type === 'group') {
+          const groupMembers = collectAllMemberElements([node.id]).map(m => m.id);
+          setSelectedElementId(node.id);
+          setSelectedElementIds(groupMembers);
+        } else {
+          selectSingleElement(node.id);
+        }
+        setLastSelectedSidebarId(node.id);
+      }
     } else {
-      setMapPath(node.path);
+      // 3. 일반 클릭 시 (단일 선택)
       if (node.type === 'group') {
         const groupMembers = collectAllMemberElements([node.id]).map(m => m.id);
         setSelectedElementId(node.id);
@@ -2523,13 +2584,15 @@ export default function WorldMap({
       } else {
         selectSingleElement(node.id);
       }
-      if (node.element) {
-        loadElementToEdit(node.element);
-        setIsDetailOpen(true);
-        setTimeout(() => {
-          if (node.element) focusOnElement(node.element);
-        }, 50);
-      }
+      setLastSelectedSidebarId(node.id);
+    }
+
+    if (node.element) {
+      loadElementToEdit(node.element);
+      setIsDetailOpen(true);
+      setTimeout(() => {
+        if (node.element) focusOnElement(node.element);
+      }, 50);
     }
   };
 
@@ -3151,7 +3214,7 @@ export default function WorldMap({
                           onDragOver={(e) => handleSidebarDragOver(e, node.id)}
                           onDrop={(e) => handleSidebarDrop(e, node.id)}
                           onDragEnd={handleSidebarDragEnd}
-                          onClick={() => handleTreeNodeClick(node)}
+                          onClick={(e) => handleTreeNodeClick(node, e)}
                           style={{ paddingLeft: `${node.depth * 12 + 6}px` }}
                           className={`flex items-center justify-between py-1 px-2 rounded text-xs cursor-grab active:cursor-grabbing transition-all duration-150 ${
                             sidebarDragSourceId === node.id ? 'opacity-40 scale-95 border border-dashed border-[#5E6AD2]' : ''
