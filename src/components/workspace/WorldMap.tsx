@@ -4,7 +4,7 @@ import {
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search, Bookmark,
   PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square,
-  Upload, AlertTriangle, Image, Tag, Paintbrush, Route, Folder, FolderOpen, Loader2
+  Upload, AlertTriangle, Image, Tag, Paintbrush, Route, Folder, FolderOpen, Loader2, FileText, User
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
@@ -36,7 +36,8 @@ export interface MapElement {
   points?: Array<{ x: number; y: number }>;
   color?: string;
   opacity?: number;
-  texture?: 'none' | 'slash' | 'dots' | 'sand'; // 지형 텍스처
+  texture?: string; // 지형 텍스처 (none, slash, dots, sand, peaks, waves, swamp_cross, grid_mesh, contour, volcano_hash, zigzag, herringbone, checkerboard, hexagon, rings, stripes_v, stripes_h, diamond, stars, brick, custom_image 등)
+  customTextureImage?: string; // 커스텀 배경/텍스처 이미지 (base64 또는 URL)
   
   // Border (rect/circle) 전용 속성
   bx?: number;   // 사각형: 좌상단 X, 원: 중심 X
@@ -55,7 +56,8 @@ export interface MapElement {
   // 상세 속성
   summary?: string;
   description?: string;
-  category?: string; // 유형: 왕국, 제국, 숲, 던전, 자연 등
+  category?: string; // (구) 유형: 왕국, 제국, 숲, 던전, 자연 등
+  categoryTags?: string[]; // 커스텀 다중 유형 태그 ID 목록
   imageAttachment?: string; // base64 또는 이미지 url
   tags?: string[]; // 몬스터, 아이템, 세력 등 태그
   associatedCharacters?: string[]; // Node ID 배열 (관련 인물)
@@ -507,18 +509,44 @@ export default function WorldMap({
 
   // --- 상세 정보창 모드 및 상태 ---
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const TAG_COLOR_PALETTE = [
+    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', 
+    '#EC4899', '#06B6D4', '#F97316', '#14B8A6', '#6366F1', 
+    '#A855F7', '#D97706', '#E11D48', '#0284C7', '#059669'
+  ];
+
+  // --- 지도 전용 커스텀 태그 시스템 상태 ---
+  interface MapTagItem {
+    id: string;
+    name: string;
+    color: string;
+  }
+  const [mapTags, setMapTags] = useState<MapTagItem[]>([]);
+  const [elementEditCategoryTags, setElementEditCategoryTags] = useState<string[]>([]);
+  const [showTagModal, setShowTagModal] = useState(false);
+  const [tagSearchInput, setTagSearchInput] = useState('');
+  const [newTagNameInput, setNewTagNameInput] = useState('');
+
+  // --- 인물/에피소드 선택 모달 상태 ---
+  const [showCharModal, setShowCharModal] = useState(false);
+  const [charSearchInput, setCharSearchInput] = useState('');
+  const [showEpModal, setShowEpModal] = useState(false);
+  const [epSearchInput, setEpSearchInput] = useState('');
+  const [epFolderOpen, setEpFolderOpen] = useState<Set<string>>(new Set());
+
+  const [isEditingOpacity, setIsEditingOpacity] = useState(false);
+  const [opacityInputVal, setOpacityInputVal] = useState('');
+
   const [elementEditName, setElementEditName] = useState('');
-  const [elementEditCategory, setElementEditCategory] = useState('kingdom');
   const [elementEditSummary, setElementEditSummary] = useState('');
   const [elementEditDesc, setElementEditDesc] = useState('');
   const [elementEditColor, setElementEditColor] = useState('#5E6AD2');
   const [elementEditOpacity, setElementEditOpacity] = useState(30);
-  const [elementEditTexture, setElementEditTexture] = useState<'none' | 'slash' | 'dots' | 'sand'>('none');
+  const [elementEditTexture, setElementEditTexture] = useState<string>('none');
+  const [elementEditCustomTextureImage, setElementEditCustomTextureImage] = useState<string>('');
   const [elementEditIcon, setElementEditIcon] = useState<'castle' | 'swords' | 'mountain' | 'mappin'>('mappin');
   const [elementEditBorderStyle, setElementEditBorderStyle] = useState<'solid' | 'dashed' | 'dotted'>('solid');
   const [elementEditBorderWidth, setElementEditBorderWidth] = useState<number>(3);
-  const [elementEditTags, setElementEditTags] = useState<string[]>([]);
-  const [newTagInput, setNewTagInput] = useState('');
   const [elementEditChars, setElementEditChars] = useState<string[]>([]);
   const [elementEditEpisodes, setElementEditEpisodes] = useState<string[]>([]);
   const [elementEditChildMap, setElementEditChildMap] = useState('');
@@ -2650,16 +2678,16 @@ export default function WorldMap({
     const state = el.statesBySnapshot?.[activeSnapshotId];
     
     setElementEditName(state?.name || el.name);
-    setElementEditCategory(el.category || 'kingdom');
+    setElementEditCategoryTags(el.categoryTags || []);
     setElementEditSummary(el.summary || '');
     setElementEditDesc(state?.description || el.description || '');
     setElementEditColor(state?.color || el.color || '#5E6AD2');
     setElementEditOpacity(el.opacity !== undefined ? Math.round(el.opacity * 100) : 100);
     setElementEditTexture(el.texture || 'none');
+    setElementEditCustomTextureImage(el.customTextureImage || '');
     setElementEditIcon(el.icon || 'mappin');
     setElementEditBorderStyle(el.borderStyle || 'solid');
     setElementEditBorderWidth(el.type === 'brush' ? (el.brushWidth || 20) : (el.borderWidth || 3));
-    setElementEditTags(el.tags || []);
     setElementEditChars(el.associatedCharacters || []);
     setElementEditEpisodes(el.associatedEpisodes || []);
     setElementEditChildMap(el.childMapId || '');
@@ -2675,15 +2703,15 @@ export default function WorldMap({
         // 스냅샷 방식 키프레임 상태 제어 분기
         const baseUpdate = {
           ...el,
-          category: elementEditCategory,
+          categoryTags: elementEditCategoryTags,
           summary: elementEditSummary,
           opacity: elementEditOpacity / 100,
           texture: elementEditTexture,
+          customTextureImage: elementEditCustomTextureImage,
           icon: elementEditIcon,
           borderStyle: elementEditBorderStyle,
           borderWidth: elementEditBorderWidth,
           brushWidth: el.type === 'brush' ? elementEditBorderWidth : el.brushWidth,
-          tags: elementEditTags,
           associatedCharacters: elementEditChars,
           associatedEpisodes: elementEditEpisodes,
           childMapId: elementEditChildMap
@@ -2786,12 +2814,6 @@ export default function WorldMap({
     } else if (selectedElementIds.includes(id)) {
       setSelectedElementIds(prev => prev.filter(x => x !== id));
     }
-  };
-
-  // --- 지형 텍스처 패턴 URL 획득 ---
-  const getTextureUrl = (tex: string | undefined): string => {
-    if (!tex || tex === 'none') return 'transparent';
-    return `url(#pattern-mountain-${tex})`;
   };
 
 
@@ -2938,21 +2960,7 @@ export default function WorldMap({
   return (
     <div className="flex-1 flex overflow-hidden h-full select-none relative font-sans">
       
-      {/* SVG 지형 패턴 정의 */}
-      <svg className="absolute w-0 h-0 pointer-events-none">
-        <defs>
-          <pattern id="pattern-mountain-slash" width="10" height="10" patternUnits="userSpaceOnUse">
-            <line x1="0" y1="10" x2="10" y2="0" stroke="#8B7D6B" strokeWidth="1.5" opacity="0.4" />
-          </pattern>
-          <pattern id="pattern-mountain-dots" width="12" height="12" patternUnits="userSpaceOnUse">
-            <circle cx="6" cy="6" r="2" fill="#2E7D32" opacity="0.3" />
-          </pattern>
-          <pattern id="pattern-mountain-sand" width="8" height="8" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="2" r="0.8" fill="#E5A93B" opacity="0.4" />
-            <circle cx="6" cy="6" r="0.8" fill="#D4AC0D" opacity="0.4" />
-          </pattern>
-        </defs>
-      </svg>
+      {/* SVG 지형 패턴 정의는 아래 캔버스 SVG <defs>로 통합되었습니다 */}
 
       {/* 좌측 레이어 관리 바 (접기/펼치기 포함) */}
       <div className="relative shrink-0 h-full flex">
@@ -4260,6 +4268,70 @@ export default function WorldMap({
                         shapeRendering="crispEdges"
                       />
                     </pattern>
+                    {/* 지형 텍스처 패턴 - 캔버스 SVG 내부에 정의해야 url(#...) 참조 가능 */}
+                    <pattern id="pattern-mountain-slash" width="10" height="10" patternUnits="userSpaceOnUse">
+                      <line x1="0" y1="10" x2="10" y2="0" stroke="#8B7D6B" strokeWidth="1.5" opacity="0.6" />
+                    </pattern>
+                    <pattern id="pattern-mountain-dots" width="12" height="12" patternUnits="userSpaceOnUse">
+                      <circle cx="6" cy="6" r="2" fill="#2E7D32" opacity="0.5" />
+                    </pattern>
+                    <pattern id="pattern-mountain-sand" width="8" height="8" patternUnits="userSpaceOnUse">
+                      <circle cx="2" cy="2" r="0.8" fill="#E5A93B" opacity="0.6" />
+                      <circle cx="6" cy="6" r="0.8" fill="#D4AC0D" opacity="0.6" />
+                    </pattern>
+                    <pattern id="pattern-mountain-peaks" width="20" height="20" patternUnits="userSpaceOnUse">
+                      <path d="M 0 20 L 10 4 L 20 20 Z" fill="none" stroke="#9CA3AF" strokeWidth="1.5" opacity="0.6" />
+                    </pattern>
+                    <pattern id="pattern-mountain-waves" width="24" height="12" patternUnits="userSpaceOnUse">
+                      <path d="M 0 6 Q 6 0, 12 6 T 24 6" fill="none" stroke="#60A5FA" strokeWidth="1.8" opacity="0.55" />
+                    </pattern>
+                    <pattern id="pattern-mountain-swamp_cross" width="14" height="14" patternUnits="userSpaceOnUse">
+                      <line x1="7" y1="2" x2="7" y2="12" stroke="#34D399" strokeWidth="1.5" opacity="0.6" />
+                      <line x1="2" y1="7" x2="12" y2="7" stroke="#34D399" strokeWidth="1.5" opacity="0.6" />
+                    </pattern>
+                    <pattern id="pattern-mountain-grid_mesh" width="16" height="16" patternUnits="userSpaceOnUse">
+                      <path d="M 16 0 L 0 0 0 16" fill="none" stroke="#A3A3A3" strokeWidth="1.2" strokeDasharray="2,3" opacity="0.5" />
+                    </pattern>
+                    <pattern id="pattern-mountain-contour" width="28" height="28" patternUnits="userSpaceOnUse">
+                      <path d="M 0 14 C 7 4, 21 24, 28 14" fill="none" stroke="#F59E0B" strokeWidth="1.5" opacity="0.5" />
+                    </pattern>
+                    <pattern id="pattern-mountain-volcano_hash" width="14" height="14" patternUnits="userSpaceOnUse">
+                      <line x1="0" y1="0" x2="14" y2="14" stroke="#F87171" strokeWidth="1.5" opacity="0.55" />
+                      <line x1="14" y1="0" x2="0" y2="14" stroke="#F87171" strokeWidth="1.5" opacity="0.55" />
+                    </pattern>
+                    {/* 신규 텍스처 무늬 패턴 10종 추가 */}
+                    <pattern id="pattern-mountain-zigzag" width="16" height="16" patternUnits="userSpaceOnUse">
+                      <path d="M 0 4 L 4 0 L 8 4 L 12 0 L 16 4 M 0 12 L 4 8 L 8 12 L 12 8 L 16 12" fill="none" stroke="#8B5CF6" strokeWidth="1.4" opacity="0.6" />
+                    </pattern>
+                    <pattern id="pattern-mountain-herringbone" width="16" height="16" patternUnits="userSpaceOnUse">
+                      <path d="M 0 0 L 8 8 L 16 0 M 0 8 L 8 16 L 16 8" fill="none" stroke="#D97706" strokeWidth="1.4" opacity="0.6" />
+                    </pattern>
+                    <pattern id="pattern-mountain-checkerboard" width="16" height="16" patternUnits="userSpaceOnUse">
+                      <rect x="0" y="0" width="8" height="8" fill="#6B7280" opacity="0.25" />
+                      <rect x="8" y="8" width="8" height="8" fill="#6B7280" opacity="0.25" />
+                    </pattern>
+                    <pattern id="pattern-mountain-hexagon" width="24" height="24" patternUnits="userSpaceOnUse">
+                      <polygon points="12,2 22,7 22,17 12,22 2,17 2,7" fill="none" stroke="#10B981" strokeWidth="1.3" opacity="0.5" />
+                    </pattern>
+                    <pattern id="pattern-mountain-rings" width="20" height="20" patternUnits="userSpaceOnUse">
+                      <circle cx="10" cy="10" r="4" fill="none" stroke="#3B82F6" strokeWidth="1.2" opacity="0.5" />
+                      <circle cx="10" cy="10" r="8" fill="none" stroke="#3B82F6" strokeWidth="1" opacity="0.35" />
+                    </pattern>
+                    <pattern id="pattern-mountain-stripes_v" width="12" height="12" patternUnits="userSpaceOnUse">
+                      <line x1="6" y1="0" x2="6" y2="12" stroke="#64748B" strokeWidth="1.8" opacity="0.5" />
+                    </pattern>
+                    <pattern id="pattern-mountain-stripes_h" width="12" height="12" patternUnits="userSpaceOnUse">
+                      <line x1="0" y1="6" x2="12" y2="6" stroke="#64748B" strokeWidth="1.8" opacity="0.5" />
+                    </pattern>
+                    <pattern id="pattern-mountain-diamond" width="16" height="16" patternUnits="userSpaceOnUse">
+                      <polygon points="8,0 16,8 8,16 0,8" fill="none" stroke="#EC4899" strokeWidth="1.3" opacity="0.5" />
+                    </pattern>
+                    <pattern id="pattern-mountain-stars" width="20" height="20" patternUnits="userSpaceOnUse">
+                      <path d="M 10 2 L 12 7 L 17 7 L 13 10 L 15 15 L 10 12 L 5 15 L 7 10 L 3 7 L 8 7 Z" fill="#F59E0B" opacity="0.45" />
+                    </pattern>
+                    <pattern id="pattern-mountain-brick" width="20" height="12" patternUnits="userSpaceOnUse">
+                      <path d="M 0 0 H 20 V 12 H 0 Z M 0 6 H 20 M 10 0 V 6 M 0 6 V 12 M 20 6 V 12" fill="none" stroke="#78350F" strokeWidth="1.2" opacity="0.5" />
+                    </pattern>
                   </defs>
 
               {/* 1. 복수 개 업로드 가능한 이미지 요소 레이어 */}
@@ -4361,9 +4433,25 @@ export default function WorldMap({
                   if (!isVisible) return null;
 
                   const color = state?.color || el.color || '#5E6AD2';
-                  const opacity = el.opacity || 0.3;
+                  const opacity = (selectedElementId === el.id && isDetailOpen) ? (elementEditOpacity / 100) : (el.opacity !== undefined ? el.opacity : 0.3);
                   const ptsString = el.points?.map(p => `${p.x},${p.y}`).join(' ') || '';
                   const isSelected = isElementSelected(el.id);
+
+                  // 텍스처 오버레이를 위해 bounding box 계산
+                  const tex = (selectedElementId === el.id && isDetailOpen) ? elementEditTexture : el.texture;
+                  const customImg = (selectedElementId === el.id && isDetailOpen) ? elementEditCustomTextureImage : el.customTextureImage;
+                  const hasTex = tex && tex !== 'none' && el.points && el.points.length > 0;
+                  let bboxX = 0, bboxY = 0, bboxW = 0, bboxH = 0;
+                  if (hasTex && el.points) {
+                    const xs = el.points.map(p => p.x);
+                    const ys = el.points.map(p => p.y);
+                    bboxX = Math.min(...xs);
+                    bboxY = Math.min(...ys);
+                    bboxW = Math.max(...xs) - bboxX;
+                    bboxH = Math.max(...ys) - bboxY;
+                  }
+                  const clipId = `tex-clip-${el.id}`;
+                  const customPatternId = `pattern-custom-img-${el.id}`;
 
                   return (
                     <g 
@@ -4371,6 +4459,19 @@ export default function WorldMap({
                       onMouseEnter={() => setHoveredElementId(el.id)}
                       onMouseLeave={() => setHoveredElementId(null)}
                     >
+                      {/* clipPath 및 커스텀 이미지 패턴 정의 (텍스처용) */}
+                      {hasTex && (
+                        <defs>
+                          <clipPath id={clipId}>
+                            <polygon points={ptsString} />
+                          </clipPath>
+                          {tex === 'custom_image' && customImg && (
+                            <pattern id={customPatternId} width="120" height="120" patternUnits="userSpaceOnUse">
+                              <image href={customImg} width="120" height="120" preserveAspectRatio="xMidYMid slice" />
+                            </pattern>
+                          )}
+                        </defs>
+                      )}
                       {/* 본체 채우기 */}
                       <polygon 
                         points={ptsString}
@@ -4400,12 +4501,16 @@ export default function WorldMap({
                           onMouseDown={(e) => handleElementMouseDown(e, el)}
                         />
                       )}
-                      {/* 지형 텍스처 중첩 */}
-                      {el.texture && el.texture !== 'none' && (
-                        <polygon 
-                          points={ptsString}
-                          fill={getTextureUrl(el.texture)}
-                          fillOpacity="0.75"
+                      {/* 지형 텍스처 오버레이: clipPath로 폴리곤 모양에 맞게 rect 잘라냄 */}
+                      {hasTex && (
+                        <rect
+                          x={bboxX}
+                          y={bboxY}
+                          width={bboxW}
+                          height={bboxH}
+                          fill={tex === 'custom_image' ? `url(#${customPatternId})` : `url(#pattern-mountain-${tex})`}
+                          fillOpacity={tex === 'custom_image' ? opacity : 1}
+                          clipPath={`url(#${clipId})`}
                           style={{ pointerEvents: 'none' }}
                         />
                       )}
@@ -5200,7 +5305,7 @@ export default function WorldMap({
                         <span className="text-[10px] font-bold text-white uppercase">{node.name.slice(0,2)}</span>
                       </div>
                       <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-[#2ECC71] text-white whitespace-nowrap shadow border border-white/5">
-                        👤 {node.name}
+                        {node.name}
                       </span>
                     </div>
                   </React.Fragment>
@@ -5252,7 +5357,8 @@ export default function WorldMap({
                 <h3 className="font-bold text-sm">📝 장소 속성 편집</h3>
                 <button 
                   onClick={() => setIsDetailOpen(false)}
-                  className="text-gray-400 hover:text-white"
+                  className="p-1 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/20 transition-all cursor-pointer"
+                  title="닫기"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -5292,23 +5398,44 @@ export default function WorldMap({
                 />
               </div>
 
-              {/* 카테고리 유형 */}
+              {/* 유형 커스텀 멀티 태그 */}
               <div className="flex flex-col gap-1.5">
-                <label className="font-semibold text-gray-400">유형 (Category)</label>
-                <select 
-                  value={elementEditCategory}
-                  onChange={e => setElementEditCategory(e.target.value)}
-                  className={`px-3 py-2 rounded-lg border outline-none cursor-pointer ${
-                    isDark ? 'bg-[#1E1F22] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-black'
-                  }`}
-                >
-                  <option value="kingdom">왕국 / 제국</option>
-                  <option value="city">수도 / 도시 / 마을</option>
-                  <option value="fortress">성 / 군사용 요새</option>
-                  <option value="dungeon">던전 / 비밀 유적</option>
-                  <option value="nature">자연물 (산맥/숲/바다)</option>
-                  <option value="danger">금지구역 / 분쟁지</option>
-                </select>
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-gray-400">유형 태그 (Category Tags)</label>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowTagModal(true)}
+                    className="px-2 py-1 rounded bg-[#5E6AD2]/20 hover:bg-[#5E6AD2]/30 text-[#7480E2] font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> 태그 선택 / 관리
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-white/[0.08] min-h-[38px] items-center bg-black/10">
+                  {elementEditCategoryTags.length === 0 ? (
+                    <span className="text-[11px] text-gray-500 italic">지정된 유형 태그가 없습니다</span>
+                  ) : (
+                    elementEditCategoryTags.map(tagId => {
+                      const tagItem = mapTags.find(t => t.id === tagId);
+                      if (!tagItem) return null;
+                      return (
+                        <span 
+                          key={tagId} 
+                          style={{ backgroundColor: tagItem.color }}
+                          className="px-2 py-0.5 rounded-full text-white font-bold text-[10px] flex items-center gap-1 shadow"
+                        >
+                          {tagItem.name}
+                          <button 
+                            type="button" 
+                            onClick={() => setElementEditCategoryTags(prev => prev.filter(id => id !== tagId))}
+                            className="hover:text-black/70 font-bold ml-0.5"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
               {/* 핀 아이콘 및 크기 조절 (핀 타입 전용) */}
@@ -5350,22 +5477,87 @@ export default function WorldMap({
                 </>
               )}
 
-              {/* 영역 텍스처 오버레이 패턴 (폴리곤 타입 전용) */}
               {el.type === 'polygon' && (
-                <div className="flex flex-col gap-1.5">
-                  <label className="font-semibold text-gray-400">지형 텍스처 패턴</label>
+                <div className="flex flex-col gap-2">
+                  <label className="font-semibold text-gray-400">지형 텍스처 무늬</label>
                   <select 
                     value={elementEditTexture}
-                    onChange={e => setElementEditTexture(e.target.value as any)}
-                    className={`px-3 py-2 rounded-lg border outline-none cursor-pointer ${
+                    onChange={e => setElementEditTexture(e.target.value)}
+                    className={`px-3 py-2 rounded-lg border outline-none cursor-pointer text-xs ${
                       isDark ? 'bg-[#1E1F22] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-black'
                     }`}
                   >
-                    <option value="none">색상 단색 채우기</option>
-                    <option value="slash">🏔️ 산맥 지형 (빗금 무늬)</option>
-                    <option value="dots">🌲 정글/숲 (숲 패턴)</option>
-                    <option value="sand">🏜️ 사막/성곽 (모래 점무늬)</option>
+                    <option value="none">없음</option>
+                    <option value="slash">빗금</option>
+                    <option value="dots">점무늬</option>
+                    <option value="sand">모래</option>
+                    <option value="peaks">산봉우리</option>
+                    <option value="waves">물결</option>
+                    <option value="swamp_cross">십자</option>
+                    <option value="grid_mesh">격자</option>
+                    <option value="contour">등고선</option>
+                    <option value="volcano_hash">교차 빗금</option>
+                    <option value="zigzag">지그재그</option>
+                    <option value="herringbone">빗살무늬</option>
+                    <option value="checkerboard">체커보드</option>
+                    <option value="hexagon">육각 매쉬</option>
+                    <option value="rings">동심원 고리</option>
+                    <option value="stripes_v">세로 줄무늬</option>
+                    <option value="stripes_h">가로 줄무늬</option>
+                    <option value="diamond">다이아몬드</option>
+                    <option value="stars">별무늬</option>
+                    <option value="brick">벽돌</option>
+                    <option value="custom_image">커스텀 이미지 배경...</option>
                   </select>
+
+                  {/* 커스텀 이미지 업로드 UI */}
+                  {elementEditTexture === 'custom_image' && (
+                    <div className="flex flex-col gap-2 p-2.5 rounded-xl border border-white/10 bg-white/[0.02]">
+                      <span className="text-[11px] font-semibold text-gray-400">배경 이미지 업로드</span>
+                      {elementEditCustomTextureImage ? (
+                        <div className="flex items-center justify-between p-2 rounded-lg border border-white/10 bg-black/20">
+                          <div className="flex items-center gap-2 overflow-hidden">
+                            <img 
+                              src={elementEditCustomTextureImage} 
+                              alt="배경 미리보기" 
+                              className="w-10 h-10 object-cover rounded border border-white/20 shrink-0" 
+                            />
+                            <span className="text-[11px] text-gray-300 truncate">커스텀 배경 이미지</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setElementEditCustomTextureImage('')}
+                            className="p-1 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors text-xs"
+                            title="이미지 제거"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-white/20 hover:border-[#5E6AD2] cursor-pointer bg-white/[0.02] hover:bg-[#5E6AD2]/10 transition-colors text-xs font-semibold text-gray-300">
+                          <Upload className="w-4 h-4 text-[#5E6AD2]" />
+                          <span>이미지 선택하여 배경 지정</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={e => {
+                              const file = e.target.files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onload = ev => {
+                                  if (ev.target?.result) {
+                                    setElementEditCustomTextureImage(ev.target.result as string);
+                                  }
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            }}
+                          />
+                        </label>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -5442,23 +5634,68 @@ export default function WorldMap({
                 </div>
               )}
 
-              {/* 투명도 조절 */}
+              {/* 투명도 조절 (실시간 렌더링 반영) */}
               {(el.type === 'polygon' || el.type === 'brush') && (
                 <div className="flex flex-col gap-1.5">
                   <div className="flex justify-between font-semibold text-gray-400">
                     <span>면적 투명도</span>
-                    <span>{elementEditOpacity}%</span>
+                    {isEditingOpacity ? (
+                      <input
+                        type="text"
+                        value={opacityInputVal}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '' || /^\d+$/.test(val)) setOpacityInputVal(val);
+                        }}
+                        onBlur={() => {
+                          setIsEditingOpacity(false);
+                          const parsed = parseInt(opacityInputVal, 10);
+                          if (!isNaN(parsed) && parsed >= 1 && parsed <= 100) {
+                            setElementEditOpacity(parsed);
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            setIsEditingOpacity(false);
+                            const parsed = parseInt(opacityInputVal, 10);
+                            if (!isNaN(parsed) && parsed >= 1 && parsed <= 100) {
+                              setElementEditOpacity(parsed);
+                            }
+                          } else if (e.key === 'Escape') {
+                            setIsEditingOpacity(false);
+                          }
+                        }}
+                        autoFocus
+                        className="w-12 text-center font-mono text-xs font-bold text-[#7480E2] bg-transparent border border-[#5E6AD2]/40 rounded outline-none focus:ring-0 px-1"
+                      />
+                    ) : (
+                      <span
+                        onClick={() => {
+                          setOpacityInputVal(String(elementEditOpacity));
+                          setIsEditingOpacity(true);
+                        }}
+                        className="font-mono text-xs font-bold text-[#7480E2] cursor-pointer hover:bg-[#5E6AD2]/10 rounded px-1.5 py-0.5 transition-colors"
+                        title="클릭하여 직접 입력 (1% ~ 100%)"
+                      >
+                        {elementEditOpacity}%
+                      </span>
+                    )}
                   </div>
                   <input 
                     type="range"
-                    min="10"
-                    max="90"
+                    min="1"
+                    max="100"
                     value={elementEditOpacity}
-                    onChange={e => setElementEditOpacity(parseInt(e.target.value))}
+                    onChange={e => {
+                      const v = parseInt(e.target.value);
+                      setElementEditOpacity(v);
+                      if (isEditingOpacity) setOpacityInputVal(String(v));
+                    }}
                     className="w-full h-1.5 bg-[#5E6AD2]/20 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
                   />
                 </div>
               )}
+
 
               <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
 
@@ -5492,100 +5729,82 @@ export default function WorldMap({
 
               <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
 
-              {/* 보유 정보 태그 칩 */}
+              {/* 관련 인물 연동 (모달 + 카드 태그 형식) */}
               <div className="flex flex-col gap-1.5">
-                <label className="font-semibold text-gray-400">보유 속성 태그 (몬스터, 아이템, 유적 등)</label>
-                <div className="flex gap-1.5">
-                  <input 
-                    type="text"
-                    value={newTagInput}
-                    onChange={e => setNewTagInput(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter' && newTagInput.trim()) {
-                        e.preventDefault();
-                        if (!elementEditTags.includes(newTagInput.trim())) {
-                          setElementEditTags(prev => [...prev, newTagInput.trim()]);
-                        }
-                        setNewTagInput('');
-                      }
-                    }}
-                    placeholder="태그 입력 후 엔터"
-                    className={`flex-1 px-2.5 py-1.5 rounded-lg border outline-none ${
-                      isDark ? 'bg-white/[0.02] border-white/[0.08] text-white' : 'bg-black/[0.01] border-black/[0.08] text-black'
-                    }`}
-                  />
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-gray-400">관련 인물 태깅</label>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowCharModal(true)}
+                    className="px-2 py-1 rounded bg-[#5E6AD2]/20 hover:bg-[#5E6AD2]/30 text-[#7480E2] font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> 인물 추가
+                  </button>
                 </div>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {elementEditTags.map(tag => (
-                    <span 
-                      key={tag} 
-                      className="px-2 py-0.5 rounded-md bg-[#5E6AD2]/10 text-[#7480E2] font-semibold text-[10px] flex items-center gap-1"
-                    >
-                      #{tag}
-                      <button 
-                        onClick={() => setElementEditTags(prev => prev.filter(t => t !== tag))}
-                        className="text-gray-400 hover:text-red-400 font-bold"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))}
+                <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-white/[0.08] min-h-[38px] items-center bg-black/10">
+                  {elementEditChars.length === 0 ? (
+                    <span className="text-[11px] text-gray-500 italic">태그된 관련 인물이 없습니다</span>
+                  ) : (
+                    elementEditChars.map(charId => {
+                      const charNode = relationNodes.find(n => n.id === charId);
+                      if (!charNode) return null;
+                      return (
+                        <span 
+                          key={charId}
+                          className="px-2.5 py-1 rounded-md bg-gray-800 border border-white/10 text-white font-semibold text-[11px] flex items-center gap-1.5 shadow"
+                        >
+                          <User className="w-3 h-3 shrink-0 text-gray-400" />
+                          <span>{charNode.name}</span>
+                          <button 
+                            type="button"
+                            onClick={() => setElementEditChars(prev => prev.filter(id => id !== charId))}
+                            className="text-gray-400 hover:text-red-400 font-bold ml-0.5"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
-              <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
-
-              {/* 관련 인물 연동 */}
-              <div className="flex flex-col gap-1.5">
-                <label className="font-semibold text-gray-400">관련 인물 태깅</label>
-                <div className="flex flex-col gap-1">
-                  {relationNodes.map(node => {
-                    const isTagged = elementEditChars.includes(node.id);
-                    return (
-                      <label key={node.id} className="flex items-center gap-2 cursor-pointer select-none">
-                        <input 
-                          type="checkbox" 
-                          checked={isTagged}
-                          onChange={e => {
-                            if (e.target.checked) {
-                              setElementEditChars(prev => [...prev, node.id]);
-                            } else {
-                              setElementEditChars(prev => prev.filter(id => id !== node.id));
-                            }
-                          }}
-                          className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
-                        />
-                        <span className="font-semibold text-gray-300">👤 {node.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 관련 에피소드(회차) 연동 */}
+              {/* 주 배경 에피소드 회차 연계 (모달 + 카드 태그 형식) */}
               <div className="flex flex-col gap-1.5 mt-2">
-                <label className="font-semibold text-gray-400">주 배경 에피소드 회차 연계</label>
-                <div className="flex flex-col gap-1 overflow-y-auto max-h-32 p-1 border border-white/[0.06] rounded-lg">
-                  {episodes.map(ep => {
-                    const isTagged = elementEditEpisodes.includes(ep.id);
-                    return (
-                      <label key={ep.id} className="flex items-center gap-2 cursor-pointer select-none">
-                        <input 
-                          type="checkbox" 
-                          checked={isTagged}
-                          onChange={e => {
-                            if (e.target.checked) {
-                              setElementEditEpisodes(prev => [...prev, ep.id]);
-                            } else {
-                              setElementEditEpisodes(prev => prev.filter(id => id !== ep.id));
-                            }
-                          }}
-                          className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
-                        />
-                        <span className="font-semibold text-gray-400 truncate w-60">{ep.title}</span>
-                      </label>
-                    );
-                  })}
+                <div className="flex items-center justify-between">
+                  <label className="font-semibold text-gray-400">주 배경 에피소드 회차 연계</label>
+                  <button 
+                    type="button" 
+                    onClick={() => setShowEpModal(true)}
+                    className="px-2 py-1 rounded bg-[#5E6AD2]/20 hover:bg-[#5E6AD2]/30 text-[#7480E2] font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> 회차 추가
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5 p-2 rounded-lg border border-white/[0.08] min-h-[38px] items-center bg-black/10">
+                  {elementEditEpisodes.length === 0 ? (
+                    <span className="text-[11px] text-gray-500 italic">연계된 에피소드가 없습니다</span>
+                  ) : (
+                    elementEditEpisodes.map(epId => {
+                      const epItem = episodes.find(e => e.id === epId);
+                      if (!epItem) return null;
+                      return (
+                        <span 
+                          key={epId}
+                          className="px-2.5 py-1 rounded-md bg-gray-800 border border-white/10 text-white font-semibold text-[11px] flex items-center gap-1.5 shadow"
+                        >
+                          <span className="truncate max-w-[180px]">🎬 {epItem.title}</span>
+                          <button 
+                            type="button"
+                            onClick={() => setElementEditEpisodes(prev => prev.filter(id => id !== epId))}
+                            className="text-gray-400 hover:text-red-400 font-bold ml-0.5"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </fieldset>
@@ -6563,6 +6782,431 @@ export default function WorldMap({
           </div>
         </div>
       )}
+
+      {/* 1. 커스텀 유형 태그 선택 & 관리 모달 */}
+      {showTagModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          {/* [여백 조절] 모달 전체 패딩 (p-5 -> 필요시 변경) */}
+          <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${
+            isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            {/* [여백 조절] Header 하단 여백/패딩 (pb-3, mb-4 -> 필요시 변경) */}
+            <div className="flex justify-between items-center pb-3 border-b border-white/10 mb-4">
+              <h3 className="text-sm font-bold flex items-center gap-2">
+                <Tag className="w-3.5 h-3.5 text-[#5E6AD2]" />
+                유형 태그 선택 & 커스텀 관리
+              </h3>
+              <button 
+                onClick={() => setShowTagModal(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/20 transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* [여백 조절] 신규 태그 생성 폼 영역 간격 (gap-1.5, mb-4 -> 필요시 변경) */}
+            <div className="flex flex-col gap-1.5 mb-4">
+              <label className="text-xs font-semibold text-gray-400">새 태그 만들기</label>
+              {/* [여백 조절] 입력창과 버튼 사이 간격 (gap-2 -> 필요시 변경) */}
+              <div className="flex gap-2">
+                <input 
+                  type="text"
+                  value={newTagNameInput}
+                  onChange={e => setNewTagNameInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && newTagNameInput.trim()) {
+                      e.preventDefault();
+                      const nextColor = TAG_COLOR_PALETTE[mapTags.length % TAG_COLOR_PALETTE.length];
+                      const newTag: MapTagItem = {
+                        id: `tag-${Date.now()}`,
+                        name: newTagNameInput.trim(),
+                        color: nextColor
+                      };
+                      setMapTags(prev => [...prev, newTag]);
+                      setElementEditCategoryTags(prev => [...prev, newTag.id]);
+                      setNewTagNameInput('');
+                    }
+                  }}
+                  placeholder="태그명 입력 후 엔터 또는 + 생성"
+                  /* [여백 조절] 입력창 내 패딩 (px-3 py-2 -> 필요시 변경) */
+                  className={`flex-1 px-3 py-2 rounded-lg border outline-none text-xs ${
+                    isDark ? 'bg-white/[0.03] border-white/[0.08] text-white focus:border-[#5E6AD2]' : 'bg-black/[0.02] border-black/[0.08] text-black focus:border-[#5E6AD2]'
+                  }`}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!newTagNameInput.trim()) return;
+                    const nextColor = TAG_COLOR_PALETTE[mapTags.length % TAG_COLOR_PALETTE.length];
+                    const newTag: MapTagItem = {
+                      id: `tag-${Date.now()}`,
+                      name: newTagNameInput.trim(),
+                      color: nextColor
+                    };
+                    setMapTags(prev => [...prev, newTag]);
+                    setElementEditCategoryTags(prev => [...prev, newTag.id]);
+                    setNewTagNameInput('');
+                  }}
+                  /* [여백 조절] 생성 버튼 패딩 (px-3 py-2 -> 필요시 변경) */
+                  className="px-3 py-2 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-bold shrink-0 transition-colors"
+                >
+                  + 생성
+                </button>
+              </div>
+            </div>
+
+            {/* [여백 조절] 태그 검색 필터 영역 간격 (gap-1.5, mb-3 -> 필요시 변경) */}
+            <div className="flex flex-col gap-1.5 mb-3">
+              <label className="text-xs font-semibold text-gray-400">태그 검색</label>
+              <input 
+                type="text"
+                value={tagSearchInput}
+                onChange={e => setTagSearchInput(e.target.value)}
+                placeholder="태그 검색..."
+                /* [여백 조절] 검색 입력창 내 패딩 (px-3 py-2 -> 필요시 변경) */
+                className={`w-full px-3 py-2 rounded-lg border outline-none text-xs ${
+                  isDark ? 'bg-white/[0.02] border-white/[0.08] text-white' : 'bg-black/[0.01] border-black/[0.08] text-black'
+                }`}
+              />
+            </div>
+
+            {/* [여백 조절] 태그 후보 목록 컨테이너 내부 패딩 및 항목 간격 (gap-1.5, p-1, max-h-52 -> 필요시 변경) */}
+            <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto p-1 border border-white/[0.06] rounded-xl">
+              {mapTags
+                .filter(t => t.name.toLowerCase().includes(tagSearchInput.toLowerCase()))
+                .map(t => {
+                  const isChecked = elementEditCategoryTags.includes(t.id);
+                  return (
+                    <div 
+                      key={t.id}
+                      /* [여백 조절] 태그 항목 각각의 패딩 (px-2.5 py-2 -> 필요시 변경) */
+                      className={`flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer transition-colors ${
+                        isChecked ? 'bg-[#5E6AD2]/15 border border-[#5E6AD2]/30' : 'hover:bg-white/[0.04]'
+                      }`}
+                      onClick={() => {
+                        if (isChecked) {
+                          setElementEditCategoryTags(prev => prev.filter(id => id !== t.id));
+                        } else {
+                          setElementEditCategoryTags(prev => [...prev, t.id]);
+                        }
+                      }}
+                    >
+                      {/* [여백 조절] 태그 칩과 체크박스 사이 간격 (gap-2.5 -> 필요시 변경) */}
+                      <div className="flex items-center gap-2.5">
+                        <input 
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {}} // onClick 상위 처리
+                          className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
+                        />
+                        <span 
+                          style={{ backgroundColor: t.color }}
+                          /* [여백 조절] 태그 칩 자체 패딩 (px-2.5 py-1 -> 필요시 변경) */
+                          className="px-2.5 py-1 rounded-full text-white text-xs font-bold shadow"
+                        >
+                          {t.name}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMapTags(prev => prev.filter(item => item.id !== t.id));
+                          setElementEditCategoryTags(prev => prev.filter(id => id !== t.id));
+                        }}
+                        className="text-gray-500 hover:text-red-400 p-1 rounded hover:bg-red-500/10 transition-colors shrink-0"
+                        title="태그 삭제"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              {mapTags.filter(t => t.name.toLowerCase().includes(tagSearchInput.toLowerCase())).length === 0 && (
+                <p className="text-center text-[11px] text-gray-500 py-4">태그가 없습니다. 위에서 새 태그를 만들어 주세요.</p>
+              )}
+            </div>
+
+            {/* [여백 조절] 하단 버튼 영역 상단 여백/패딩 및 버튼 간격 (gap-2.5, mt-5, pt-3 -> 필요시 변경) */}
+            <div className="flex gap-2.5 mt-5 pt-3 border-t border-white/10">
+              <button 
+                onClick={() => setShowTagModal(false)}
+                /* [여백 조절] 취소 버튼 패딩 (py-2 -> 필요시 변경) */
+                className={`flex-1 py-2 rounded-xl font-bold border text-xs transition-colors ${
+                  isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
+                }`}
+              >
+                취소
+              </button>
+              <button 
+                onClick={() => setShowTagModal(false)}
+                /* [여백 조절] 선택 완료 버튼 패딩 (py-2 -> 필요시 변경) */
+                className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs transition-colors shadow-lg shadow-[#5E6AD2]/20"
+              >
+                선택 완료
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. 관련 인물 태깅 선택 모달 */}
+      {showCharModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          {/* [여백 조절] 모달 전체 패딩 (p-5 -> 필요시 변경) */}
+          <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${
+            isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            {/* [여백 조절] Header 하단 여백/패딩 (pb-3, mb-4 -> 필요시 변경) */}
+            <div className="flex justify-between items-center pb-3 border-b border-white/10 mb-4">
+              <h3 className="text-sm font-bold flex items-center gap-2">
+                <User className="w-3.5 h-3.5 text-[#5E6AD2]" />
+                관련 인물 선택 태깅
+              </h3>
+              <button 
+                onClick={() => setShowCharModal(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/20 transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* [여백 조절] 인물 검색 영역 간격 (gap-1.5, mb-3 -> 필요시 변경) */}
+            <div className="flex flex-col gap-1.5 mb-3">
+              <label className="text-xs font-semibold text-gray-400">인물 검색</label>
+              <input 
+                type="text"
+                value={charSearchInput}
+                onChange={e => setCharSearchInput(e.target.value)}
+                placeholder="인물 이름 검색..."
+                /* [여백 조절] 검색 입력창 내 패딩 (px-3 py-2 -> 필요시 변경) */
+                className={`w-full px-3 py-2 rounded-lg border outline-none text-xs ${
+                  isDark ? 'bg-white/[0.02] border-white/[0.08] text-white' : 'bg-black/[0.01] border-black/[0.08] text-black'
+                }`}
+              />
+            </div>
+
+            {/* [여백 조절] 인물 목록 컨테이너 내부 패딩 및 하단 여백 (gap-1, p-1, mb-1 -> 필요시 변경) */}
+            <div className="flex flex-col gap-1 max-h-64 overflow-y-auto p-1 border border-white/[0.06] rounded-xl mb-1">
+              {relationNodes
+                .filter(n => n.name.toLowerCase().includes(charSearchInput.toLowerCase()))
+                .map(node => {
+                  const isChecked = elementEditChars.includes(node.id);
+                  return (
+                    <label 
+                      key={node.id}
+                      /* [여백 조절] 인물 아이템 각각의 패딩 및 요소간 간격 (px-2.5 py-2.5, gap-2.5 -> 필요시 변경) */
+                      className={`flex items-center gap-2.5 px-2.5 py-2.5 rounded-lg cursor-pointer transition-colors ${
+                        isChecked ? 'bg-[#5E6AD2]/15 border border-[#5E6AD2]/30' : 'hover:bg-white/[0.04]'
+                      }`}
+                    >
+                      <input 
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setElementEditChars(prev => [...prev, node.id]);
+                          } else {
+                            setElementEditChars(prev => prev.filter(id => id !== node.id));
+                          }
+                        }}
+                        className="rounded text-[#5E6AD2] focus:ring-[#5E6AD2]"
+                      />
+                      <User className="w-3 h-3 shrink-0 text-[#5E6AD2]" />
+                      <span className="font-semibold text-xs text-white">{node.name}</span>
+                    </label>
+                  );
+                })}
+              {relationNodes.filter(n => n.name.toLowerCase().includes(charSearchInput.toLowerCase())).length === 0 && (
+                <p className="text-center text-[11px] text-gray-500 py-4">인물이 없습니다.</p>
+              )}
+            </div>
+
+            {/* [여백 조절] 하단 버튼 영역 상단 여백/패딩 및 버튼 간격 (gap-2.5, mt-5, pt-3 -> 필요시 변경) */}
+            <div className="flex gap-2.5 mt-5 pt-3 border-t border-white/10">
+              <button 
+                onClick={() => setShowCharModal(false)}
+                /* [여백 조절] 취소 버튼 패딩 (py-2 -> 필요시 변경) */
+                className={`flex-1 py-2 rounded-xl font-bold border text-xs transition-colors ${
+                  isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
+                }`}
+              >
+                취소
+              </button>
+              <button 
+                onClick={() => setShowCharModal(false)}
+                /* [여백 조절] 추가 완료 버튼 패딩 (py-2 -> 필요시 변경) */
+                className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs transition-colors shadow-lg shadow-[#5E6AD2]/20"
+              >
+                추가 완료
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. 주 배경 에피소드 회차 선택 모달 */}
+      {showEpModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          {/* [여백 조절] 모달 전체 패딩 (p-5 -> 필요시 변경) */}
+          <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${
+            isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            {/* [여백 조절] Header 하단 여백/패딩 (pb-3, mb-4 -> 필요시 변경) */}
+            <div className="flex justify-between items-center pb-3 border-b border-white/10 mb-4">
+              <h3 className="text-sm font-bold flex items-center gap-2">
+                주 배경 에피소드 회차 연계
+              </h3>
+              <button 
+                onClick={() => setShowEpModal(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/20 transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* [여백 조절] 에피소드 검색 영역 간격 (gap-1.5, mb-3 -> 필요시 변경) */}
+            <div className="flex flex-col gap-1.5 mb-3">
+              <label className="text-xs font-semibold text-gray-400">에피소드 검색</label>
+              <input 
+                type="text"
+                value={epSearchInput}
+                onChange={e => setEpSearchInput(e.target.value)}
+                placeholder="에피소드 제목 검색..."
+                /* [여백 조절] 검색 입력창 내 패딩 (px-3 py-2 -> 필요시 변경) */
+                className={`w-full px-3 py-2 rounded-lg border outline-none text-xs ${
+                  isDark ? 'bg-white/[0.02] border-white/[0.08] text-white' : 'bg-black/[0.01] border-black/[0.08] text-black'
+                }`}
+              />
+            </div>
+
+            {/* [여백 조절] 에피소드 트리 컨테이너 패딩 및 높이 (gap-0.5, p-1, max-h-72 -> 필요시 변경) */}
+            <div className="flex flex-col gap-0.5 max-h-72 overflow-y-auto p-1 border border-white/[0.06] rounded-xl">
+              {(() => {
+                // 검색 중이면 플랫 필터 목록 표시
+                if (epSearchInput.trim()) {
+                  return episodes
+                    .filter(ep => !ep.isFolder && ep.title.toLowerCase().includes(epSearchInput.toLowerCase()) && !ep.deletedAt)
+                    .map(ep => {
+                      const isChecked = elementEditEpisodes.includes(ep.id);
+                      return (
+                        <label
+                          key={ep.id}
+                          /* [여백 조절] 검색 시 아이템 패딩 (px-3 py-2 -> 필요시 변경) */
+                          className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                            isChecked ? 'bg-[#5E6AD2]/15 border border-[#5E6AD2]/30' : 'hover:bg-white/[0.04]'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setElementEditEpisodes(prev => [...prev, ep.id]);
+                              } else {
+                                setElementEditEpisodes(prev => prev.filter(id => id !== ep.id));
+                              }
+                            }}
+                            className="rounded accent-[#5E6AD2]"
+                          />
+                          <span className="text-xs text-gray-200 truncate">{ep.title}</span>
+                        </label>
+                      );
+                    });
+                }
+
+                // 폴더 트리 렌더링 (재귀 방식 / parentId 기반)
+                const renderEpTree = (parentId: string | null | undefined, depth: number): React.ReactNode[] => {
+                  const children = episodes.filter(
+                    ep => (ep.parentId ?? null) === (parentId ?? null) && !ep.deletedAt
+                  );
+                  return children.map(ep => {
+                    if (ep.isFolder) {
+                      const isOpen = epFolderOpen.has(ep.id);
+                      return (
+                        <div key={ep.id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEpFolderOpen(prev => {
+                                const next = new Set(prev);
+                                if (next.has(ep.id)) next.delete(ep.id);
+                                else next.add(ep.id);
+                                return next;
+                              });
+                            }}
+                            /* [여백 조절] 폴더 버튼 패딩 (px-2 py-1.5 -> 필요시 변경) */
+                            className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-left transition-colors hover:bg-white/[0.05] ${
+                              isDark ? 'text-gray-400' : 'text-gray-600'
+                            }`}
+                            /* [여백 조절] 계층별 들여쓰기 여백 (8 + depth * 16 -> 필요시 변경) */
+                            style={{ paddingLeft: `${8 + depth * 16}px` }}
+                          >
+                            <ChevronRight className={`w-3.5 h-3.5 shrink-0 transition-transform duration-150 ${isOpen ? 'rotate-90' : ''}`} />
+                            <Folder className="w-3.5 h-3.5 shrink-0 text-[#F59E0B]" />
+                            <span className="text-xs font-semibold truncate">{ep.title}</span>
+                          </button>
+                          {isOpen && renderEpTree(ep.id, depth + 1)}
+                        </div>
+                      );
+                    } else {
+                      const isChecked = elementEditEpisodes.includes(ep.id);
+                      return (
+                        <label
+                          key={ep.id}
+                          /* [여백 조절] 에피소드 항목 패딩 (py-1.5 pr-3 -> 필요시 변경) */
+                          className={`flex items-center gap-2.5 py-1.5 pr-3 rounded-lg cursor-pointer transition-colors ${
+                            isChecked ? 'bg-[#5E6AD2]/15 border border-[#5E6AD2]/30' : 'hover:bg-white/[0.04]'
+                          }`}
+                          /* [여백 조절] 계층별 들여쓰기 여백 (8 + (depth + 1) * 16 -> 필요시 변경) */
+                          style={{ paddingLeft: `${8 + (depth + 1) * 16}px` }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={e => {
+                              if (e.target.checked) {
+                                setElementEditEpisodes(prev => [...prev, ep.id]);
+                              } else {
+                                setElementEditEpisodes(prev => prev.filter(id => id !== ep.id));
+                              }
+                            }}
+                            className="rounded accent-[#5E6AD2] shrink-0"
+                          />
+                          <FileText className="w-3 h-3 shrink-0 text-gray-500" />
+                          <span className="text-xs text-gray-200 truncate">{ep.title}</span>
+                        </label>
+                      );
+                    }
+                  });
+                };
+                return renderEpTree(null, 0);
+              })()}
+            </div>
+
+            {/* [여백 조절] 하단 버튼 영역 상단 여백/패딩 및 버튼 간격 (gap-2.5, mt-5, pt-3 -> 필요시 변경) */}
+            <div className="flex gap-2.5 mt-5 pt-3 border-t border-white/10">
+              <button 
+                onClick={() => setShowEpModal(false)}
+                /* [여백 조절] 취소 버튼 패딩 (py-2 -> 필요시 변경) */
+                className={`flex-1 py-2 rounded-xl font-bold border text-xs transition-colors ${
+                  isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
+                }`}
+              >
+                취소
+              </button>
+              <button 
+                onClick={() => setShowEpModal(false)}
+                /* [여백 조절] 추가 완료 버튼 패딩 (py-2 -> 필요시 변경) */
+                className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs transition-colors shadow-lg shadow-[#5E6AD2]/20"
+              >
+                추가 완료
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
