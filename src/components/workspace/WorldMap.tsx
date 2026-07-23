@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { 
   ChevronRight, ChevronDown, Layers, Plus, Move, Trash2, Unlock, ChevronsLeft, ChevronsRight, ChevronLeft, 
+  ChevronsUp, ChevronsDown, ChevronUp, GripVertical,
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search, Bookmark,
   PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square,
@@ -64,16 +65,33 @@ export interface MapElement {
   associatedEpisodes?: string[]; // Episode ID 배열 (등장 회차)
   
   childMapId?: string;
+  createdSnapshotId?: string; // 최초 생성된 시점 스냅샷 ID (미래 시점에서 생성된 요소는 과거 시점에서 숨김 처리)
   
   // 시점 스냅샷별 오버라이드 데이터 (Snapshot ID -> ElementState)
   statesBySnapshot?: Record<string, {
     visible: boolean;
     name?: string;
+    color?: string;
+    summary?: string;
+    description?: string;
     x?: number;
     y?: number;
     points?: Array<{ x: number; y: number }>;
-    color?: string;
-    description?: string;
+    bx?: number;
+    by?: number;
+    bw?: number;
+    bh?: number;
+    opacity?: number;
+    texture?: string;
+    customTextureImage?: string;
+    icon?: 'castle' | 'swords' | 'mountain' | 'mappin';
+    borderStyle?: 'solid' | 'dashed' | 'dotted';
+    borderWidth?: number;
+    brushWidth?: number;
+    brushStrokeObjects?: Array<{ points: Array<{ x: number; y: number }>; width: number; shape: 'circle' | 'square' }>;
+    categoryTags?: string[];
+    associatedCharacters?: string[];
+    associatedEpisodes?: string[];
   }>;
 }
 
@@ -137,8 +155,39 @@ export default function WorldMap({
   // --- 로딩 상태 ---
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // --- 지도 요소 데이터 ---
-  const [elements, setElements] = useState<MapElement[]>([]);
+  // --- 지도 요소 및 시점(스냅샷) 데이터 저장소 (Snapshot-First Architecture) ---
+  const [snapshots, setSnapshots] = useState<MapSnapshot[]>([
+    { id: 'snap-default', order: 0, name: '1권 시작 기준', date: '작중 932년 4월', description: '평화로운 아이론 왕국 영토와 가문 세력권.', createdTime: '26-07-21, 09:00' },
+    { id: 'snap-war', order: 1, name: '동부 요새 함락 사건', date: '작중 932년 10월', description: '제국의 흑마법 기습 침공으로 동부 요새가 함락되고 소실됨.', createdTime: '26-07-21, 09:15' },
+    { id: 'snap-fall', order: 2, name: '제국 연합군 병합 완료', date: '작중 933년 6월', description: '아이론 북동부 요충지가 완전히 함락되어 제국 영토로 편입됨.', createdTime: '26-07-21, 09:30' }
+  ]);
+  const [activeSnapshotId, setActiveSnapshotId] = useState<string>('snap-fall');
+  const activeSnapshotIdRef = useRef<string>(activeSnapshotId);
+  useEffect(() => {
+    activeSnapshotIdRef.current = activeSnapshotId;
+  }, [activeSnapshotId]);
+
+  // 시점별 완전 독립 지도 요소 데이터 맵 (snapshotId -> MapElement[])
+  const [elementsBySnapshot, setElementsBySnapshot] = useState<Record<string, MapElement[]>>({});
+
+  // 현재 활성화된 시점에 렌더링 및 편집되는 요소 데이터 목록 (Getter)
+  const elements = useMemo(() => {
+    return elementsBySnapshot[activeSnapshotId] || elementsBySnapshot['snap-default'] || [];
+  }, [elementsBySnapshot, activeSnapshotId]);
+
+  // 요소 수정/추가/삭제 시 현재 활성화된 시점의 목록만 독립 업데이트 (Setter Wrapper)
+  const setElements = useCallback((updater: MapElement[] | ((prev: MapElement[]) => MapElement[])) => {
+    setElementsBySnapshot(prevMap => {
+      const activeId = activeSnapshotIdRef.current || 'snap-default';
+      const currentList = prevMap[activeId] || prevMap['snap-default'] || [];
+      const newList = typeof updater === 'function' ? updater(currentList) : updater;
+      return {
+        ...prevMap,
+        [activeId]: newList
+      };
+    });
+  }, []);
+
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
 
@@ -161,19 +210,24 @@ export default function WorldMap({
   const [preDragElements, setPreDragElements] = useState<MapElement[] | null>(null);
   const [hasMovedDuringDrag, setHasMovedDuringDrag] = useState(false);
   
-  // --- 타임라인 스냅샷 상태 ---
-  const [snapshots, setSnapshots] = useState<MapSnapshot[]>([
-    { id: 'snap-default', order: 0, name: '1권 시작 기준', date: '작중 932년 4월', description: '평화로운 아이론 왕국 영토와 가문 세력권.', createdTime: '26-07-21, 09:00' },
-    { id: 'snap-war', order: 1, name: '동부 요새 함락 사건', date: '작중 932년 10월', description: '제국의 흑마법 기습 침공으로 동부 요새가 함락되고 소실됨.', createdTime: '26-07-21, 09:15' },
-    { id: 'snap-fall', order: 2, name: '제국 연합군 병합 완료', date: '작중 933년 6월', description: '아이론 북동부 요충지가 완전히 함락되어 제국 영토로 편입됨.', createdTime: '26-07-21, 09:30' }
-  ]);
-  const [activeSnapshotId, setActiveSnapshotId] = useState<string>('snap-fall');
   const activeSnapshotIdx = snapshots.findIndex(s => s.id === activeSnapshotId) === -1 ? 0 : snapshots.findIndex(s => s.id === activeSnapshotId);
   const currentSnapshot = snapshots[activeSnapshotIdx] || snapshots[0];
 
   const [isSnapshotEditUnlocked, setIsSnapshotEditUnlocked] = useState(false);
   const isLatestSnapshot = snapshots.length > 0 && activeSnapshotId === snapshots[snapshots.length - 1].id;
   const isReadOnly = !isLatestSnapshot && !isSnapshotEditUnlocked;
+
+  // 호환성 헬퍼 함수
+  const getElementDisplayData = useCallback((el: MapElement, _snapshotId: string): MapElement & { isSnapshotHidden?: boolean } => {
+    return el;
+  }, []);
+
+  const updateElementSnapshotState = useCallback((el: MapElement, _snapshotId: string, partial: Partial<MapElement>): MapElement => {
+    return {
+      ...el,
+      ...partial
+    };
+  }, []);
 
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
   const [showMemoModal, setShowMemoModal] = useState(false);
@@ -202,7 +256,7 @@ export default function WorldMap({
   const [bookmarkNameInput, setBookmarkNameInput] = useState('');
 
   // --- 안개 모드 및 레이어 락 제어 ---
-  const [fogVisible, setFogVisible] = useState(false);
+  const [fogVisible] = useState(false);
   const [gridVisible, setGridVisible] = useState(true);
   const [gridSize, setGridSize] = useState<number>(40);
   const [gridSnapEnabled, setGridSnapEnabled] = useState(false);
@@ -246,6 +300,34 @@ export default function WorldMap({
     };
   }, [showLockFilterDropdown]);
 
+  // 표시 태그 필터 상태 & 드롭다운 바깥 클릭 감지
+  const [selectedDisplayTags, setSelectedDisplayTags] = useState<string[]>([]);
+  const [showTagFilterDropdown, setShowTagFilterDropdown] = useState(false);
+  const tagFilterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (tagFilterRef.current && !tagFilterRef.current.contains(event.target as globalThis.Node)) {
+        setShowTagFilterDropdown(false);
+      }
+    };
+    if (showTagFilterDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showTagFilterDropdown]);
+
+  // 선택한 표시 태그에 따라 요소 가시성을 결정하는 헬퍼 함수
+  const isElementVisibleByTagFilter = useCallback((el: MapElement): boolean => {
+    if (selectedDisplayTags.length === 0) return true; // 필터 미선택 시 전체 표시
+    const hasNoTag = !el.categoryTags || el.categoryTags.length === 0;
+    if (selectedDisplayTags.includes('__NONE__') && hasNoTag) return true;
+    if (el.categoryTags && el.categoryTags.some(tagId => selectedDisplayTags.includes(tagId))) return true;
+    return false;
+  }, [selectedDisplayTags]);
+
   // 특정 요소 타입이 현재 잠겨 있는지 여부를 확인하는 헬퍼 함수
   const isElementLocked = useCallback((type: string | undefined): boolean => {
     if (!type) return false;
@@ -253,7 +335,7 @@ export default function WorldMap({
   }, [lockedElementTypes]);
   
   // 레이어별 가시성 토글
-  const [layerVisibility, setLayerVisibility] = useState({
+  const [layerVisibility] = useState({
     terrain: true,   // 자연물
     political: true, // 국경/세력
     routes: true,    // 경로
@@ -527,6 +609,11 @@ export default function WorldMap({
   const [tagSearchInput, setTagSearchInput] = useState('');
   const [newTagNameInput, setNewTagNameInput] = useState('');
 
+  // --- 레이어 스택 순서 관리 모달 상태 ---
+  const [showLayerStackModal, setShowLayerStackModal] = useState(false);
+  const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
+  const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
+
   // --- 인물/에피소드 선택 모달 상태 ---
   const [showCharModal, setShowCharModal] = useState(false);
   const [charSearchInput, setCharSearchInput] = useState('');
@@ -567,7 +654,7 @@ export default function WorldMap({
   // --- 사이드바 접기/펼치기 ---
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   // --- 헤더 탭 선택 상태 (null이면 서브패널 닫힘) ---
-  const [activeHeaderTab, setActiveHeaderTab] = useState<'tool' | 'draw' | 'timeline' | 'settings' | null>('tool');
+  const [activeHeaderTab, setActiveHeaderTab] = useState<'tool' | 'draw' | 'view_filter' | 'timeline' | 'settings' | null>('tool');
   // --- 지도 계층 트리 폴더 접기/펼치기 상태 ---
   const [mapExpandedFolderIds, setMapExpandedFolderIds] = useState<string[]>(['root']);
 
@@ -728,8 +815,10 @@ export default function WorldMap({
 
   // 현재 맵(currentMapId) 기준 활성 요소 목록 메모이제이션 (매 렌더마다 반복 필터링하는 연산 오버헤드 원천 제거)
   const currentActiveElements: MapElement[] = useMemo(() => {
-    return getAllActiveElementsForMap(currentMapId);
-  }, [getAllActiveElementsForMap, currentMapId]);
+    const active = getAllActiveElementsForMap(currentMapId);
+    if (selectedDisplayTags.length === 0) return active;
+    return active.filter(el => isElementVisibleByTagFilter(el));
+  }, [getAllActiveElementsForMap, currentMapId, selectedDisplayTags, isElementVisibleByTagFilter]);
 
   const getElementsInSelectionBox = useCallback((
     start: { x: number; y: number },
@@ -937,7 +1026,74 @@ export default function WorldMap({
     setIsDetailOpen(false);
   }, [isReadOnly, selectedElementIds, selectedElementId, pushHistory, selectSingleElement]);
 
+  // 요소 레이어 순서 조절 핸들러 (맨 위로 / 위로 / 아래로 / 맨 뒤로)
+  const handleMoveElementToFront = useCallback((id: string) => {
+    if (isReadOnly) return;
+    pushHistory();
+    setElements(prev => {
+      const idx = prev.findIndex(el => el.id === id);
+      if (idx === -1 || idx === prev.length - 1) return prev;
+      const target = prev[idx];
+      const rest = prev.filter(el => el.id !== id);
+      return [...rest, target];
+    });
+  }, [isReadOnly, pushHistory]);
 
+  const handleMoveElementForward = useCallback((id: string) => {
+    if (isReadOnly) return;
+    pushHistory();
+    setElements(prev => {
+      const idx = prev.findIndex(el => el.id === id);
+      if (idx === -1 || idx === prev.length - 1) return prev;
+      const next = [...prev];
+      const temp = next[idx];
+      next[idx] = next[idx + 1];
+      next[idx + 1] = temp;
+      return next;
+    });
+  }, [isReadOnly, pushHistory]);
+
+  const handleMoveElementBackward = useCallback((id: string) => {
+    if (isReadOnly) return;
+    pushHistory();
+    setElements(prev => {
+      const idx = prev.findIndex(el => el.id === id);
+      if (idx <= 0) return prev;
+      const next = [...prev];
+      const temp = next[idx];
+      next[idx] = next[idx - 1];
+      next[idx - 1] = temp;
+      return next;
+    });
+  }, [isReadOnly, pushHistory]);
+
+  const handleMoveElementToBack = useCallback((id: string) => {
+    if (isReadOnly) return;
+    pushHistory();
+    setElements(prev => {
+      const idx = prev.findIndex(el => el.id === id);
+      if (idx <= 0) return prev;
+      const target = prev[idx];
+      const rest = prev.filter(el => el.id !== id);
+      return [target, ...rest];
+    });
+  }, [isReadOnly, pushHistory]);
+
+  // 레이어 스택 모달 내 드래그 앤 드롭 요소 재배치 핸들러
+  const handleReorderElement = useCallback((draggedId: string, targetId: string) => {
+    if (isReadOnly || draggedId === targetId) return;
+    pushHistory();
+    setElements(prev => {
+      const draggedIdx = prev.findIndex(el => el.id === draggedId);
+      const targetIdx = prev.findIndex(el => el.id === targetId);
+      if (draggedIdx === -1 || targetIdx === -1) return prev;
+
+      const next = [...prev];
+      const [draggedItem] = next.splice(draggedIdx, 1);
+      next.splice(targetIdx, 0, draggedItem);
+      return next;
+    });
+  }, [isReadOnly, pushHistory]);
 
   const getCursorClass = useCallback((): string => {
     if (isPanning) return 'cursor-grabbing';
@@ -998,7 +1154,6 @@ export default function WorldMap({
         }
       }
     };
-
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => {
       window.removeEventListener('keydown', handleGlobalKeyDown);
@@ -1007,6 +1162,32 @@ export default function WorldMap({
 
   // References
   const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const detailPanelRef = useRef<HTMLDivElement>(null);
+
+  // 세부 설정 편집창 외부(밖) 클릭 시 닫기
+  useEffect(() => {
+    if (!isDetailOpen) return;
+
+    const handleOutsideClick = (e: MouseEvent) => {
+      const targetNode = e.target as unknown as globalThis.Node;
+      if (detailPanelRef.current && detailPanelRef.current.contains(targetNode)) {
+        return;
+      }
+
+      if (e.target instanceof Element) {
+        if (e.target.closest('[role="dialog"]') || (e.target.closest('.z-50') && !canvasContainerRef.current?.contains(targetNode))) {
+          return;
+        }
+      }
+
+      setIsDetailOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [isDetailOpen]);
 
   // 마우스 휠(휠클릭) 브라우저 기본 기능(자동 스크롤 등) 방지
   useEffect(() => {
@@ -1015,7 +1196,7 @@ export default function WorldMap({
 
     const handleNativeMouseDown = (e: MouseEvent) => {
       if (e.button === 1) {
-        e.preventDefault(); // 마우스 휠 클릭시 자동 스크롤 모드 진입 차단
+        e.preventDefault();
       }
     };
 
@@ -1032,6 +1213,7 @@ export default function WorldMap({
     configKey: `novelflow_worldmap_config_${selectedProject.id}`,
     charPosKey: `novelflow_worldmap_char_pos_${selectedProject.id}`,
     bookmarksKey: `novelflow_worldmap_bookmarks_${selectedProject.id}`,
+    tagsKey: `novelflow_worldmap_tags_${selectedProject.id}`,
   }), [selectedProject.id]);
 
   const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
@@ -1041,24 +1223,38 @@ export default function WorldMap({
     if (!selectedProject) return;
 
     setIsLoading(true);
-    const { elementKey, snapshotKey, configKey, charPosKey, bookmarksKey } = getStorageKeys();
+    const { elementKey, snapshotKey, configKey, charPosKey, bookmarksKey, tagsKey } = getStorageKeys();
 
     const applyData = (data: {
+      elementsBySnapshot?: Record<string, MapElement[]>;
       elements?: MapElement[];
       snapshots?: MapSnapshot[];
       config?: { customBgImage: string | null; presetBg: string; scale: MapScale; gridSize?: number };
       characterPositions?: Record<string, Record<string, { x: number; y: number; trail: Array<{ x: number; y: number }> }>>;
       savedBookmarks?: Array<{ id: string; name: string; x: number; y: number; zoom: number }>;
+      mapTags?: MapTagItem[];
     }) => {
-      if (data.elements && data.elements.length > 0) {
-        setElements(data.elements);
+      const defaultInitElements: MapElement[] = [
+        { id: 'r1', name: '아이론 왕국', type: 'polygon', parentMapId: 'root', color: '#5E6AD2', opacity: 0.25, texture: 'slash', category: 'kingdom', summary: '대륙 중부에 자리 잡은 유서 깊은 왕국.', description: '아이론 가문이 지배하는 넓고 비옥한 영토.', points: [{ x: 100, y: 150 }, { x: 300, y: 120 }, { x: 350, y: 350 }, { x: 80, y: 300 }] },
+        { id: 'r2', name: '남방 제국', type: 'polygon', parentMapId: 'root', color: '#E2487A', opacity: 0.35, texture: 'sand', category: 'empire', summary: '철기 무기와 마법으로 팽창 중인 호전국.', description: '철의 장막 뒤에 숨은 기계 문명 중심 국가.', points: [{ x: 380, y: 100 }, { x: 650, y: 150 }, { x: 600, y: 400 }, { x: 360, y: 380 }] },
+        { id: 'p1', name: '수도 아이론시', type: 'pin', parentMapId: 'root', x: 220, y: 200, icon: 'castle', category: 'city', summary: '왕국의 정치, 경제 중심수도.', description: '고대 마법 장벽으로 둘러싸여 난공불락을 자랑한다.', tags: ['수도', '안전지대'], associatedCharacters: ['1'] },
+        { id: 'p2', name: '동부 국경 요새', type: 'pin', parentMapId: 'root', x: 330, y: 220, icon: 'swords', category: 'fortress', summary: '제국의 침략을 감시하는 핵심 군사 기지.', description: '견고한 성벽을 가졌으나 흑마법의 기습에는 취약하다.', tags: ['요새', '분쟁지역'] }
+      ];
+
+      if (data.elementsBySnapshot && Object.keys(data.elementsBySnapshot).length > 0) {
+        setElementsBySnapshot(data.elementsBySnapshot);
+      } else if (data.elements && data.elements.length > 0) {
+        setElementsBySnapshot({
+          'snap-default': data.elements,
+          'snap-war': JSON.parse(JSON.stringify(data.elements)),
+          'snap-fall': JSON.parse(JSON.stringify(data.elements))
+        });
       } else {
-        setElements([
-          { id: 'r1', name: '아이론 왕국', type: 'polygon', parentMapId: 'root', color: '#5E6AD2', opacity: 0.25, texture: 'slash', category: 'kingdom', summary: '대륙 중부에 자리 잡은 유서 깊은 왕국.', description: '아이론 가문이 지배하는 넓고 비옥한 영토.', points: [{ x: 100, y: 150 }, { x: 300, y: 120 }, { x: 350, y: 350 }, { x: 80, y: 300 }], statesBySnapshot: {} },
-          { id: 'r2', name: '남방 제국', type: 'polygon', parentMapId: 'root', color: '#E2487A', opacity: 0.35, texture: 'sand', category: 'empire', summary: '철기 무기와 마법으로 팽창 중인 호전국.', description: '철의 장막 뒤에 숨은 기계 문명 중심 국가.', points: [{ x: 380, y: 100 }, { x: 650, y: 150 }, { x: 600, y: 400 }, { x: 360, y: 380 }], statesBySnapshot: { 'snap-war': { visible: true, color: '#E2487A', description: '제국의 기습 침공으로 국경선이 서쪽으로 밀려났습니다.' } } },
-          { id: 'p1', name: '수도 아이론시', type: 'pin', parentMapId: 'root', x: 220, y: 200, icon: 'castle', category: 'city', summary: '왕국의 정치, 경제 중심수도.', description: '고대 마법 장벽으로 둘러싸여 난공불락을 자랑한다.', tags: ['수도', '안전지대'], associatedCharacters: ['1'] },
-          { id: 'p2', name: '동부 국경 요새', type: 'pin', parentMapId: 'root', x: 330, y: 220, icon: 'swords', category: 'fortress', summary: '제국의 침략을 감시하는 핵심 군사 기지.', description: '견고한 성벽을 가졌으나 흑마법의 기습에는 취약하다.', tags: ['요새', '분쟁지역'], statesBySnapshot: { 'snap-fall': { visible: false } } }
-        ]);
+        setElementsBySnapshot({
+          'snap-default': defaultInitElements,
+          'snap-war': defaultInitElements.map(el => el.id === 'r2' ? { ...el, color: '#E2487A', description: '제국의 기습 침공으로 국경선이 서쪽으로 밀려났습니다.' } : el),
+          'snap-fall': defaultInitElements.filter(el => el.id !== 'p2').map(el => el.id === 'r2' ? { ...el, color: '#C0392B' } : el)
+        });
       }
 
       if (data.snapshots && data.snapshots.length > 0) {
@@ -1104,6 +1300,10 @@ export default function WorldMap({
       if (data.savedBookmarks) {
         setSavedBookmarks(data.savedBookmarks);
       }
+
+      if (data.mapTags && data.mapTags.length > 0) {
+        setMapTags(data.mapTags);
+      }
       setIsLoading(false);
     };
 
@@ -1113,12 +1313,31 @@ export default function WorldMap({
       const savedConfig = localStorage.getItem(configKey);
       const savedCharPos = localStorage.getItem(charPosKey);
       const savedBms = localStorage.getItem(bookmarksKey);
+      const savedTags = localStorage.getItem(tagsKey);
+
+      let parsedSnapshotElements: Record<string, MapElement[]> | undefined = undefined;
+      let parsedLegacyElements: MapElement[] | undefined = undefined;
+      if (savedElements) {
+        try {
+          const parsed = JSON.parse(savedElements);
+          if (Array.isArray(parsed)) {
+            parsedLegacyElements = parsed;
+          } else if (parsed && typeof parsed === 'object') {
+            parsedSnapshotElements = parsed;
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
       applyData({
-        elements: savedElements ? JSON.parse(savedElements) : undefined,
+        elementsBySnapshot: parsedSnapshotElements,
+        elements: parsedLegacyElements,
         snapshots: savedSnapshots ? JSON.parse(savedSnapshots) : undefined,
         config: savedConfig ? JSON.parse(savedConfig) : undefined,
         characterPositions: savedCharPos ? JSON.parse(savedCharPos) : undefined,
         savedBookmarks: savedBms ? JSON.parse(savedBms) : undefined,
+        mapTags: savedTags ? JSON.parse(savedTags) : undefined,
       });
       setIsLoading(false);
     };
@@ -1141,21 +1360,23 @@ export default function WorldMap({
 
         if (data?.worldmap_data) {
           const wm = data.worldmap_data as {
+            elementsBySnapshot?: Record<string, MapElement[]>;
             elements?: MapElement[];
             snapshots?: MapSnapshot[];
             config?: { customBgImage: string | null; presetBg: string; scale: MapScale; gridSize?: number };
             characterPositions?: Record<string, Record<string, { x: number; y: number; trail: Array<{ x: number; y: number }> }>>;
             savedBookmarks?: Array<{ id: string; name: string; x: number; y: number; zoom: number }>;
+            mapTags?: MapTagItem[];
           };
           applyData(wm);
-          // localStorage에도 캐시
-          if (wm.elements) localStorage.setItem(elementKey, JSON.stringify(wm.elements));
+          if (wm.elementsBySnapshot) localStorage.setItem(elementKey, JSON.stringify(wm.elementsBySnapshot));
+          else if (wm.elements) localStorage.setItem(elementKey, JSON.stringify(wm.elements));
           if (wm.snapshots) localStorage.setItem(snapshotKey, JSON.stringify(wm.snapshots));
           if (wm.config) localStorage.setItem(configKey, JSON.stringify(wm.config));
           if (wm.characterPositions) localStorage.setItem(charPosKey, JSON.stringify(wm.characterPositions));
           if (wm.savedBookmarks) localStorage.setItem(bookmarksKey, JSON.stringify(wm.savedBookmarks));
+          if (wm.mapTags) localStorage.setItem(tagsKey, JSON.stringify(wm.mapTags));
         } else {
-          // DB에 없으면 localStorage 캐시에서 복구 시도
           loadFromLocalStorage();
         }
       } catch (err) {
@@ -1171,18 +1392,17 @@ export default function WorldMap({
   // --- Supabase + localStorage 자동 저장 (debounce 2초) ---
   const saveWorldMapData = useCallback(() => {
     if (!selectedProject) return;
-    const { elementKey, snapshotKey, configKey, charPosKey, bookmarksKey } = getStorageKeys();
+    const { elementKey, snapshotKey, configKey, charPosKey, bookmarksKey, tagsKey } = getStorageKeys();
 
-    // localStorage 즉시 갱신 (캐시)
-    localStorage.setItem(elementKey, JSON.stringify(elements));
+    localStorage.setItem(elementKey, JSON.stringify(elementsBySnapshot));
     localStorage.setItem(snapshotKey, JSON.stringify(snapshots));
     localStorage.setItem(configKey, JSON.stringify({ customBgImage: null, presetBg, scale, gridSize }));
     localStorage.setItem(charPosKey, JSON.stringify(characterPositions));
     localStorage.setItem(bookmarksKey, JSON.stringify(savedBookmarks));
+    localStorage.setItem(tagsKey, JSON.stringify(mapTags));
 
     if (isGuest) return;
 
-    // Supabase debounce 저장 (2초 후)
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       try {
@@ -1190,11 +1410,13 @@ export default function WorldMap({
           .from('projects')
           .update({
             worldmap_data: {
+              elementsBySnapshot,
               elements,
               snapshots,
               config: { customBgImage: null, presetBg, scale, gridSize },
               characterPositions,
               savedBookmarks,
+              mapTags,
             }
           })
           .eq('id', selectedProject.id);
@@ -1203,13 +1425,13 @@ export default function WorldMap({
         console.error('WorldMap: Supabase 저장 실패:', err);
       }
     }, 2000);
-  }, [elements, snapshots, presetBg, scale, gridSize, characterPositions, savedBookmarks, selectedProject, getStorageKeys, isGuest]);
+  }, [elementsBySnapshot, elements, snapshots, presetBg, scale, gridSize, characterPositions, savedBookmarks, mapTags, selectedProject, getStorageKeys, isGuest]);
 
   // 데이터 변경 시 자동 저장 트리거
   useEffect(() => {
     saveWorldMapData();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [elements, snapshots, presetBg, scale, gridSize, characterPositions, savedBookmarks]);
+  }, [elementsBySnapshot, snapshots, presetBg, scale, gridSize, characterPositions, savedBookmarks, mapTags]);
 
   // 빈 그룹 자동 삭제 감지
   useEffect(() => {
@@ -1655,9 +1877,10 @@ export default function WorldMap({
         description: '자세한 설명을 추가해 설정집을 채우세요.',
         tags: []
       };
-      setElements(prev => [...prev, newPin]);
+      const newPinWithState = updateElementSnapshotState(newPin, activeSnapshotId, {});
+      setElements(prev => [...prev, newPinWithState]);
       selectSingleElement(newPinId);
-      loadElementToEdit(newPin);
+      loadElementToEdit(newPinWithState);
       setIsDetailOpen(true);
       setEditMode('select');
       return;
@@ -1820,11 +2043,10 @@ export default function WorldMap({
               }))
             : undefined;
 
-          return {
-            ...item,
+          return updateElementSnapshotState(item, activeSnapshotId, {
             brushStrokes: nextStrokes,
             brushStrokeObjects: nextStrokeObjs
-          };
+          });
         } else if (item.type === 'polygon' || item.type === 'route') {
           const newW = newX2 - newX1;
           const newH = newY2 - newY1;
@@ -1837,10 +2059,9 @@ export default function WorldMap({
             y: newY1 + (pt.y - y1) * scaleY
           }));
 
-          return {
-            ...item,
+          return updateElementSnapshotState(item, activeSnapshotId, {
             points: nextPts
-          };
+          });
         } else if (item.type === 'pin') {
           // 핀 마커는 항상 완벽한 정원형(Circular Aspect Ratio 1:1)을 유지 (반지름 기반 1:1 확장/축소)
           const rawW = newX2 - newX1;
@@ -1867,29 +2088,26 @@ export default function WorldMap({
           const margin = Math.max(12, totalSide * 0.2);
           const coreSize = Math.max(16, totalSide - margin * 2);
 
-          return {
-            ...item,
+          return updateElementSnapshotState(item, activeSnapshotId, {
             x: adjX1 + totalSide / 2,
             y: adjY1 + totalSide / 2,
             bw: coreSize,
             bh: coreSize
-          };
+          });
         } else if (item.type === 'border_rect' || item.type === 'image') {
-          return {
-            ...item,
+          return updateElementSnapshotState(item, activeSnapshotId, {
             bx: newX1,
             by: newY1,
             bw: newX2 - newX1,
             bh: newY2 - newY1
-          };
+          });
         } else {
-          return {
-            ...item,
+          return updateElementSnapshotState(item, activeSnapshotId, {
             bx: (newX1 + newX2) / 2,
             by: (newY1 + newY2) / 2,
             bw: (newX2 - newX1) / 2,
             bh: (newY2 - newY1) / 2
-          };
+          });
         }
       }));
       setHasMovedDuringDrag(true);
@@ -2013,17 +2231,15 @@ export default function WorldMap({
         if (!initial) return item;
         
         if (item.type === 'pin') {
-          return {
-            ...item,
+          return updateElementSnapshotState(item, activeSnapshotId, {
             x: initial.x + finalDx,
             y: initial.y + finalDy
-          };
+          });
         } else if (item.type === 'border_rect' || item.type === 'border_circle' || item.type === 'image') {
-          return {
-            ...item,
+          return updateElementSnapshotState(item, activeSnapshotId, {
             bx: initial.x + finalDx,
             by: initial.y + finalDy
-          };
+          });
         } else if (item.type === 'brush' || item.brushStrokes || item.brushStrokeObjects) {
           const newBrushStrokes = initial.brushStrokes ? initial.brushStrokes.map(stroke => stroke.map(pt => ({
             x: pt.x + finalDx,
@@ -2038,19 +2254,17 @@ export default function WorldMap({
             }))
           })) : item.brushStrokeObjects;
 
-          return {
-            ...item,
+          return updateElementSnapshotState(item, activeSnapshotId, {
             brushStrokes: newBrushStrokes,
             brushStrokeObjects: newBrushStrokeObjects
-          };
+          });
         } else if (item.points && initial.points) {
-          return {
-            ...item,
+          return updateElementSnapshotState(item, activeSnapshotId, {
             points: initial.points.map(pt => ({
               x: pt.x + finalDx,
               y: pt.y + finalDy
             }))
-          };
+          });
         }
         return item;
       }));
@@ -2077,7 +2291,7 @@ export default function WorldMap({
         if (el.id === selectedElementId && el.points) {
           const nextPoints = [...el.points];
           nextPoints[activeAnchorPointIdx] = { x: anchorSnapped.x, y: anchorSnapped.y };
-          return { ...el, points: nextPoints };
+          return updateElementSnapshotState(el, activeSnapshotId, { points: nextPoints });
         }
         return el;
       }));
@@ -2178,9 +2392,10 @@ export default function WorldMap({
           description: '테두리 영역 설명을 추가하세요.',
           tags: []
         };
-        setElements(prev => [...prev, newBorder]);
+        const newBorderWithState = updateElementSnapshotState(newBorder, activeSnapshotId, {});
+        setElements(prev => [...prev, newBorderWithState]);
         setSelectedElementId(newId);
-        loadElementToEdit(newBorder);
+        loadElementToEdit(newBorderWithState);
         setIsDetailOpen(true);
       }
       setBorderDragStart(null);
@@ -2220,9 +2435,10 @@ export default function WorldMap({
       tags: []
     };
     
-    setElements(prev => [...prev, newBrush]);
+    const newBrushWithState = updateElementSnapshotState(newBrush, activeSnapshotId, {});
+    setElements(prev => [...prev, newBrushWithState]);
     setSelectedElementId(newBrushId);
-    loadElementToEdit(newBrush);
+    loadElementToEdit(newBrushWithState);
     setIsDetailOpen(true);
     setTempBrushStrokes([]);
     setCurrentBrushStroke([]);
@@ -2252,9 +2468,10 @@ export default function WorldMap({
       description: '어떤 소속 국가나 영지, 던전 세력권인지 자세한 역사적 설정을 작성해 조율하세요.',
       tags: []
     };
-    setElements(prev => [...prev, newPoly]);
+    const newPolyWithState = updateElementSnapshotState(newPoly, activeSnapshotId, {});
+    setElements(prev => [...prev, newPolyWithState]);
     setSelectedElementId(newPolygonId);
-    loadElementToEdit(newPoly);
+    loadElementToEdit(newPolyWithState);
     setIsDetailOpen(true);
     setTempPoints([]);
     setEditMode('select');
@@ -2281,9 +2498,10 @@ export default function WorldMap({
       description: '주요 캐릭터들의 이동 동선이나 험난한 국경 경로선입니다.',
       tags: []
     };
-    setElements(prev => [...prev, newRoute]);
+    const newRouteWithState = updateElementSnapshotState(newRoute, activeSnapshotId, {});
+    setElements(prev => [...prev, newRouteWithState]);
     setSelectedElementId(newRouteId);
-    loadElementToEdit(newRoute);
+    loadElementToEdit(newRouteWithState);
     setIsDetailOpen(true);
     setTempPoints([]);
     setEditMode('select');
@@ -2435,12 +2653,13 @@ export default function WorldMap({
     const list: FlatTreeNode[] = [];
     
     const traverse = (mapId: string, currentPath: Array<{ id: string; name: string }>, depth: number) => {
-      // 모든 요소를 순회하되, 핀/영역/경로/붓 등 실제 항목은 종류 필터에 맞춰 필터링
+      // 모든 요소를 순회하되, 핀/영역/경로/붓 등 실제 항목은 종류 필터 및 태그 표시 필터에 맞춰 필터링
       const mapElements = elements.filter(el => {
         if (el.parentMapId !== mapId) return false;
         if ((el.childMapId && el.childMapId !== '') || el.type === 'group') {
           return true;
         }
+        if (!isElementVisibleByTagFilter(el)) return false;
         return selectedSidebarTypes.includes(el.type);
       });
       
@@ -2737,23 +2956,23 @@ export default function WorldMap({
 
   // --- 요소 선택 시 상세 폼 필드 로딩 ---
   const loadElementToEdit = (el: MapElement) => {
-    // 현재 스냅샷별 오버라이드가 있으면 적용
-    const state = el.statesBySnapshot?.[activeSnapshotId];
+    // 현재 활성화된 스냅샷(activeSnapshotId)의 오버라이드 데이터가 있으면 통합 로드
+    const displayEl = getElementDisplayData(el, activeSnapshotId);
     
-    setElementEditName(state?.name || el.name);
-    setElementEditCategoryTags(el.categoryTags || []);
-    setElementEditSummary(el.summary || '');
-    setElementEditDesc(state?.description || el.description || '');
-    setElementEditColor(state?.color || el.color || '#5E6AD2');
-    setElementEditOpacity(el.opacity !== undefined ? Math.round(el.opacity * 100) : 100);
-    setElementEditTexture(el.texture || 'none');
-    setElementEditCustomTextureImage(el.customTextureImage || '');
-    setElementEditIcon(el.icon || 'mappin');
-    setElementEditBorderStyle(el.borderStyle || 'solid');
-    setElementEditBorderWidth(el.type === 'brush' ? (el.brushWidth || 20) : (el.borderWidth || 3));
-    setElementEditChars(el.associatedCharacters || []);
-    setElementEditEpisodes(el.associatedEpisodes || []);
-    setElementEditChildMap(el.childMapId || '');
+    setElementEditName(displayEl.name);
+    setElementEditCategoryTags(displayEl.categoryTags || []);
+    setElementEditSummary(displayEl.summary || '');
+    setElementEditDesc(displayEl.description || '');
+    setElementEditColor(displayEl.color || '#5E6AD2');
+    setElementEditOpacity(displayEl.opacity !== undefined ? Math.round(displayEl.opacity * 100) : 100);
+    setElementEditTexture(displayEl.texture || 'none');
+    setElementEditCustomTextureImage(displayEl.customTextureImage || '');
+    setElementEditIcon(displayEl.icon || 'mappin');
+    setElementEditBorderStyle(displayEl.borderStyle || 'solid');
+    setElementEditBorderWidth(displayEl.type === 'brush' ? (displayEl.brushWidth || 20) : (displayEl.borderWidth || 3));
+    setElementEditChars(displayEl.associatedCharacters || []);
+    setElementEditEpisodes(displayEl.associatedEpisodes || []);
+    setElementEditChildMap(displayEl.childMapId || '');
   };
 
   // --- 상세 폼 정보 실시간 요소에 적용 ---
@@ -2763,7 +2982,29 @@ export default function WorldMap({
     pushHistory();
     setElements(prev => prev.map(el => {
       if (el.id === selectedElementId) {
-        // 스냅샷 방식 키프레임 상태 제어 분기
+        // 활성 스냅샷 상태 오버라이드 생성 및 보간
+        const states = { ...(el.statesBySnapshot || {}) };
+        const currentSnapState = states[activeSnapshotId] || { visible: true };
+        
+        states[activeSnapshotId] = {
+          ...currentSnapState,
+          visible: true,
+          name: elementEditName,
+          color: elementEditColor,
+          summary: elementEditSummary,
+          description: elementEditDesc,
+          opacity: elementEditOpacity / 100,
+          texture: elementEditTexture,
+          customTextureImage: elementEditCustomTextureImage,
+          icon: elementEditIcon,
+          borderStyle: elementEditBorderStyle,
+          borderWidth: elementEditBorderWidth,
+          brushWidth: el.type === 'brush' ? elementEditBorderWidth : el.brushWidth,
+          categoryTags: elementEditCategoryTags,
+          associatedCharacters: elementEditChars,
+          associatedEpisodes: elementEditEpisodes,
+        };
+
         const baseUpdate = {
           ...el,
           categoryTags: elementEditCategoryTags,
@@ -2780,15 +3021,6 @@ export default function WorldMap({
           childMapId: elementEditChildMap
         };
 
-        // 활성 스냅샷 상태 오버라이드 생성 및 보간
-        const states = { ...(el.statesBySnapshot || {}) };
-        states[activeSnapshotId] = {
-          visible: true,
-          color: elementEditColor,
-          description: elementEditDesc
-        };
-
-        // 기본 정보도 실시간 갱신
         return {
           ...baseUpdate,
           name: elementEditName,
@@ -2902,7 +3134,7 @@ export default function WorldMap({
   };
 
 
-  // --- 신규 스냅샷 추가 ---
+  // --- 신규 스냅샷 추가 (이전 시점의 모든 요소 및 인물 위치 데이터 완전 Fork/Deep Copy) ---
   const handleCreateSnapshot = () => {
     if (!newSnapshotName.trim()) return;
 
@@ -2923,6 +3155,26 @@ export default function WorldMap({
       description: newSnapshotDesc,
       createdTime
     };
+
+    // 현재 선택된(이전) 시점의 요소 목록 및 인물 위치 데이터를 100% 온전하게 Deep Copy (Fork)
+    const baseSnapshotId = activeSnapshotId || 'snap-default';
+    const sourceElements = elementsBySnapshot[baseSnapshotId] || elementsBySnapshot['snap-default'] || [];
+    const clonedElements: MapElement[] = JSON.parse(JSON.stringify(sourceElements));
+
+    setElementsBySnapshot(prev => ({
+      ...prev,
+      [nextId]: clonedElements
+    }));
+
+    // 인물 동선/위치 데이터도 Fork
+    if (characterPositions[baseSnapshotId]) {
+      const clonedCharPos = JSON.parse(JSON.stringify(characterPositions[baseSnapshotId]));
+      setCharacterPositions(prev => ({
+        ...prev,
+        [nextId]: clonedCharPos
+      }));
+    }
+
     setSnapshots(prev => [...prev, newSnap]);
     setActiveSnapshotId(nextId);
     setShowNewSnapshotModal(false);
@@ -3066,100 +3318,6 @@ export default function WorldMap({
                 />
               </div>
 
-              {/* 항목 종류 필터 팝오버 (검색창 하단 단독 배치 및 여백 적용) */}
-              <div className="relative mt-2 mb-3 px-0.5" ref={sidebarFilterRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowSidebarFilterDropdown(!showSidebarFilterDropdown)}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                    isDark 
-                      ? 'bg-white/[0.02] border-white/[0.08] hover:bg-white/[0.06] text-gray-300' 
-                      : 'bg-black/[0.01] border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
-                  }`}
-                >
-                  <span className="flex items-center gap-1.5">
-                    <Settings2 className="w-3 h-3 text-[#7480E2]" />
-                    종류 필터
-                  </span>
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${showSidebarFilterDropdown ? 'rotate-180' : ''}`} />
-                </button>
-
-                {showSidebarFilterDropdown && (
-                  <div className={`absolute left-0 right-0 top-full mt-1.5 z-50 rounded-lg border shadow-xl p-3 flex flex-col gap-1.5 ${
-                    isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
-                  }`}>
-                    {/* 모두 토글 */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const allTypes = ['pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle', 'image'];
-                        const isAllChecked = allTypes.every(t => selectedSidebarTypes.includes(t));
-                        if (isAllChecked) {
-                          setSelectedSidebarTypes([]);
-                        } else {
-                          setSelectedSidebarTypes(allTypes);
-                        }
-                      }}
-                      className={`flex items-center gap-2 w-full text-left py-1 px-1.5 rounded text-[11px] font-bold transition-colors ${
-                        isDark ? 'hover:bg-white/[0.05]' : 'hover:bg-black/[0.04]'
-                      }`}
-                    >
-                      <input 
-                        type="checkbox"
-                        checked={['pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle', 'image'].every(t => selectedSidebarTypes.includes(t))}
-                        readOnly
-                        className="accent-[#5E6AD2] cursor-pointer w-3.5 h-3.5"
-                      />
-                      모두
-                    </button>
-                    
-                    <div className={`w-full h-px my-0.5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
-
-                    {/* 개별 종류 필터 목록 (Lucide React 아이콘 및 표준 명칭) */}
-                    {[
-                      { label: '거점 핀 마커', types: ['pin'], Icon: MapPin },
-                      { label: '붓 그리기 영역', types: ['brush'], Icon: Paintbrush },
-                      { label: '다각형 영역', types: ['polygon'], Icon: Map },
-                      { label: '구역 사각형 테두리', types: ['border_rect'], Icon: Square },
-                      { label: '구역 원형 테두리', types: ['border_circle'], Icon: Circle },
-                      { label: '이동 교역로', types: ['route'], Icon: Route },
-                      { label: '배경 이미지', types: ['image'], Icon: Image }
-                    ].map(item => {
-                      const isChecked = item.types.every(t => selectedSidebarTypes.includes(t));
-                      const IconComp = item.Icon;
-                      return (
-                        <button
-                          key={item.label}
-                          type="button"
-                          onClick={() => {
-                            setSelectedSidebarTypes(prev => {
-                              const alreadyHas = item.types.every(t => prev.includes(t));
-                              if (alreadyHas) {
-                                return prev.filter(t => !item.types.includes(t));
-                              } else {
-                                return Array.from(new Set([...prev, ...item.types]));
-                              }
-                            });
-                          }}
-                          className={`flex items-center gap-2 w-full text-left py-1 px-1.5 rounded text-[11px] font-medium transition-colors ${
-                            isDark ? 'hover:bg-white/[0.05]' : 'hover:bg-black/[0.04]'
-                          }`}
-                        >
-                          <input 
-                            type="checkbox"
-                            checked={isChecked}
-                            readOnly
-                            className="accent-[#5E6AD2] cursor-pointer w-3.5 h-3.5"
-                          />
-                          <IconComp className="w-3.5 h-3.5 shrink-0 opacity-80" />
-                          <span>{item.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
               <div className={`flex flex-col gap-0.5 max-h-full overflow-y-auto rounded-xl p-1.5 ${
                 isDark ? 'bg-black/20 border border-white/[0.06]' : 'bg-black/[0.02] border border-black/[0.06]'
               }`}>
@@ -3300,10 +3458,11 @@ export default function WorldMap({
             {/* 탭 버튼 그룹 */}
             <div className="flex items-center gap-1 shrink-0">
               {([
-                { id: 'tool',     Icon: Sparkles,  label: '도구'   },
-                { id: 'draw',     Icon: PenTool,   label: '그리기' },
-                { id: 'timeline', Icon: History,   label: '시점'   },
-                { id: 'settings', Icon: Settings2, label: '설정'   },
+                { id: 'tool',        Icon: Sparkles,  label: '도구'       },
+                { id: 'draw',        Icon: PenTool,   label: '그리기'     },
+                { id: 'view_filter', Icon: Eye,       label: '보기/필터' },
+                { id: 'timeline',    Icon: History,   label: '시점'       },
+                { id: 'settings',    Icon: Settings2, label: '설정'       },
               ] as const).map(({ id, Icon, label }) => {
                 const isActive = activeHeaderTab === id;
                 return (
@@ -3438,41 +3597,277 @@ export default function WorldMap({
                     미니맵 {showMinimap ? '표시 중' : '숨김'}
                   </button>
 
-                  {/* 이름 보기 토글 버튼 (단일화 적용) */}
-                  <button
-                    onClick={() => setShowElementNames(!showElementNames)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
-                      showElementNames
-                        ? 'bg-[#5E6AD2]/15 border-[#5E6AD2]/30 text-[#7480E2]'
-                        : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.05]'
-                    }`}
-                  >
-                    <Tag className="w-3.5 h-3.5 shrink-0" />
-                    이름 보기 {showElementNames ? '켜짐' : '꺼짐'}
-                  </button>
-
                   <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
 
-                  {/* 격자선 설정 메뉴 */}
+                  {/* 거리 측정 도구 */}
+                  <button
+                    onClick={() => { setEditMode('measure'); setTempPoints([]); setTempBrushStrokes([]); setCurrentBrushStroke([]); }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
+                      editMode === 'measure'
+                        ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-sm'
+                        : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
+                    }`}
+                  >
+                    <Ruler className="w-3.5 h-3.5 shrink-0" />
+                    거리 측정
+                  </button>
+                  {editMode === 'measure' && measurePoints.length > 1 && (
+                    <span className={`text-xs font-bold shrink-0 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                      {calculateDistanceInfo()}
+                    </span>
+                  )}
+                  {editMode === 'measure' && measurePoints.length > 0 && (
+                    <button onClick={() => setMeasurePoints([])} className="px-2 py-1 rounded-lg bg-red-500/15 text-red-400 text-[10px] font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors shrink-0">측정 초기화</button>
+                  )}
+                </div>
+              )}
+
+              {/* ── 보기/필터 탭 ── */}
+              {activeHeaderTab === 'view_filter' && (
+                <div className="flex items-center gap-2.5 shrink-0 text-xs">
+                  {/* 1. 사이드 바 종류 필터 */}
+                  <div className="relative" ref={sidebarFilterRef}>
+                    <button
+                      type="button"
+                      onClick={() => setShowSidebarFilterDropdown(!showSidebarFilterDropdown)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all duration-150 ${
+                        isDark 
+                          ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]' 
+                          : 'bg-[#5E6AD2]/10 border-[#5E6AD2]/20 text-[#4F46E5]'
+                      }`}
+                    >
+                      <Settings2 className="w-3.5 h-3.5 shrink-0 text-[#7480E2]" />
+                      <span>종류 필터</span>
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${showSidebarFilterDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showSidebarFilterDropdown && (
+                      <div className={`absolute left-0 mt-2 w-56 rounded-xl shadow-2xl border p-3 z-50 animate-in fade-in zoom-in-95 ${
+                        isDark ? 'bg-[#121316]/95 border-white/10 backdrop-blur-md text-gray-200' : 'bg-white/95 border-black/10 backdrop-blur-md text-gray-800'
+                      }`}>
+                        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/10">
+                          <span className="text-[11px] font-bold text-gray-400">표시 종류 선택</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const allTypes = ['pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle', 'image'];
+                              const isAllChecked = allTypes.every(t => selectedSidebarTypes.includes(t));
+                              if (isAllChecked) {
+                                setSelectedSidebarTypes([]);
+                              } else {
+                                setSelectedSidebarTypes(allTypes);
+                              }
+                            }}
+                            className="text-[10px] text-[#7480E2] font-bold hover:underline"
+                          >
+                            모두 선택/해제
+                          </button>
+                        </div>
+                        <div className="space-y-1 max-h-56 overflow-y-auto">
+                          {[
+                            { label: '거점 핀 마커', types: ['pin'], Icon: MapPin },
+                            { label: '붓 그리기 영역', types: ['brush'], Icon: Paintbrush },
+                            { label: '다각형 영역', types: ['polygon'], Icon: Map },
+                            { label: '구역 사각형 테두리', types: ['border_rect'], Icon: Square },
+                            { label: '구역 원형 테두리', types: ['border_circle'], Icon: Circle },
+                            { label: '이동 교역로', types: ['route'], Icon: Route },
+                            { label: '배경 이미지', types: ['image'], Icon: Image }
+                          ].map(item => {
+                            const isChecked = item.types.every(t => selectedSidebarTypes.includes(t));
+                            const IconComp = item.Icon;
+                            return (
+                              <button
+                                key={item.label}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSidebarTypes(prev => {
+                                    const alreadyHas = item.types.every(t => prev.includes(t));
+                                    if (alreadyHas) {
+                                      return prev.filter(t => !item.types.includes(t));
+                                    } else {
+                                      return Array.from(new Set([...prev, ...item.types]));
+                                    }
+                                  });
+                                }}
+                                className={`flex items-center gap-2 w-full text-left py-1.5 px-2 rounded-lg text-xs font-medium transition-colors ${
+                                  isChecked
+                                    ? isDark ? 'bg-[#5E6AD2]/20 text-[#7480E2] font-bold' : 'bg-[#5E6AD2]/10 text-[#5E6AD2] font-bold'
+                                    : isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-black/5 text-gray-700'
+                                }`}
+                              >
+                                <input 
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  readOnly
+                                  className="accent-[#5E6AD2] cursor-pointer w-3.5 h-3.5"
+                                />
+                                <IconComp className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                                <span>{item.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 2. 태그 보기 & 관리 드롭다운 */}
+                  <div className="relative" ref={tagFilterRef}>
+                    <button
+                      onClick={() => setShowTagFilterDropdown(prev => !prev)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border shrink-0 transition-all duration-150 ${
+                        selectedDisplayTags.length > 0
+                          ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
+                          : isDark ? 'border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.05]'
+                      }`}
+                    >
+                      <Tag className="w-3.5 h-3.5 shrink-0 text-[#7480E2]" />
+                      <span>태그 보기</span>
+                      {selectedDisplayTags.length > 0 && (
+                        <span className="px-1.5 py-0.2 text-[10px] font-extrabold rounded-full bg-[#5E6AD2] text-white">
+                          {selectedDisplayTags.length}
+                        </span>
+                      )}
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showTagFilterDropdown ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {showTagFilterDropdown && (
+                      <div className={`absolute left-0 mt-2 w-64 rounded-xl shadow-2xl border p-3 z-50 animate-in fade-in zoom-in-95 ${
+                        isDark ? 'bg-[#121316]/95 border-white/10 backdrop-blur-md text-gray-200' : 'bg-white/95 border-black/10 backdrop-blur-md text-gray-800'
+                      }`}>
+                        <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 text-xs">
+                          <span className="font-bold flex items-center gap-1.5">
+                            <Tag className="w-3.5 h-3.5 text-[#7480E2]" />
+                            표시 태그 선택
+                          </span>
+                          <button
+                            onClick={() => setShowTagModal(true)}
+                            className="text-[#7480E2] hover:underline font-bold text-[11px]"
+                          >
+                            + 태그 관리
+                          </button>
+                        </div>
+
+                        <div className="space-y-1 max-h-56 overflow-y-auto">
+                          {/* 태그 없음 */}
+                          {(() => {
+                            const isChecked = selectedDisplayTags.includes('__NONE__');
+                            return (
+                              <label
+                                className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                                  isChecked
+                                    ? isDark ? 'bg-[#5E6AD2]/20 text-[#7480E2] font-bold' : 'bg-[#5E6AD2]/10 text-[#5E6AD2] font-bold'
+                                    : isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-black/5 text-gray-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedDisplayTags(prev => [...prev, '__NONE__']);
+                                      } else {
+                                        setSelectedDisplayTags(prev => prev.filter(t => t !== '__NONE__'));
+                                      }
+                                    }}
+                                    className="rounded border-gray-400 text-[#5E6AD2] focus:ring-[#5E6AD2] w-3.5 h-3.5 cursor-pointer"
+                                  />
+                                  <span className="text-xs font-semibold text-gray-400 italic">태그 없음</span>
+                                </div>
+                              </label>
+                            );
+                          })()}
+
+                          {mapTags.map(tag => {
+                            const isChecked = selectedDisplayTags.includes(tag.id);
+                            return (
+                              <label
+                                key={tag.id}
+                                className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                                  isChecked
+                                    ? isDark ? 'bg-[#5E6AD2]/20 text-white font-bold' : 'bg-[#5E6AD2]/10 text-gray-900 font-bold'
+                                    : isDark ? 'hover:bg-white/5 text-gray-300' : 'hover:bg-black/5 text-gray-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedDisplayTags(prev => [...prev, tag.id]);
+                                      } else {
+                                        setSelectedDisplayTags(prev => prev.filter(t => t !== tag.id));
+                                      }
+                                    }}
+                                    className="rounded border-gray-400 text-[#5E6AD2] focus:ring-[#5E6AD2] w-3.5 h-3.5 cursor-pointer"
+                                  />
+                                  <span
+                                    style={{ backgroundColor: tag.color }}
+                                    className="px-2 py-0.5 rounded-full text-white text-[11px] font-bold shadow-sm"
+                                  >
+                                    {tag.name}
+                                  </span>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. 레이어 스택 보기 버튼 */}
+                  <button
+                    type="button"
+                    onClick={() => setShowLayerStackModal(true)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border shrink-0 transition-all duration-150 ${
+                      showLayerStackModal
+                        ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-sm'
+                        : isDark ? 'bg-[#5E6AD2]/15 border-[#5E6AD2]/30 text-[#7480E2] hover:bg-[#5E6AD2]/25' : 'bg-[#5E6AD2]/10 border-[#5E6AD2]/20 text-[#4F46E5] hover:bg-[#5E6AD2]/20'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5 shrink-0" />
+                    <span>레이어 스택 보기</span>
+                  </button>
+
+                  <div className={`w-px h-5 shrink-0 mx-0.5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+                  {/* 4. 이름 보기 토글 버튼 */}
+                  <button
+                    type="button"
+                    onClick={() => setShowElementNames(!showElementNames)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border shrink-0 transition-all duration-150 ${
+                      showElementNames
+                        ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
+                        : isDark ? 'border-white/[0.08] text-gray-400 hover:bg-white/[0.06]' : 'border-black/[0.08] text-gray-500 hover:bg-black/[0.05]'
+                    }`}
+                  >
+                    {showElementNames ? <Eye className="w-3.5 h-3.5 shrink-0" /> : <EyeOff className="w-3.5 h-3.5 shrink-0" />}
+                    <span>이름 보기 {showElementNames ? '켜짐' : '꺼짐'}</span>
+                  </button>
+
+                  {/* 5. 격자선 보기 토글 & 간격 설정 */}
                   <div ref={gridMenuRef} className="relative inline-flex items-stretch shrink-0">
                     <div className={`flex items-center rounded-lg shrink-0 transition-all duration-150 ${
                       gridVisible
-                        ? 'bg-[#5E6AD2]/10 border border-[#5E6AD2]/30 text-[#7480E2]'
-                        : isDark ? 'border border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border border-black/[0.08] text-gray-600 hover:bg-black/[0.05]'
+                        ? 'bg-[#5E6AD2]/15 border border-[#5E6AD2]/35 text-[#7480E2]'
+                        : isDark ? 'border border-white/[0.08] text-gray-400 hover:bg-white/[0.06]' : 'border border-black/[0.08] text-gray-500 hover:bg-black/[0.05]'
                     }`}>
                       <button
                         type="button"
                         onClick={() => setGridVisible(!gridVisible)}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-l-lg hover:bg-white/10"
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-l-lg hover:bg-white/10"
                       >
                         <Grid3X3 className="w-3.5 h-3.5 shrink-0" />
-                        격자선 ({gridSize}px)
+                        <span>격자선 ({gridSize}px)</span>
                       </button>
                       <div className={`w-px h-3.5 shrink-0 ${gridVisible ? 'bg-white/20' : isDark ? 'bg-white/10' : 'bg-black/10'}`} />
                       <button
                         type="button"
                         onClick={() => setShowGridMenu(prev => !prev)}
-                        className="px-1.5 py-1.5 text-xs font-semibold rounded-r-lg hover:bg-white/10 flex items-center justify-center"
+                        className="px-1.5 py-1.5 text-xs font-bold rounded-r-lg hover:bg-white/10 flex items-center justify-center"
                       >
                         <ChevronDown className="w-3.5 h-3.5 shrink-0" />
                       </button>
@@ -3536,69 +3931,9 @@ export default function WorldMap({
                             ))}
                           </div>
                         </div>
-
-                        <div className="pt-2 border-t border-white/10">
-                          <button
-                            onClick={() => setGridSnapEnabled(!gridSnapEnabled)}
-                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                              gridSnapEnabled
-                                ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
-                                : isDark ? 'border-white/10 text-gray-400 hover:bg-white/5' : 'border-black/10 text-gray-600 hover:bg-black/5'
-                            }`}
-                          >
-                            <span className="flex items-center gap-1.5">
-                              <Magnet className="w-3.5 h-3.5 shrink-0" />
-                              격자 자석 스냅
-                            </span>
-                            <span className="text-[10px] font-bold">
-                              {gridSnapEnabled ? 'ON' : 'OFF'}
-                            </span>
-                          </button>
-                        </div>
                       </div>
                     )}
                   </div>
-
-                  {/* 격자선 자석 스냅 & 점간 자동 스냅 */}
-                  {[
-                    { Icon: Magnet, label: '격자 자석 스냅', checked: gridSnapEnabled, onChange: setGridSnapEnabled },
-                    { Icon: Magnet, label: '점간 자동 스냅', checked: pointSnapEnabled, onChange: setPointSnapEnabled },
-                  ].map(({ Icon, label, checked, onChange }) => (
-                    <button
-                      key={label}
-                      onClick={() => onChange(!checked)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
-                        checked
-                          ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
-                          : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
-                      }`}
-                    >
-                      <Icon className="w-3.5 h-3.5 shrink-0" />{label}
-                    </button>
-                  ))}
-
-                  <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
-
-                  {/* 거리 측정 도구 */}
-                  <button
-                    onClick={() => { setEditMode('measure'); setTempPoints([]); setTempBrushStrokes([]); setCurrentBrushStroke([]); }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
-                      editMode === 'measure'
-                        ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-sm'
-                        : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
-                    }`}
-                  >
-                    <Ruler className="w-3.5 h-3.5 shrink-0" />
-                    거리 측정
-                  </button>
-                  {editMode === 'measure' && measurePoints.length > 1 && (
-                    <span className={`text-xs font-bold shrink-0 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      {calculateDistanceInfo()}
-                    </span>
-                  )}
-                  {editMode === 'measure' && measurePoints.length > 0 && (
-                    <button onClick={() => setMeasurePoints([])} className="px-2 py-1 rounded-lg bg-red-500/15 text-red-400 text-[10px] font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors shrink-0">측정 초기화</button>
-                  )}
                 </div>
               )}
 
@@ -3971,37 +4306,30 @@ export default function WorldMap({
 
                   <div className={`w-px h-5 shrink-0 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
 
-                  {/* 표시 레이어 필터 */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className={`text-[10px] font-bold shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>표시 레이어:</span>
-                    {[
-                      { label: '자연 지형', checked: layerVisibility.terrain, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, terrain: v })) },
-                      { label: '정치/국경', checked: layerVisibility.political, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, political: v })) },
-                      { label: '이동 교역로', checked: layerVisibility.routes, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, routes: v })) },
-                      { label: '인물 위치', checked: layerVisibility.characters, onChange: (v: boolean) => setLayerVisibility(prev => ({ ...prev, characters: v })) },
-                      { label: '요소 이름', checked: showElementNames, onChange: setShowElementNames },
-                      { label: '안개(Fog)', checked: fogVisible, onChange: setFogVisible },
-                    ].map(({ label, checked, onChange }) => (
-                      <button
-                        key={label}
-                        onClick={() => onChange(!checked)}
-                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
-                          checked
-                            ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
-                            : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
-                        }`}
-                      >
-                        {checked ? <Eye className="w-3.5 h-3.5 shrink-0" /> : <EyeOff className="w-3.5 h-3.5 shrink-0" />}
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                  {/* 자동 스냅 설정 (격자선 자동 스냅 & 점간 자동 스냅) */}
+                  {[
+                    { Icon: Magnet, label: '격자선 자동 스냅', checked: gridSnapEnabled, onChange: setGridSnapEnabled },
+                    { Icon: Magnet, label: '점간 자동 스냅', checked: pointSnapEnabled, onChange: setPointSnapEnabled },
+                  ].map(({ Icon, label, checked, onChange }) => (
+                    <button
+                      key={label}
+                      onClick={() => onChange(!checked)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border shrink-0 transition-all duration-150 ${
+                        checked
+                          ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
+                          : isDark ? 'border-white/[0.08] text-gray-400 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-500 hover:bg-black/[0.04]'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5 shrink-0" />
+                      <span>{label}</span>
+                    </button>
+                  ))}
                 </div>
               )}
 
               {/* ── 시점 탭 ── */}
               {activeHeaderTab === 'timeline' && (
-                <div className="flex items-center justify-between gap-6 shrink-0 min-w-max select-none">
+                <div className="flex items-center justify-between gap-6 shrink-0 min-w-max select-none w-full">
                   <style>{`
                     @keyframes novela-circular-marquee-anim {
                       0% {
@@ -4191,8 +4519,8 @@ export default function WorldMap({
                     )}
                   </div>
 
-                  {/* 우측: 시점 이동 제어판 및 이력 생성 */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  {/* 우측 고정: 시점 이동 제어판 및 이력 생성 */}
+                  <div className="flex items-center gap-2 shrink-0 ml-auto">
                     <div className="flex items-center gap-1 shrink-0">
                       {/* 가장 옛날 이력으로 이동 */}
                       <button
@@ -4397,75 +4725,7 @@ export default function WorldMap({
                     </pattern>
                   </defs>
 
-              {/* 1. 복수 개 업로드 가능한 이미지 요소 레이어 */}
-              {selectedSidebarTypes.includes('image') && currentActiveElements
-                .filter(el => el.type === 'image')
-                .map(el => {
-                  const state = el.statesBySnapshot?.[activeSnapshotId];
-                  const isVisible = state ? state.visible : true;
-                  if (!isVisible) return null;
-
-                  const isSelected = isElementSelected(el.id);
-                  const isDraggingThis = isSelected && isDraggingElements;
-                  const bx = el.bx ?? 0;
-                  const by = el.by ?? 0;
-                  const bw = el.bw || 400;
-                  const bh = el.bh || 300;
-                  // base64 → ObjectURL 변환 (브라우저 Decoded Image Cache 활용으로 repaint 비용 차단)
-                  const renderUrl = getImageRenderUrl(el.imageAttachment);
-
-                  return (
-                    <g
-                      key={el.id}
-                      // SVG x/y 속성 직접 수정(Reflow 유발) 대신 translate3d로 GPU Composite 레이어 이동
-                      style={{
-                        transform: `translate(${bx}px, ${by}px)`,
-                        // 드래그 중인 경우 will-change: transform으로 GPU 레이어 미리 승격
-                        willChange: isDraggingThis ? 'transform' : 'auto',
-                      }}
-                      onMouseEnter={() => setHoveredElementId(el.id)}
-                      onMouseLeave={() => setHoveredElementId(null)}
-                    >
-                      <image
-                        href={renderUrl}
-                        x={0}
-                        y={0}
-                        width={bw}
-                        height={bh}
-                        preserveAspectRatio="none"
-                        opacity={el.opacity !== undefined ? el.opacity : 0.85}
-                        onMouseDown={(e) => handleElementMouseDown(e, el)}
-                        onClick={(e) => handleElementClick(el, e)}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          handleElementDoubleClick(el);
-                        }}
-                        style={{
-                          pointerEvents: 'auto',
-                          // transition 완전 제거: 드래그 시 200ms 보간 충돌로 cursor를 못 따라오는 현상 방지
-                          transition: 'none',
-                        }}
-                        className={`${isElementLocked(el.type) ? 'cursor-not-allowed' : editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
-                      />
-                      {/* 선택 상태일 때만 외곽선 가이드라인 표시 */}
-                      {isSelected && (
-                        <rect
-                          x={0}
-                          y={0}
-                          width={bw}
-                          height={bh}
-                          fill="none"
-                          stroke="#E74C3C"
-                          strokeWidth="1.5"
-                          strokeDasharray="4,3"
-                          style={{ pointerEvents: 'none' }}
-                        />
-                      )}
-                    </g>
-                  );
-                })}
-
-              {/* 2. 배경 격자 Grid 렌더링 (Dynamic Viewport Grid Rendering으로 초거대 크기 브라우저 렌더링 디스카드 버그 원천 해결 및 GPU 래스터 부하 최소화) */}
+              {/* 1. 배경 격자 Grid 렌더링 (Dynamic Viewport Grid Rendering으로 최하단 배경에 배치) */}
               {gridVisible && (() => {
                 const containerW = canvasContainerRef.current ? canvasContainerRef.current.clientWidth : (typeof window !== 'undefined' ? window.innerWidth : 1200);
                 const containerH = canvasContainerRef.current ? canvasContainerRef.current.clientHeight : (typeof window !== 'undefined' ? window.innerHeight : 800);
@@ -4487,20 +4747,85 @@ export default function WorldMap({
                   />
                 );
               })()}
-              {/* 다각형 면적 레이어 */}
-              {layerVisibility.political && selectedSidebarTypes.includes('polygon') && currentActiveElements
-                .filter(el => el.type === 'polygon')
-                .map(el => {
-                  const state = el.statesBySnapshot?.[activeSnapshotId];
-                  const isVisible = state ? state.visible : true;
-                  if (!isVisible) return null;
 
-                  const color = state?.color || el.color || '#5E6AD2';
+              {/* 2. SVG 맵 요소 통합 렌더링 (currentActiveElements 배열 순서 그대로 렌더링하여 레이어 겹침 순서 100% 반영) */}
+              {currentActiveElements.map(rawEl => {
+                const el = getElementDisplayData(rawEl, activeSnapshotId);
+                if (el.isSnapshotHidden) return null;
+
+                const sidebarFilterType = (el.type === 'border_rect' || el.type === 'border_circle') ? 'polygon' : el.type;
+                if (!selectedSidebarTypes.includes(sidebarFilterType)) return null;
+
+                if (el.type === 'polygon' || el.type === 'brush' || el.type === 'border_rect' || el.type === 'border_circle') {
+                  if (!layerVisibility.political) return null;
+                } else if (el.type === 'route') {
+                  if (!layerVisibility.routes) return null;
+                }
+
+                // --- 2-1. 이미지 요소 ---
+                if (el.type === 'image') {
+                  const isSelected = isElementSelected(el.id);
+                  const isDraggingThis = isSelected && isDraggingElements;
+                  const bx = el.bx ?? 0;
+                  const by = el.by ?? 0;
+                  const bw = el.bw || 400;
+                  const bh = el.bh || 300;
+                  const renderUrl = getImageRenderUrl(el.imageAttachment);
+
+                  return (
+                    <g
+                      key={el.id}
+                      style={{
+                        transform: `translate(${bx}px, ${by}px)`,
+                        willChange: isDraggingThis ? 'transform' : 'auto',
+                      }}
+                      onMouseEnter={() => setHoveredElementId(el.id)}
+                      onMouseLeave={() => setHoveredElementId(null)}
+                    >
+                      <image
+                        href={renderUrl}
+                        x={0}
+                        y={0}
+                        width={bw}
+                        height={bh}
+                        preserveAspectRatio="none"
+                        opacity={el.opacity !== undefined ? el.opacity : 0.85}
+                        onMouseDown={(e) => handleElementMouseDown(e, el)}
+                        onClick={(e) => handleElementClick(el, e)}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          handleElementDoubleClick(el);
+                        }}
+                        style={{
+                          pointerEvents: 'auto',
+                          transition: 'none',
+                        }}
+                        className={`${isElementLocked(el.type) ? 'cursor-not-allowed' : editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
+                      />
+                      {isSelected && (
+                        <rect
+                          x={0}
+                          y={0}
+                          width={bw}
+                          height={bh}
+                          fill="none"
+                          stroke="#E74C3C"
+                          strokeWidth="1.5"
+                          strokeDasharray="4,3"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      )}
+                    </g>
+                  );
+                }
+
+                // --- 2-2. 다각형 면적 요소 ---
+                if (el.type === 'polygon') {
+                  const color = el.color || '#5E6AD2';
                   const opacity = (selectedElementId === el.id && isDetailOpen) ? (elementEditOpacity / 100) : (el.opacity !== undefined ? el.opacity : 0.3);
                   const ptsString = el.points?.map(p => `${p.x},${p.y}`).join(' ') || '';
                   const isSelected = isElementSelected(el.id);
 
-                  // 텍스처 오버레이를 위해 bounding box 계산
                   const tex = (selectedElementId === el.id && isDetailOpen) ? elementEditTexture : el.texture;
                   const customImg = (selectedElementId === el.id && isDetailOpen) ? elementEditCustomTextureImage : el.customTextureImage;
                   const hasTex = tex && tex !== 'none' && el.points && el.points.length > 0;
@@ -4522,7 +4847,6 @@ export default function WorldMap({
                       onMouseEnter={() => setHoveredElementId(el.id)}
                       onMouseLeave={() => setHoveredElementId(null)}
                     >
-                      {/* clipPath 및 커스텀 이미지 패턴 정의 (텍스처용) */}
                       {hasTex && (
                         <defs>
                           <clipPath id={clipId}>
@@ -4535,7 +4859,6 @@ export default function WorldMap({
                           )}
                         </defs>
                       )}
-                      {/* 본체 채우기 */}
                       <polygon 
                         points={ptsString}
                         fill={color}
@@ -4553,7 +4876,6 @@ export default function WorldMap({
                           isElementLocked(el.type) ? 'cursor-not-allowed' : editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:stroke-white'
                         }`}
                       />
-                      {/* 경계선 마우스 드래그 핸들 (두꺼운 투명 선) */}
                       {editMode === 'select' && (
                         <polygon
                           points={ptsString}
@@ -4564,7 +4886,6 @@ export default function WorldMap({
                           onMouseDown={(e) => handleElementMouseDown(e, el)}
                         />
                       )}
-                      {/* 지형 텍스처 오버레이: clipPath로 폴리곤 모양에 맞게 rect 잘라냄 */}
                       {hasTex && (
                         <rect
                           x={bboxX}
@@ -4579,21 +4900,14 @@ export default function WorldMap({
                       )}
                     </g>
                   );
-                })}
+                }
 
-              {/* 경로선 레이어 */}
-              {layerVisibility.routes && selectedSidebarTypes.includes('route') && currentActiveElements
-                .filter(el => el.type === 'route')
-                .map(el => {
-                  const state = el.statesBySnapshot?.[activeSnapshotId];
-                  const isVisible = state ? state.visible : true;
-                  if (!isVisible) return null;
-
-                  const color = state?.color || el.color || '#F1C40F';
+                // --- 2-3. 경로선 요소 ---
+                if (el.type === 'route') {
+                  const color = el.color || '#F1C40F';
                   const ptsString = el.points?.map(p => `${p.x},${p.y}`).join(' ') || '';
                   const isSelected = isElementSelected(el.id);
                   
-                  // SVG 폴리라인 좌표
                   return (
                     <g 
                       key={el.id}
@@ -4616,7 +4930,6 @@ export default function WorldMap({
                           editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:stroke-white'
                         }`}
                       />
-                      {/* 경계선 마우스 드래그 핸들 (두꺼운 투명 선) */}
                       {editMode === 'select' && (
                         <polyline
                           points={ptsString}
@@ -4634,18 +4947,12 @@ export default function WorldMap({
                       )}
                     </g>
                   );
-                })}
+                }
 
-              {/* 붓 그리기 영역 레이어 */}
-              {layerVisibility.political && selectedSidebarTypes.includes('brush') && currentActiveElements
-                .filter(el => el.type === 'brush')
-                .map(el => {
-                  const state = el.statesBySnapshot?.[activeSnapshotId];
-                  const isVisible = state ? state.visible : true;
-                  if (!isVisible) return null;
-
+                // --- 2-4. 붓 그리기 영역 요소 ---
+                if (el.type === 'brush') {
                   const isSelected = isElementSelected(el.id);
-                  const color = state?.color || el.color || '#5E6AD2';
+                  const color = el.color || '#5E6AD2';
                   const baseOpacity = el.opacity !== undefined ? el.opacity : 0.4;
                   const opacity = isSelected ? Math.min(1, baseOpacity + 0.2) : baseOpacity;
                   const brushWidthVal = el.brushWidth || 20;
@@ -4657,7 +4964,6 @@ export default function WorldMap({
                       onMouseEnter={() => setHoveredElementId(el.id)}
                       onMouseLeave={() => setHoveredElementId(null)}
                     >
-                      {/* 실제 붓 영역 표현 (획 별 개별 굵기 및 형태 보존) */}
                       {el.brushStrokeObjects && el.brushStrokeObjects.length > 0 ? (
                         el.brushStrokeObjects.map((sObj, sIdx) => {
                           const sPathData = buildStrokesPathData([sObj.points]);
@@ -4705,7 +5011,6 @@ export default function WorldMap({
                           }`}
                         />
                       )}
-                      {/* 드래그 및 마우스 감지를 위한 투명 캡슐 패스 */}
                       {editMode === 'select' && (
                         <path
                           d={pathData}
@@ -4725,77 +5030,15 @@ export default function WorldMap({
                       )}
                     </g>
                   );
-                })}
+                }
 
-              {/* 붓 드로잉 중일 때 실시간 프리뷰 */}
-              {editMode === 'draw_brush' && (tempBrushStrokes.length > 0 || currentBrushStroke.length > 0) && (
-                <g style={{ pointerEvents: 'none' }}>
-                  {tempBrushStrokes.map((sObj, idx) => (
-                    <path
-                      key={idx}
-                      d={buildStrokesPathData([sObj.points])}
-                      fill="none"
-                      stroke="#5E6AD2"
-                      strokeWidth={sObj.width}
-                      strokeLinecap={sObj.shape === 'square' ? 'square' : 'round'}
-                      strokeLinejoin={sObj.shape === 'square' ? 'miter' : 'round'}
-                      opacity={0.4}
-                    />
-                  ))}
-                  {currentBrushStroke.length > 0 && (
-                    <path
-                      d={buildStrokesPathData([currentBrushStroke])}
-                      fill="none"
-                      stroke="#5E6AD2"
-                      strokeWidth={brushWidth}
-                      strokeLinecap={brushShape === 'square' ? 'square' : 'round'}
-                      strokeLinejoin={brushShape === 'square' ? 'miter' : 'round'}
-                      opacity={0.4}
-                    />
-                  )}
-                </g>
-              )}
-
-              {/* 붓 드로잉 마우스 포인터 브러시 크기 가이드 (원형 vs 네모) */}
-              {editMode === 'draw_brush' && hoveredPoint && (
-                brushShape === 'square' ? (
-                  <rect
-                    x={hoveredPoint.x - brushWidth / 2}
-                    y={hoveredPoint.y - brushWidth / 2}
-                    width={brushWidth}
-                    height={brushWidth}
-                    fill="rgba(94, 106, 210, 0.15)"
-                    stroke="#5E6AD2"
-                    strokeWidth="1.5"
-                    style={{ pointerEvents: 'none' }}
-                  />
-                ) : (
-                  <circle
-                    cx={hoveredPoint.x}
-                    cy={hoveredPoint.y}
-                    r={brushWidth / 2}
-                    fill="rgba(94, 106, 210, 0.15)"
-                    stroke="#5E6AD2"
-                    strokeWidth="1.5"
-                    style={{ pointerEvents: 'none' }}
-                  />
-                )
-              )}
-
-              {/* 테두리 (사각형 및 원형) 레이어 */}
-              {layerVisibility.political && selectedSidebarTypes.includes('polygon') && currentActiveElements
-                .filter(el => el.type === 'border_rect' || el.type === 'border_circle')
-                .map(el => {
-                  const state = el.statesBySnapshot?.[activeSnapshotId];
-                  const isVisible = state ? state.visible : true;
-                  if (!isVisible) return null;
-
-                  const color = state?.color || el.color || '#5E6AD2';
+                // --- 2-5. 구역 테두리 (사각형 및 원형) 요소 ---
+                if (el.type === 'border_rect' || el.type === 'border_circle') {
+                  const color = el.color || '#5E6AD2';
                   const opacity = el.opacity !== undefined ? el.opacity : 1.0;
                   const strokeWidth = el.borderWidth || 3;
                   const borderStyle = el.borderStyle || 'solid';
                   const isSelected = isElementSelected(el.id);
-
                   const strokeDash = borderStyle === 'dashed' ? '8,6' : borderStyle === 'dotted' ? '3,3' : undefined;
 
                   if (el.type === 'border_rect') {
@@ -4823,7 +5066,6 @@ export default function WorldMap({
                           }}
                           className={`transition-colors duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
                         />
-                        {/* 테두리 드래그 핸들 */}
                         {editMode === 'select' && (
                           <rect
                             x={el.bx}
@@ -4864,7 +5106,6 @@ export default function WorldMap({
                           }}
                           className={`transition-colors duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
                         />
-                        {/* 원형 테두리 드래그 핸들 */}
                         {editMode === 'select' && (
                           <ellipse
                             cx={el.bx}
@@ -4881,7 +5122,10 @@ export default function WorldMap({
                       </g>
                     );
                   }
-                })}
+                }
+
+                return null;
+              })}
 
               {/* 드래그 중인 테두리 임시 프리뷰 */}
               {borderDragStart && borderDragCurrent && (() => {
@@ -4956,6 +5200,61 @@ export default function WorldMap({
                     strokeWidth={1.5 / zoom}
                   />
                 </g>
+              )}
+
+              {/* 붓 드로잉 중일 때 실시간 프리뷰 */}
+              {editMode === 'draw_brush' && (tempBrushStrokes.length > 0 || currentBrushStroke.length > 0) && (
+                <g style={{ pointerEvents: 'none' }}>
+                  {tempBrushStrokes.map((sObj, idx) => (
+                    <path
+                      key={idx}
+                      d={buildStrokesPathData([sObj.points])}
+                      fill="none"
+                      stroke="#5E6AD2"
+                      strokeWidth={sObj.width}
+                      strokeLinecap={sObj.shape === 'square' ? 'square' : 'round'}
+                      strokeLinejoin={sObj.shape === 'square' ? 'miter' : 'round'}
+                      opacity={0.4}
+                    />
+                  ))}
+                  {currentBrushStroke.length > 0 && (
+                    <path
+                      d={buildStrokesPathData([currentBrushStroke])}
+                      fill="none"
+                      stroke="#5E6AD2"
+                      strokeWidth={brushWidth}
+                      strokeLinecap={brushShape === 'square' ? 'square' : 'round'}
+                      strokeLinejoin={brushShape === 'square' ? 'miter' : 'round'}
+                      opacity={0.4}
+                    />
+                  )}
+                </g>
+              )}
+
+              {/* 붓 드로잉 마우스 포인터 브러시 크기 가이드 (원형 vs 네모) */}
+              {editMode === 'draw_brush' && hoveredPoint && (
+                brushShape === 'square' ? (
+                  <rect
+                    x={hoveredPoint.x - brushWidth / 2}
+                    y={hoveredPoint.y - brushWidth / 2}
+                    width={brushWidth}
+                    height={brushWidth}
+                    fill="rgba(94, 106, 210, 0.15)"
+                    stroke="#5E6AD2"
+                    strokeWidth="1.5"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                ) : (
+                  <circle
+                    cx={hoveredPoint.x}
+                    cy={hoveredPoint.y}
+                    r={brushWidth / 2}
+                    fill="rgba(94, 106, 210, 0.15)"
+                    stroke="#5E6AD2"
+                    strokeWidth="1.5"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                )
               )}
 
               {/* 임시 그리기 다각형 및 가이드선 */}
@@ -5249,13 +5548,12 @@ export default function WorldMap({
 
             {/* 4. 절대 배치형 거점 핀(Pin Marker) 리스트 */}
             {layerVisibility.political && selectedSidebarTypes.includes('pin') && currentActiveElements
-              .filter(el => el.type === 'pin')
-              .map(el => {
-                const state = el.statesBySnapshot?.[activeSnapshotId];
-                const isVisible = state ? state.visible : true;
-                if (!isVisible) return null;
+              .filter(rawEl => rawEl.type === 'pin')
+              .map(rawEl => {
+                const el = getElementDisplayData(rawEl, activeSnapshotId);
+                if (el.isSnapshotHidden) return null;
 
-                const color = state?.color || el.color || '#5E6AD2';
+                const color = el.color || '#5E6AD2';
                 const isSelected = isElementSelected(el.id);
 
                 // 핀 아이콘 매핑
@@ -5276,6 +5574,7 @@ export default function WorldMap({
                     style={{
                       left: `${el.x}px`,
                       top: `${el.y}px`,
+                      zIndex: 10 + elements.findIndex(item => item.id === el.id),
                       cursor: editMode === 'select' ? 'move' : 'pointer'
                     }}
                     onMouseDown={(e) => {
@@ -5404,7 +5703,7 @@ export default function WorldMap({
 
       </div>
 
-      {/* 우측 세부 설정 편집 정보창 (width 320px) */}
+      {/* 우측 세부 설정 편집 정보창 (width 320px - 헤더 위 오버레이 패널로 배치) */}
       {isDetailOpen && selectedElementId && (() => {
         const el = elements.find(item => item.id === selectedElementId);
         if (!el) return null;
@@ -5412,19 +5711,82 @@ export default function WorldMap({
         const parentGroup = elements.find(p => p.id === el.parentMapId && p.type === 'group');
 
         return (
-          <div className={`w-80 shrink-0 border-l flex flex-col justify-between ${
-            isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
-          }`}>
+          <div 
+            ref={detailPanelRef}
+            className={`w-80 border-l flex flex-col justify-between absolute top-0 right-0 h-full z-50 shadow-2xl transition-all ${
+              isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+            }`}
+          >
+            {/* 세부 편집창 헤더 (fieldset 밖으로 위치시켜 isReadOnly 상태에서도 닫기 버튼 상시 클릭 보장) */}
+            <div className="p-4 pb-3 flex items-center justify-between border-b border-white/[0.06] shrink-0">
+              <h3 className="font-bold text-sm">📝 장소 속성 편집</h3>
+              <button 
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsDetailOpen(false);
+                }}
+                className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-red-500 transition-colors cursor-pointer"
+                title="닫기"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
             <fieldset disabled={isReadOnly} className="p-4 flex flex-col gap-4 overflow-y-auto flex-1 text-xs border-none m-0" style={{ minWidth: 0 }}>
-              <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
-                <h3 className="font-bold text-sm">📝 장소 속성 편집</h3>
-                <button 
-                  onClick={() => setIsDetailOpen(false)}
-                  className="p-1 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/20 transition-all cursor-pointer"
-                  title="닫기"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+
+              {/* 레이어 겹침 순서 (위로 / 아래로 / 맨 위로 / 맨 뒤로) */}
+              <div className="flex flex-col gap-1.5 p-2.5 rounded-xl border border-white/[0.08] bg-black/10 select-none">
+                <label className="font-semibold text-gray-400 text-[11px] flex items-center justify-between">
+                  <span>레이어 겹침 순서</span>
+                  <span className="text-[10px] text-gray-500 font-normal">앞/뒤 배치 조절</span>
+                </label>
+                <div className="grid grid-cols-4 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleMoveElementToFront(el.id)}
+                    className={`flex items-center justify-center gap-0.5 py-1.5 px-0.5 rounded-lg border font-semibold text-[10px] whitespace-nowrap transition-all cursor-pointer ${
+                      isDark ? 'bg-white/[0.04] border-white/[0.08] hover:bg-[#5E6AD2]/20 hover:border-[#5E6AD2]/40 text-gray-200' : 'bg-black/[0.02] border-black/[0.08] hover:bg-[#5E6AD2]/10 hover:border-[#5E6AD2]/30 text-gray-700'
+                    }`}
+                    title="맨 위로 가져오기 (가장 앞에 표시)"
+                  >
+                    <ChevronsUp className="w-3 h-3 shrink-0 text-[#7480E2]" />
+                    <span className="whitespace-nowrap">맨 위로</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveElementForward(el.id)}
+                    className={`flex items-center justify-center gap-0.5 py-1.5 px-0.5 rounded-lg border font-semibold text-[10px] whitespace-nowrap transition-all cursor-pointer ${
+                      isDark ? 'bg-white/[0.04] border-white/[0.08] hover:bg-[#5E6AD2]/20 hover:border-[#5E6AD2]/40 text-gray-200' : 'bg-black/[0.02] border-black/[0.08] hover:bg-[#5E6AD2]/10 hover:border-[#5E6AD2]/30 text-gray-700'
+                    }`}
+                    title="위로 한 단계 이동"
+                  >
+                    <ChevronUp className="w-3 h-3 shrink-0 text-[#7480E2]" />
+                    <span className="whitespace-nowrap">위로</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveElementBackward(el.id)}
+                    className={`flex items-center justify-center gap-0.5 py-1.5 px-0.5 rounded-lg border font-semibold text-[10px] whitespace-nowrap transition-all cursor-pointer ${
+                      isDark ? 'bg-white/[0.04] border-white/[0.08] hover:bg-[#5E6AD2]/20 hover:border-[#5E6AD2]/40 text-gray-200' : 'bg-black/[0.02] border-black/[0.08] hover:bg-[#5E6AD2]/10 hover:border-[#5E6AD2]/30 text-gray-700'
+                    }`}
+                    title="아래로 한 단계 이동"
+                  >
+                    <ChevronDown className="w-3 h-3 shrink-0 text-[#7480E2]" />
+                    <span className="whitespace-nowrap">아래로</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleMoveElementToBack(el.id)}
+                    className={`flex items-center justify-center gap-0.5 py-1.5 px-0.5 rounded-lg border font-semibold text-[10px] whitespace-nowrap transition-all cursor-pointer ${
+                      isDark ? 'bg-white/[0.04] border-white/[0.08] hover:bg-[#5E6AD2]/20 hover:border-[#5E6AD2]/40 text-gray-200' : 'bg-black/[0.02] border-black/[0.08] hover:bg-[#5E6AD2]/10 hover:border-[#5E6AD2]/30 text-gray-700'
+                    }`}
+                    title="맨 뒤로 보내기 (가장 뒤에 표시)"
+                  >
+                    <ChevronsDown className="w-3 h-3 shrink-0 text-[#7480E2]" />
+                    <span className="whitespace-nowrap">맨 뒤로</span>
+                  </button>
+                </div>
               </div>
 
               {/* 소속 그룹 정보 */}
@@ -7007,6 +7369,206 @@ export default function WorldMap({
                 className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs transition-colors shadow-lg shadow-[#5E6AD2]/20"
               >
                 선택 완료
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. 레이어 스택 순서 관리 모달 (새로운 팝업 창) */}
+      {showLayerStackModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className={`w-full max-w-lg rounded-2xl border p-5 shadow-2xl flex flex-col max-h-[85vh] ${
+            isDark ? 'bg-[#0E0F12] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            {/* 모달 헤더 */}
+            <div className="flex justify-between items-center pb-3 border-b border-white/10 mb-3 shrink-0">
+              <h3 className="text-sm font-bold flex items-center gap-2">
+                <Layers className="w-4 h-4 text-[#5E6AD2]" />
+                레이어 스택 (상하 겹침 순서 조정)
+              </h3>
+              <button 
+                type="button"
+                onClick={() => setShowLayerStackModal(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-red-400 hover:bg-red-500/20 transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 안내 문구 */}
+            <div className={`p-2.5 rounded-xl border mb-3 text-[11px] font-medium flex items-start gap-2 shrink-0 ${
+              isDark ? 'bg-white/[0.02] border-white/[0.08] text-gray-300' : 'bg-black/[0.02] border-black/[0.08] text-gray-600'
+            }`}>
+              <span className="text-base leading-none">💡</span>
+              <div className="flex flex-col gap-0.5">
+                <p><strong className="text-[#7480E2]">목록의 가장 위쪽(🔝 최상단)</strong>에 위치한 항목이 지도상에서 가장 맨 위에 그려집니다.</p>
+                <p className="text-gray-400">항목을 <strong className="text-gray-300 dark:text-white">드래그 앤 드롭</strong>하거나 우측 화살표 버튼을 클릭하여 상하 배치 순서를 변경하세요.</p>
+              </div>
+            </div>
+
+            {/* 레이어 목록 스택 (Drag and Drop List) */}
+            <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-1.5 min-h-0 border border-white/[0.06] rounded-xl p-2 bg-black/10">
+              {(() => {
+                const currentMapElements = elements.filter(el => el.parentMapId === currentMapId || (!el.parentMapId && currentMapId === 'root'));
+
+                if (currentMapElements.length === 0) {
+                  return (
+                    <div className="py-12 text-center text-xs text-gray-500 italic">
+                      현재 지도에 배치된 요소가 없습니다.
+                    </div>
+                  );
+                }
+
+                const displayStack = [...currentMapElements].reverse();
+
+                return displayStack.map((el, displayIdx) => {
+                  const isSelected = selectedElementId === el.id;
+                  const isDragged = draggedLayerId === el.id;
+                  const isDragOver = dragOverLayerId === el.id;
+
+                  const typeSpec = {
+                    pin: { name: '거점 핀 마커', Icon: MapPin, color: 'text-amber-400' },
+                    brush: { name: '붓 그리기 영역', Icon: Paintbrush, color: 'text-blue-400' },
+                    polygon: { name: '다각형 영역', Icon: Map, color: 'text-purple-400' },
+                    border_rect: { name: '구역 사각형 테두리', Icon: Square, color: 'text-green-400' },
+                    border_circle: { name: '구역 원형 테두리', Icon: Circle, color: 'text-emerald-400' },
+                    route: { name: '이동 교역로', Icon: Route, color: 'text-yellow-400' },
+                    image: { name: '배경 이미지', Icon: Image, color: 'text-cyan-400' },
+                    group: { name: '그룹 레벨', Icon: Folder, color: 'text-indigo-400' }
+                  }[el.type] || { name: '요소', Icon: MapPin, color: 'text-gray-400' };
+
+                  const IconComp = typeSpec.Icon;
+
+                  return (
+                    <div
+                      key={el.id}
+                      draggable={!isReadOnly}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', el.id);
+                        setDraggedLayerId(el.id);
+                      }}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (draggedLayerId !== el.id) {
+                          setDragOverLayerId(el.id);
+                        }
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverLayerId === el.id) setDragOverLayerId(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (draggedLayerId && draggedLayerId !== el.id) {
+                          handleReorderElement(draggedLayerId, el.id);
+                        }
+                        setDraggedLayerId(null);
+                        setDragOverLayerId(null);
+                      }}
+                      onDragEnd={() => {
+                        setDraggedLayerId(null);
+                        setDragOverLayerId(null);
+                      }}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border text-xs transition-all select-none ${
+                        isDragged
+                          ? 'opacity-40 border-dashed border-[#5E6AD2] bg-[#5E6AD2]/10 scale-[0.98]'
+                          : isDragOver
+                          ? 'border-[#5E6AD2] bg-[#5E6AD2]/20 ring-2 ring-[#5E6AD2]/50 scale-[1.01]'
+                          : isSelected
+                          ? 'border-[#5E6AD2]/60 bg-[#5E6AD2]/15 text-white font-bold'
+                          : isDark
+                          ? 'bg-white/[0.03] border-white/[0.08] hover:bg-white/[0.06] text-gray-200'
+                          : 'bg-white border-black/[0.08] hover:bg-black/[0.03] text-gray-800'
+                      }`}
+                    >
+                      {/* 드래그 핸들 + 아이콘 + 명칭 */}
+                      <div className="flex items-center gap-2.5 overflow-hidden flex-1 mr-2">
+                        <GripVertical className="w-4 h-4 shrink-0 text-gray-500 cursor-grab active:cursor-grabbing hover:text-gray-300" />
+                        
+                        {/* 최상단/최하단 배지 */}
+                        {displayIdx === 0 && (
+                          <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[9px] font-bold shrink-0">
+                            🔝 맨 위
+                          </span>
+                        )}
+                        {displayIdx === currentMapElements.length - 1 && (
+                          <span className="px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-400 border border-gray-500/30 text-[9px] font-bold shrink-0">
+                            🔽 맨 아래
+                          </span>
+                        )}
+
+                        <IconComp className={`w-4 h-4 shrink-0 ${typeSpec.color}`} />
+                        
+                        <div className="flex flex-col truncate">
+                          <span className="truncate font-semibold text-xs">{el.name}</span>
+                          <span className="text-[10px] text-gray-500 font-normal">{typeSpec.name}</span>
+                        </div>
+                      </div>
+
+                      {/* 우측 조작 버튼 (순서 변경 화살표 + 이동/선택) */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleMoveElementToFront(el.id)}
+                          className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                          title="맨 위로 가져오기"
+                        >
+                          <ChevronsUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveElementForward(el.id)}
+                          className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                          title="위로 이동"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveElementBackward(el.id)}
+                          className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                          title="아래로 이동"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveElementToBack(el.id)}
+                          className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors"
+                          title="맨 뒤로 보내기"
+                        >
+                          <ChevronsDown className="w-3.5 h-3.5" />
+                        </button>
+                        
+                        <div className="w-px h-3 bg-white/10 mx-0.5" />
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            selectSingleElement(el.id);
+                            focusOnElement(el);
+                            setIsDetailOpen(true);
+                          }}
+                          className="px-2 py-1 rounded bg-[#5E6AD2]/20 hover:bg-[#5E6AD2]/30 text-[#7480E2] text-[10px] font-bold transition-colors"
+                          title="선택하여 이 위치로 포커스 이동 및 편집"
+                        >
+                          선택 / 이동
+                        </button>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
+            {/* 하단 닫기 버튼 */}
+            <div className="flex justify-end mt-4 pt-3 border-t border-white/10 shrink-0">
+              <button 
+                type="button"
+                onClick={() => setShowLayerStackModal(false)}
+                className="px-5 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs transition-colors shadow-lg shadow-[#5E6AD2]/20"
+              >
+                닫기
               </button>
             </div>
           </div>
