@@ -4,7 +4,7 @@ import {
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search, Bookmark,
   PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square,
-  Upload, AlertTriangle, Image, Tag
+  Upload, AlertTriangle, Image, Tag, Paintbrush, Route, Folder, FolderOpen
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
@@ -104,6 +104,17 @@ export default function WorldMap({
   const blobUrlCacheRef = useRef<{ [key: string]: string }>({});
 
 
+  // 세부 항목 잠그기(Filter) 지원 타입 정의 (Lucide React SVG 아이콘 및 표준 용어 단일화)
+  const LOCKABLE_ELEMENT_TYPES = [
+    { type: 'image', label: '배경 이미지', Icon: Image },
+    { type: 'polygon', label: '다각형 영역', Icon: Map },
+    { type: 'route', label: '이동 교역로', Icon: Route },
+    { type: 'brush', label: '붓 그리기 영역', Icon: Paintbrush },
+    { type: 'pin', label: '거점 핀 마커', Icon: MapPin },
+    { type: 'border_rect', label: '구역 사각형 테두리', Icon: Square },
+    { type: 'border_circle', label: '구역 원형 테두리', Icon: Circle },
+  ];
+
   // --- 계층형 뎁스 상태 ---
   const [mapPath, setMapPath] = useState<Array<{ id: string; name: string }>>([
     { id: 'root', name: '세계 지도' }
@@ -133,7 +144,15 @@ export default function WorldMap({
   // 요소 드래그 이동 상태
   const [isDraggingElements, setIsDraggingElements] = useState(false);
   const [elementDragStartCoords, setElementDragStartCoords] = useState<{ x: number; y: number } | null>(null);
-  const [dragInitialElementsCoords, setDragInitialElementsCoords] = useState<Record<string, { x: number; y: number; w?: number; h?: number; points?: Array<{ x: number; y: number }>; brushStrokes?: Array<Array<{ x: number; y: number }>> }>>({});
+  const [dragInitialElementsCoords, setDragInitialElementsCoords] = useState<Record<string, {
+    x: number;
+    y: number;
+    w?: number;
+    h?: number;
+    points?: Array<{ x: number; y: number }>;
+    brushStrokes?: Array<Array<{ x: number; y: number }>>;
+    brushStrokeObjects?: Array<{ points: Array<{ x: number; y: number }>; width: number; shape?: 'circle' | 'square' }>;
+  }>>({});
   const [preDragElements, setPreDragElements] = useState<MapElement[] | null>(null);
   const [hasMovedDuringDrag, setHasMovedDuringDrag] = useState(false);
   
@@ -201,11 +220,32 @@ export default function WorldMap({
   }, [showGridMenu]);
 
   const [pointSnapEnabled, setPointSnapEnabled] = useState(true);
-  const [lockLayers, setLockLayers] = useState({
-    background: true,
-    regions: false,
-    pins: false
-  });
+
+  // 세부 항목 잠그기(Element Type Locking) 상태 (기본값: 배경 이미지 'image' 잠금)
+  const [lockedElementTypes, setLockedElementTypes] = useState<string[]>(['image']);
+  const [showLockFilterDropdown, setShowLockFilterDropdown] = useState(false);
+  const lockFilterRef = useRef<HTMLDivElement>(null);
+
+  // 항목 잠그기 드롭다운 바깥 클릭 감지
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (lockFilterRef.current && !lockFilterRef.current.contains(event.target as globalThis.Node)) {
+        setShowLockFilterDropdown(false);
+      }
+    };
+    if (showLockFilterDropdown) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showLockFilterDropdown]);
+
+  // 특정 요소 타입이 현재 잠겨 있는지 여부를 확인하는 헬퍼 함수
+  const isElementLocked = useCallback((type: string | undefined): boolean => {
+    if (!type) return false;
+    return lockedElementTypes.includes(type);
+  }, [lockedElementTypes]);
   
   // 레이어별 가시성 토글
   const [layerVisibility, setLayerVisibility] = useState({
@@ -672,6 +712,7 @@ export default function WorldMap({
     const selected: string[] = [];
 
     activeEls.forEach(el => {
+      if (isElementLocked(el.type)) return;
       if (el.type === 'pin') {
         const x = el.x || 0;
         const y = el.y || 0;
@@ -698,7 +739,7 @@ export default function WorldMap({
     });
 
     return selected;
-  }, [currentActiveElements]);
+  }, [currentActiveElements, isElementLocked]);
 
   const handleGroupElements = useCallback(() => {
     if (selectedElementIds.length < 2) return;
@@ -1158,18 +1199,7 @@ export default function WorldMap({
           }
         }
 
-        // 붓 궤적 지점들 (brushStrokes)
-        if (el.brushStrokes) {
-          for (const stroke of el.brushStrokes) {
-            for (const pt of stroke) {
-              const dist = Math.hypot(coords.x - pt.x, coords.y - pt.y);
-              if (dist < minDistance) {
-                minDistance = dist;
-                snappedPt = { x: pt.x, y: pt.y };
-              }
-            }
-          }
-        }
+        // 붓 궤적 지점들 (brushStrokes)은 자유 드로잉 영역이므로 점간 자석 스냅 대상에서 제외
 
         // 사각/원형 테두리 코너 & 중심점 (border_rect, border_circle)
         if ((el.type === 'border_rect' || el.type === 'border_circle') && el.bx !== undefined && el.by !== undefined) {
@@ -1284,6 +1314,7 @@ export default function WorldMap({
     e.stopPropagation();
     
     if (editMode !== 'select') return;
+    if (isElementLocked(el.type)) return;
 
     if (isReadOnly) {
       showAlert('현재 시점 버전 이력을 탐색 중입니다. 편집을 진행하려면 상단 시점 제어 바에서 [편집 잠금 해제]를 클릭하세요.');
@@ -1321,14 +1352,27 @@ export default function WorldMap({
       setHasMovedDuringDrag(false);
 
       const members = collectAllMemberElements(selectedElementIds.includes(el.id) ? selectedElementIds : [...selectedElementIds, el.id]);
-      const initialCoords: Record<string, { x: number; y: number; w?: number; h?: number; points?: Array<{ x: number; y: number }>; brushStrokes?: Array<Array<{ x: number; y: number }>> }> = {};
+      const initialCoords: Record<string, {
+        x: number;
+        y: number;
+        w?: number;
+        h?: number;
+        points?: Array<{ x: number; y: number }>;
+        brushStrokes?: Array<Array<{ x: number; y: number }>>;
+        brushStrokeObjects?: Array<{ points: Array<{ x: number; y: number }>; width: number; shape?: 'circle' | 'square' }>;
+      }> = {};
       members.forEach(item => {
         if (item.type === 'pin') {
           initialCoords[item.id] = { x: item.x || 0, y: item.y || 0 };
         } else if (item.type === 'border_rect' || item.type === 'border_circle' || item.type === 'image') {
           initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0, w: item.bw || 0, h: item.bh || 0 };
-        } else if (item.brushStrokes) {
-          initialCoords[item.id] = { x: 0, y: 0, brushStrokes: JSON.parse(JSON.stringify(item.brushStrokes)) };
+        } else if (item.type === 'brush' || item.brushStrokes || item.brushStrokeObjects) {
+          initialCoords[item.id] = {
+            x: 0,
+            y: 0,
+            brushStrokes: item.brushStrokes ? JSON.parse(JSON.stringify(item.brushStrokes)) : undefined,
+            brushStrokeObjects: item.brushStrokeObjects ? JSON.parse(JSON.stringify(item.brushStrokeObjects)) : undefined,
+          };
         } else if (item.points) {
           initialCoords[item.id] = { x: 0, y: 0, points: JSON.parse(JSON.stringify(item.points)) };
         }
@@ -1369,14 +1413,27 @@ export default function WorldMap({
     
     const members = collectAllMemberElements(activeSelectedIds);
 
-    const initialCoords: Record<string, { x: number; y: number; w?: number; h?: number; points?: Array<{ x: number; y: number }>; brushStrokes?: Array<Array<{ x: number; y: number }>> }> = {};
+    const initialCoords: Record<string, {
+      x: number;
+      y: number;
+      w?: number;
+      h?: number;
+      points?: Array<{ x: number; y: number }>;
+      brushStrokes?: Array<Array<{ x: number; y: number }>>;
+      brushStrokeObjects?: Array<{ points: Array<{ x: number; y: number }>; width: number; shape?: 'circle' | 'square' }>;
+    }> = {};
     members.forEach(item => {
       if (item.type === 'pin') {
         initialCoords[item.id] = { x: item.x || 0, y: item.y || 0 };
       } else if (item.type === 'border_rect' || item.type === 'border_circle' || item.type === 'image') {
         initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0, w: item.bw || 0, h: item.bh || 0 };
-      } else if (item.brushStrokes) {
-        initialCoords[item.id] = { x: 0, y: 0, brushStrokes: JSON.parse(JSON.stringify(item.brushStrokes)) };
+      } else if (item.type === 'brush' || item.brushStrokes || item.brushStrokeObjects) {
+        initialCoords[item.id] = {
+          x: 0,
+          y: 0,
+          brushStrokes: item.brushStrokes ? JSON.parse(JSON.stringify(item.brushStrokes)) : undefined,
+          brushStrokeObjects: item.brushStrokeObjects ? JSON.parse(JSON.stringify(item.brushStrokeObjects)) : undefined,
+        };
       } else if (item.points) {
         initialCoords[item.id] = { x: 0, y: 0, points: JSON.parse(JSON.stringify(item.points)) };
       }
@@ -1719,10 +1776,13 @@ export default function WorldMap({
       }
 
       // 점간(Node) 자석 스냅 활성화 시: 드래그 중인 핀 및 꼭짓점이 다른 요소의 점에 접근하면 1:1 자석 착붙
-      // (이미지 요소가 포함된 경우 점간 스냅 제외 - 이미지는 자유 이동이 필요)
-      const isDraggingOnlyImages = Object.keys(dragInitialElementsCoords).length > 0 &&
-        Object.keys(dragInitialElementsCoords).every(id => elements.find(el => el.id === id)?.type === 'image');
-      if (pointSnapEnabled && Object.keys(dragInitialElementsCoords).length > 0 && !isDraggingOnlyImages) {
+      // (이미지 및 붓 그리기 요소가 포함된 경우 점간 스냅 제외 - 자유 이동 필요)
+      const isExcludedFromPointSnap = Object.keys(dragInitialElementsCoords).length > 0 &&
+        Object.keys(dragInitialElementsCoords).some(id => {
+          const type = elements.find(el => el.id === id)?.type;
+          return type === 'image' || type === 'brush';
+        });
+      if (pointSnapEnabled && Object.keys(dragInitialElementsCoords).length > 0 && !isExcludedFromPointSnap) {
         const snapThreshold = 14 / zoom;
         let minPtDist = snapThreshold;
         let nodeSnappedPt: { x: number; y: number } | null = null;
@@ -1776,13 +1836,24 @@ export default function WorldMap({
             bx: initial.x + finalDx,
             by: initial.y + finalDy
           };
-        } else if (item.brushStrokes && initial.brushStrokes) {
-          return {
-            ...item,
-            brushStrokes: initial.brushStrokes.map(stroke => stroke.map(pt => ({
+        } else if (item.type === 'brush' || item.brushStrokes || item.brushStrokeObjects) {
+          const newBrushStrokes = initial.brushStrokes ? initial.brushStrokes.map(stroke => stroke.map(pt => ({
+            x: pt.x + finalDx,
+            y: pt.y + finalDy
+          }))) : item.brushStrokes;
+
+          const newBrushStrokeObjects = initial.brushStrokeObjects ? initial.brushStrokeObjects.map(sObj => ({
+            ...sObj,
+            points: sObj.points.map(pt => ({
               x: pt.x + finalDx,
               y: pt.y + finalDy
-            })))
+            }))
+          })) : item.brushStrokeObjects;
+
+          return {
+            ...item,
+            brushStrokes: newBrushStrokes,
+            brushStrokeObjects: newBrushStrokeObjects
           };
         } else if (item.points && initial.points) {
           return {
@@ -2437,6 +2508,7 @@ export default function WorldMap({
 
   const handleElementClick = (el: MapElement, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isElementLocked(el.type)) return;
     if (hasMovedDuringDrag) return;
 
     const topGroup = getTopLevelGroupOrElement(el.id);
@@ -2527,6 +2599,7 @@ export default function WorldMap({
 
   // --- 핀/영역 더블클릭 하위 드릴다운 이동 ---
   const handleElementDoubleClick = async (el: MapElement) => {
+    if (isElementLocked(el.type)) return;
     if (el.childMapId) {
       setMapPath(prev => [...prev, { id: el.childMapId || '', name: el.name }]);
       setSelectedElementId(null);
@@ -2773,15 +2846,18 @@ export default function WorldMap({
                     
                     <div className={`w-full h-px my-0.5 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
 
-                    {/* 개별 종류 필터 목록 */}
+                    {/* 개별 종류 필터 목록 (Lucide React 아이콘 및 표준 명칭) */}
                     {[
-                      { label: '📍 포인트 (거점)', types: ['pin'] },
-                      { label: '🖌️ 붓 영역', types: ['brush'] },
-                      { label: '▰ 영역 (다각형/테두리)', types: ['polygon', 'border_rect', 'border_circle'] },
-                      { label: '⏂ 경로선 (교역로)', types: ['route'] },
-                      { label: '🖼️ 배경 이미지', types: ['image'] }
+                      { label: '거점 핀 마커', types: ['pin'], Icon: MapPin },
+                      { label: '붓 그리기 영역', types: ['brush'], Icon: Paintbrush },
+                      { label: '다각형 영역', types: ['polygon'], Icon: Map },
+                      { label: '구역 사각형 테두리', types: ['border_rect'], Icon: Square },
+                      { label: '구역 원형 테두리', types: ['border_circle'], Icon: Circle },
+                      { label: '이동 교역로', types: ['route'], Icon: Route },
+                      { label: '배경 이미지', types: ['image'], Icon: Image }
                     ].map(item => {
                       const isChecked = item.types.every(t => selectedSidebarTypes.includes(t));
+                      const IconComp = item.Icon;
                       return (
                         <button
                           key={item.label}
@@ -2806,7 +2882,8 @@ export default function WorldMap({
                             readOnly
                             className="accent-[#5E6AD2] cursor-pointer w-3.5 h-3.5"
                           />
-                          {item.label}
+                          <IconComp className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                          <span>{item.label}</span>
                         </button>
                       );
                     })}
@@ -2825,25 +2902,21 @@ export default function WorldMap({
                   const isCurrentMap = (node.id === 'root' && currentMapId === 'root') || (node.childMapId !== undefined && node.childMapId !== null && node.childMapId !== '' && node.childMapId === currentMapId);
                   const isSelectedElement = isElementSelected(node.id);
                   
-                  let icon = '📍';
-                  if (node.type === 'root') {
-                    icon = isExpanded ? '📂' : '📁';
-                  } else if (node.childMapId && node.childMapId !== '') {
-                    icon = isExpanded ? '📂' : '📁';
-                  } else if (node.type === 'group') {
-                    icon = isExpanded ? '📂' : '📁';
+                  let NodeIconComp = MapPin;
+                  if (node.type === 'root' || (node.childMapId && node.childMapId !== '') || node.type === 'group') {
+                    NodeIconComp = isExpanded ? FolderOpen : Folder;
                   } else if (node.type === 'brush') {
-                    icon = '🖌️';
+                    NodeIconComp = Paintbrush;
                   } else if (node.type === 'polygon') {
-                    icon = '▰';
+                    NodeIconComp = Map;
                   } else if (node.type === 'route') {
-                    icon = '⏂';
+                    NodeIconComp = Route;
                   } else if (node.type === 'border_rect') {
-                    icon = '□';
+                    NodeIconComp = Square;
                   } else if (node.type === 'border_circle') {
-                    icon = '○';
+                    NodeIconComp = Circle;
                   } else if (node.type === 'image') {
-                    icon = '🖼️';
+                    NodeIconComp = Image;
                   }
 
                   return (
@@ -2885,7 +2958,7 @@ export default function WorldMap({
                           <div className="w-4.5 h-4.5 shrink-0" />
                         )}
                         
-                        <span className="shrink-0 text-[11px] ml-0.5">{icon}</span>
+                        <NodeIconComp className="w-3.5 h-3.5 shrink-0 ml-0.5 opacity-85 text-[#5E6AD2]" />
                         <span className={`truncate ${isCurrentMap ? 'font-bold' : ''}`}>
                           {node.name || '이름 없음'}
                         </span>
@@ -3043,7 +3116,7 @@ export default function WorldMap({
 
               {/* ── 1. 도구 탭 ── */}
               {activeHeaderTab === 'tool' && (
-                <div className="flex items-center gap-1.5 flex-nowrap shrink-0">
+                <div className="flex items-center gap-1.5 flex-nowrap shrink-0 text-xs">
                   {[
                     { mode: 'select',           Icon: Sparkles,   label: '선택/편집' },
                     { mode: 'pan',              Icon: Move,       label: '이동/손바닥' },
@@ -3076,7 +3149,7 @@ export default function WorldMap({
                     미니맵 {showMinimap ? '표시 중' : '숨김'}
                   </button>
 
-                  {/* 이름보기 토글 버튼 */}
+                  {/* 이름 보기 토글 버튼 (단일화 적용) */}
                   <button
                     onClick={() => setShowElementNames(!showElementNames)}
                     className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
@@ -3086,8 +3159,134 @@ export default function WorldMap({
                     }`}
                   >
                     <Tag className="w-3.5 h-3.5 shrink-0" />
-                    이름보기 {showElementNames ? '켜짐' : '꺼짐'}
+                    이름 보기 {showElementNames ? '켜짐' : '꺼짐'}
                   </button>
+
+                  <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+
+                  {/* 격자선 설정 메뉴 */}
+                  <div ref={gridMenuRef} className="relative inline-flex items-stretch shrink-0">
+                    <div className={`flex items-center rounded-lg shrink-0 transition-all duration-150 ${
+                      gridVisible
+                        ? 'bg-[#5E6AD2]/10 border border-[#5E6AD2]/30 text-[#7480E2]'
+                        : isDark ? 'border border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border border-black/[0.08] text-gray-600 hover:bg-black/[0.05]'
+                    }`}>
+                      <button
+                        type="button"
+                        onClick={() => setGridVisible(!gridVisible)}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-l-lg hover:bg-white/10"
+                      >
+                        <Grid3X3 className="w-3.5 h-3.5 shrink-0" />
+                        격자선 ({gridSize}px)
+                      </button>
+                      <div className={`w-px h-3.5 shrink-0 ${gridVisible ? 'bg-white/20' : isDark ? 'bg-white/10' : 'bg-black/10'}`} />
+                      <button
+                        type="button"
+                        onClick={() => setShowGridMenu(prev => !prev)}
+                        className="px-1.5 py-1.5 text-xs font-semibold rounded-r-lg hover:bg-white/10 flex items-center justify-center"
+                      >
+                        <ChevronDown className="w-3.5 h-3.5 shrink-0" />
+                      </button>
+                    </div>
+
+                    {showGridMenu && (
+                      <div className={`absolute left-0 top-full mt-1.5 w-60 rounded-xl border p-3.5 shadow-2xl z-50 flex flex-col gap-2.5 animate-in fade-in-50 zoom-in-95 ${
+                        isDark ? 'bg-[#141517] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+                      }`}>
+                        <div className="flex justify-between items-center pb-1.5 border-b border-white/10">
+                          <span className="text-[11px] font-bold text-gray-400">격자 간격 수치 입력</span>
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="5"
+                              max="1000"
+                              value={gridSize}
+                              onChange={(e) => setGridSize(Number(e.target.value))}
+                              onBlur={() => {
+                                setGridSize(prev => Math.max(5, Math.min(1000, prev || 40)));
+                              }}
+                              className={`w-14 px-1 py-0.5 text-right font-mono text-xs font-bold rounded border bg-transparent ${
+                                isDark ? 'border-white/20 text-[#7480E2]' : 'border-black/20 text-[#5E6AD2]'
+                              }`}
+                            />
+                            <span className="text-xs font-bold text-gray-400">px</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5 mb-1">
+                          <div className="flex justify-between text-[11px] text-gray-400">
+                            <span>간격 조절</span>
+                            <span>10px ~ 500px</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="10"
+                            max="500"
+                            step="5"
+                            value={gridSize}
+                            onChange={(e) => setGridSize(Number(e.target.value))}
+                            className="w-full h-1.5 bg-gray-600/40 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
+                          />
+                        </div>
+
+                        <div className="space-y-1 mb-1">
+                          <span className="text-[10px] font-semibold text-gray-400">빠른 선택:</span>
+                          <div className="grid grid-cols-4 gap-1">
+                            {[10, 20, 40, 50, 100, 200, 500].map((size) => (
+                              <button
+                                key={size}
+                                onClick={() => setGridSize(size)}
+                                className={`py-1 text-[10px] font-bold rounded border transition-colors ${
+                                  gridSize === size
+                                    ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]'
+                                    : isDark ? 'border-white/10 bg-white/[0.04] hover:bg-white/10 text-gray-300' : 'border-black/10 bg-gray-100 hover:bg-gray-200 text-gray-700'
+                                }`}
+                              >
+                                {size}px
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-white/10">
+                          <button
+                            onClick={() => setGridSnapEnabled(!gridSnapEnabled)}
+                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                              gridSnapEnabled
+                                ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
+                                : isDark ? 'border-white/10 text-gray-400 hover:bg-white/5' : 'border-black/10 text-gray-600 hover:bg-black/5'
+                            }`}
+                          >
+                            <span className="flex items-center gap-1.5">
+                              <Magnet className="w-3.5 h-3.5 shrink-0" />
+                              격자 자석 스냅
+                            </span>
+                            <span className="text-[10px] font-bold">
+                              {gridSnapEnabled ? 'ON' : 'OFF'}
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 격자선 자석 스냅 & 점간 자동 스냅 */}
+                  {[
+                    { Icon: Magnet, label: '격자 자석 스냅', checked: gridSnapEnabled, onChange: setGridSnapEnabled },
+                    { Icon: Magnet, label: '점간 자동 스냅', checked: pointSnapEnabled, onChange: setPointSnapEnabled },
+                  ].map(({ Icon, label, checked, onChange }) => (
+                    <button
+                      key={label}
+                      onClick={() => onChange(!checked)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
+                        checked
+                          ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
+                          : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5 shrink-0" />{label}
+                    </button>
+                  ))}
 
                   <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
 
@@ -3366,134 +3565,6 @@ export default function WorldMap({
 
                   <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
 
-                  {/* 격자선 설정 */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <div ref={gridMenuRef} className="relative inline-flex items-stretch shrink-0">
-                      <div className={`flex items-center rounded-lg shrink-0 transition-all duration-150 ${
-                        gridVisible
-                          ? 'bg-[#5E6AD2]/10 border border-[#5E6AD2]/30 text-[#7480E2]'
-                          : isDark ? 'border border-white/[0.08] text-gray-300 hover:bg-white/[0.06]' : 'border border-black/[0.08] text-gray-600 hover:bg-black/[0.05]'
-                      }`}>
-                        <button
-                          type="button"
-                          onClick={() => setGridVisible(!gridVisible)}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold rounded-l-lg hover:bg-white/10"
-                        >
-                          <Grid3X3 className="w-3.5 h-3.5 shrink-0" />
-                          격자선 ({gridSize}px)
-                        </button>
-                        <div className={`w-px h-3.5 shrink-0 ${gridVisible ? 'bg-white/20' : isDark ? 'bg-white/10' : 'bg-black/10'}`} />
-                        <button
-                          type="button"
-                          onClick={() => setShowGridMenu(prev => !prev)}
-                          className="px-1.5 py-1.5 text-xs font-semibold rounded-r-lg hover:bg-white/10 flex items-center justify-center"
-                        >
-                          <ChevronDown className="w-3.5 h-3.5 shrink-0" />
-                        </button>
-                      </div>
-
-                      {showGridMenu && (
-                        <div className={`absolute left-0 top-full mt-1.5 w-60 rounded-xl border p-3.5 shadow-2xl z-50 flex flex-col gap-2.5 animate-in fade-in-50 zoom-in-95 ${
-                          isDark ? 'bg-[#141517] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
-                        }`}>
-                          <div className="flex justify-between items-center pb-1.5 border-b border-white/10">
-                            <span className="text-[11px] font-bold text-gray-400">격자 간격 수치 입력</span>
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="number"
-                                min="5"
-                                max="1000"
-                                value={gridSize}
-                                onChange={(e) => setGridSize(Number(e.target.value))}
-                                onBlur={() => {
-                                  setGridSize(prev => Math.max(5, Math.min(1000, prev || 40)));
-                                }}
-                                className={`w-14 px-1 py-0.5 text-right font-mono text-xs font-bold rounded border bg-transparent ${
-                                  isDark ? 'border-white/20 text-[#7480E2]' : 'border-black/20 text-[#5E6AD2]'
-                                }`}
-                              />
-                              <span className="text-xs font-bold text-gray-400">px</span>
-                            </div>
-                          </div>
-
-                          <div className="space-y-1.5 mb-1">
-                            <div className="flex justify-between text-[11px] text-gray-400">
-                              <span>간격 조절</span>
-                              <span>10px ~ 500px</span>
-                            </div>
-                            <input
-                              type="range"
-                              min="10"
-                              max="500"
-                              step="5"
-                              value={gridSize}
-                              onChange={(e) => setGridSize(Number(e.target.value))}
-                              className="w-full h-1.5 bg-gray-600/40 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
-                            />
-                          </div>
-
-                          <div className="space-y-1 mb-1">
-                            <span className="text-[10px] font-semibold text-gray-400">빠른 선택:</span>
-                            <div className="grid grid-cols-4 gap-1">
-                              {[10, 20, 40, 50, 100, 200, 500].map((size) => (
-                                <button
-                                  key={size}
-                                  onClick={() => setGridSize(size)}
-                                  className={`py-1 text-[10px] font-bold rounded border transition-colors ${
-                                    gridSize === size
-                                      ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]'
-                                      : isDark ? 'border-white/10 bg-white/[0.04] hover:bg-white/10 text-gray-300' : 'border-black/10 bg-gray-100 hover:bg-gray-200 text-gray-700'
-                                  }`}
-                                >
-                                  {size}px
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          <div className="pt-2 border-t border-white/10">
-                            <button
-                              onClick={() => setGridSnapEnabled(!gridSnapEnabled)}
-                              className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                                gridSnapEnabled
-                                  ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
-                                  : isDark ? 'border-white/10 text-gray-400 hover:bg-white/5' : 'border-black/10 text-gray-600 hover:bg-black/5'
-                              }`}
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <Magnet className="w-3.5 h-3.5 shrink-0" />
-                                격자 자석 스냅
-                              </span>
-                              <span className="text-[10px] font-bold">
-                                {gridSnapEnabled ? 'ON' : 'OFF'}
-                              </span>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {[
-                      { Icon: Tag, label: '이름보기', checked: showElementNames, onChange: setShowElementNames },
-                      { Icon: Magnet, label: '격자 자석 스냅', checked: gridSnapEnabled, onChange: setGridSnapEnabled },
-                      { Icon: Magnet, label: '점간(Node) 자동 스냅', checked: pointSnapEnabled, onChange: setPointSnapEnabled },
-                    ].map(({ Icon, label, checked, onChange }) => (
-                      <button
-                        key={label}
-                        onClick={() => onChange(!checked)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
-                          checked
-                            ? 'bg-[#5E6AD2]/20 border-[#5E6AD2]/40 text-[#7480E2]'
-                            : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
-                        }`}
-                      >
-                        <Icon className="w-3.5 h-3.5 shrink-0" />{label}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
-
                   {/* 배경 이미지 추가 버튼 */}
                   <button
                     type="button"
@@ -3523,39 +3594,90 @@ export default function WorldMap({
               {/* ── 설정 탭 ── */}
               {activeHeaderTab === 'settings' && (
                 <div className="flex items-center gap-3 shrink-0 text-xs">
-                  {/* 배경 이미지 잠금 */}
-                  <button
-                    onClick={() => setLockLayers(prev => ({ ...prev, background: !prev.background }))}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
-                      lockLayers.background
-                        ? 'bg-orange-500/15 border-orange-500/30 text-orange-400 font-bold'
-                        : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
-                    }`}
-                  >
-                    <Lock className="w-3.5 h-3.5 shrink-0" />
-                    배경 이미지 {lockLayers.background ? '잠김' : '잠금 해제됨'}
-                  </button>
+                  {/* 항목 잠그기 (Element Type Locking) 세부 필터 드롭다운 */}
+                  <div className="relative" ref={lockFilterRef}>
+                    <button
+                      onClick={() => setShowLockFilterDropdown(prev => !prev)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border shrink-0 transition-all duration-150 shadow-sm ${
+                        lockedElementTypes.length > 0
+                          ? 'bg-amber-500/15 border-amber-500/35 text-amber-400 font-extrabold'
+                          : isDark ? 'border-white/[0.1] text-gray-300 hover:bg-white/[0.05]' : 'border-black/[0.1] text-gray-700 hover:bg-black/[0.05]'
+                      }`}
+                    >
+                      <Lock className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                      <span>항목 잠그기</span>
+                      {lockedElementTypes.length > 0 && (
+                        <span className="px-1.5 py-0.2 text-[10px] font-extrabold rounded-full bg-amber-500/25 text-amber-300 border border-amber-500/30">
+                          {lockedElementTypes.length}
+                        </span>
+                      )}
+                      <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showLockFilterDropdown ? 'rotate-180' : ''}`} />
+                    </button>
 
-                  {/* 레이어 잠금 제어 */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <span className={`text-[10px] font-bold shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>레이어 잠금:</span>
-                    {[
-                      { label: '영역 잠금', checked: lockLayers.regions, onChange: (v: boolean) => setLockLayers(prev => ({ ...prev, regions: v })) },
-                      { label: '핀 거점 잠금', checked: lockLayers.pins, onChange: (v: boolean) => setLockLayers(prev => ({ ...prev, pins: v })) },
-                    ].map(({ label, checked, onChange }) => (
-                      <button
-                        key={label}
-                        onClick={() => onChange(!checked)}
-                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
-                          checked
-                            ? 'bg-red-500/15 border-red-500/30 text-red-400 font-bold'
-                            : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
-                        }`}
-                      >
-                        <Lock className="w-3.5 h-3.5 shrink-0" />
-                        {label}
-                      </button>
-                    ))}
+                    {/* 항목 잠그기 세부 선택 드롭다운 팝업 */}
+                    {showLockFilterDropdown && (
+                      <div className={`absolute left-0 mt-2 w-60 rounded-xl shadow-2xl border p-3 z-50 animate-in fade-in zoom-in-95 duration-100 ${
+                        isDark ? 'bg-[#121316]/95 border-white/10 backdrop-blur-md text-gray-200' : 'bg-white/95 border-black/10 backdrop-blur-md text-gray-800'
+                      }`}>
+                        {/* 팝업 헤더 & 모두 잠그기/해제 버튼 */}
+                        <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/10 text-xs">
+                          <span className="font-bold flex items-center gap-1.5">
+                            <Lock className="w-3.5 h-3.5 text-amber-400" />
+                            잠금 항목 선택
+                          </span>
+                          <div className="flex items-center gap-1.5 text-[11px]">
+                            <button
+                              onClick={() => setLockedElementTypes(LOCKABLE_ELEMENT_TYPES.map(x => x.type))}
+                              className="text-amber-400 hover:underline font-semibold"
+                            >
+                              모두 잠금
+                            </button>
+                            <span className="text-gray-500">|</span>
+                            <button
+                              onClick={() => setLockedElementTypes([])}
+                              className="text-gray-400 hover:underline font-medium"
+                            >
+                              모두 해제
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* 세부 항목 체크박스 리스트 */}
+                        <div className="space-y-1 max-h-64 overflow-y-auto pr-0.5 text-xs">
+                          {LOCKABLE_ELEMENT_TYPES.map(({ type, label, Icon }) => {
+                            const isChecked = lockedElementTypes.includes(type);
+                            return (
+                              <label
+                                key={type}
+                                className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                                  isChecked
+                                    ? isDark ? 'bg-amber-500/15 text-amber-300 font-bold border border-amber-500/20' : 'bg-amber-50 text-amber-800 font-bold border border-amber-200'
+                                    : isDark ? 'hover:bg-white/5 text-gray-300 border border-transparent' : 'hover:bg-black/5 text-gray-700 border border-transparent'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setLockedElementTypes(prev => [...prev, type]);
+                                      } else {
+                                        setLockedElementTypes(prev => prev.filter(t => t !== type));
+                                      }
+                                    }}
+                                    className="rounded border-gray-400 text-amber-500 focus:ring-amber-400 w-3.5 h-3.5 cursor-pointer"
+                                  />
+                                  <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                                  <span>{label}</span>
+                                </div>
+                                {isChecked && <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className={`w-px h-5 shrink-0 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
@@ -3970,7 +4092,7 @@ export default function WorldMap({
                           // transition 완전 제거: 드래그 시 200ms 보간 충돌로 cursor를 못 따라오는 현상 방지
                           transition: 'none',
                         }}
-                        className={`${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
+                        className={`${isElementLocked(el.type) ? 'cursor-not-allowed' : editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
                       />
                       {/* 선택 상태일 때만 외곽선 가이드라인 표시 */}
                       {isSelected && (
@@ -4046,7 +4168,7 @@ export default function WorldMap({
                           handleElementDoubleClick(el);
                         }}
                         className={`transition-colors duration-200 ${
-                          editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:stroke-white'
+                          isElementLocked(el.type) ? 'cursor-not-allowed' : editMode === 'select' ? 'cursor-move' : 'cursor-pointer hover:stroke-white'
                         }`}
                       />
                       {/* 경계선 마우스 드래그 핸들 (두꺼운 투명 선) */}
@@ -4488,7 +4610,7 @@ export default function WorldMap({
 
               {/* 선택된 다각형 꼭짓점 수정 드래그 핸들 (Anchor Points) */}
               {editMode === 'select' && selectedElementId && elements
-                .filter(el => el.id === selectedElementId && el.points)
+                .filter(el => el.id === selectedElementId && el.points && !isElementLocked(el.type))
                 .map(el => (
                   <g key={`anchors-${el.id}`}>
                     {el.points?.map((pt, idx) => (
@@ -4518,7 +4640,7 @@ export default function WorldMap({
               
               {/* 선택된 테두리(rect / circle) 및 붓(brush)의 리사이즈 드래그 핸들 (Anchor Points) */}
               {editMode === 'select' && selectedElementId && elements
-                .filter(el => el.id === selectedElementId && (el.type === 'border_rect' || el.type === 'border_circle' || el.type === 'brush' || el.type === 'image'))
+                .filter(el => el.id === selectedElementId && !isElementLocked(el.type) && (el.type === 'border_rect' || el.type === 'border_circle' || el.type === 'brush' || el.type === 'image'))
                 .map(el => {
                   let tl = { x: 0, y: 0 };
                   let tr = { x: 0, y: 0 };
