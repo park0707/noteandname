@@ -4,7 +4,7 @@ import {
   ChevronsUp, ChevronsDown, ChevronUp, GripVertical,
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search, Bookmark,
-  PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square,
+  PenTool, Settings2, History, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square,
   Upload, AlertTriangle, Image, Tag, Paintbrush, Route, Folder, FolderOpen, Loader2, FileText, User, ExternalLink
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
@@ -155,7 +155,7 @@ export default function WorldMap({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
-  const [editMode, setEditMode] = useState<'select' | 'pan' | 'draw_polygon' | 'add_pin' | 'draw_route' | 'measure' | 'draw_border_rect' | 'draw_border_circle' | 'draw_brush'>('select');
+  const [editMode, setEditMode] = useState<'select' | 'pan' | 'draw_polygon' | 'add_pin' | 'draw_route' | 'draw_border_rect' | 'draw_border_circle' | 'draw_brush'>('select');
 
   // --- 테두리 드래그 임시 상태 ---
   const [borderDragStart, setBorderDragStart] = useState<{ x: number; y: number } | null>(null);
@@ -595,9 +595,8 @@ export default function WorldMap({
     reader.readAsDataURL(file);
   };
 
-  // --- 스케일바 및 거리 측정 상태 ---
+  // --- 스케일바 상태 ---
   const [scale, setScale] = useState<MapScale>({ pixels: 100, value: 50, unit: 'km' });
-  const [measurePoints, setMeasurePoints] = useState<Array<{ x: number; y: number }>>([]);
 
   // --- 상세 정보창 모드 및 상태 ---
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -1124,8 +1123,7 @@ export default function WorldMap({
         return 'cursor-crosshair';
       case 'add_pin':
         return 'cursor-cell';
-      case 'measure':
-        return 'cursor-help';
+
       default:
         return 'cursor-default';
     }
@@ -1868,11 +1866,7 @@ export default function WorldMap({
       return;
     }
 
-    // 거리 측정 모드 클릭
-    if (editMode === 'measure') {
-      setMeasurePoints(prev => [...prev, snapped]);
-      return;
-    }
+
 
     // 핀 생성 모드 클릭
     if (editMode === 'add_pin') {
@@ -3261,34 +3255,7 @@ export default function WorldMap({
     });
   };
 
-  // --- 거리 계산 공식 구현 ---
-  const calculateDistanceInfo = (): string => {
-    if (measurePoints.length < 2) return '';
-    let totalPixels = 0;
-    for (let i = 0; i < measurePoints.length - 1; i++) {
-      totalPixels += Math.hypot(measurePoints[i+1].x - measurePoints[i].x, measurePoints[i+1].y - measurePoints[i].y);
-    }
-    
-    // 스케일 계산 적용
-    const actualVal = (totalPixels / scale.pixels) * scale.value;
-    const rounded = Math.round(actualVal * 10) / 10;
-    
-    // 소요 일정 변환 연산
-    let timeText = '';
-    if (scale.unit === 'km') {
-      timeText = `(도보 약 ${Math.round(rounded / 20 * 10) / 10}일, 마차 약 ${Math.round(rounded / 40 * 10) / 10}일 소요)`;
-    } else {
-      const unitLabel: Record<string, string> = {
-        days_walk: '도보',
-        days_horse: '승마',
-        days_carriage: '마차'
-      };
-      const label = unitLabel[scale.unit] || '이동';
-      timeText = `(${label} 기준 약 ${rounded}일 소요)`;
-    }
-    
-    return `총 거리: ${rounded} ${scale.unit === 'km' ? 'km' : '일분'} ${timeText}`;
-  };
+
 
   // --- 지도 이미지 내보내기 ---
   const handleExportMap = () => {
@@ -3475,6 +3442,20 @@ export default function WorldMap({
         
         {/* ═══ 상단 헤더 ═══ */}
         <div className={`relative z-30 shrink-0 border-b ${isDark ? 'bg-[#0E0F12] border-white/[0.08]' : 'bg-white border-black/[0.08]'}`}>
+          {/* 시점 탭 마키 애니메이션 (항상 한 번만 삽입) */}
+          <style>{`
+            @keyframes novela-circular-marquee-anim {
+              0%    { transform: translateX(0%); }
+              7.14% { transform: translateX(0%); }
+              100%  { transform: translateX(-50%); }
+            }
+            .novela-circular-marquee {
+              display: inline-flex;
+              white-space: nowrap;
+              animation: novela-circular-marquee-anim 14s linear infinite;
+              will-change: transform;
+            }
+          `}</style>
 
           {/* 1행: 탭 버튼 + 우측 고정 액션 */}
           <div className={`px-4 flex items-center justify-between gap-4 border-b h-12 overflow-x-auto flex-nowrap [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-black/10 dark:[&::-webkit-scrollbar-thumb]:bg-white/10 [&::-webkit-scrollbar-thumb]:rounded-full ${isDark ? 'border-white/[0.05]' : 'border-black/[0.05]'}`}>
@@ -3516,7 +3497,7 @@ export default function WorldMap({
                 {editMode === 'add_pin' && <><MapPin className="w-3 h-3 text-[#7480E2] shrink-0" /> 핀 거점 추가</>}
                 {editMode === 'draw_route' && <><ChevronRight className="w-3 h-3 text-[#7480E2] shrink-0" /> 선 긋기</>}
                 {editMode === 'draw_brush' && <><PenTool className="w-3 h-3 text-[#7480E2] shrink-0" /> 붓 그리기</>}
-                {editMode === 'measure' && <><Ruler className="w-3 h-3 text-[#7480E2] shrink-0" /> 거리 측정</>}
+
                 {editMode === 'draw_border_rect' && <><span className="border border-current rounded-sm inline-block w-3 h-3 shrink-0 text-[#7480E2]" /> 사각 테두리</>}
                 {editMode === 'draw_border_circle' && <><span className="border border-current rounded-full inline-block w-3 h-3 shrink-0 text-[#7480E2]" /> 원형 테두리</>}
               </span>
@@ -3583,7 +3564,7 @@ export default function WorldMap({
 
           {/* 2행: 탭 내용 패널 (조건부 렌더링) */}
           {activeHeaderTab && (
-            <div className={`relative z-30 px-4 py-2.5 flex items-center gap-4 flex-nowrap overflow-visible animate-in slide-in-from-top-1 duration-150 ${isDark ? 'bg-white/[0.01]' : 'bg-black/[0.01]'}`}>
+            <div className={`relative z-30 px-4 h-11 flex items-center gap-4 flex-nowrap overflow-visible animate-in slide-in-from-top-1 duration-150 ${isDark ? 'bg-white/[0.01]' : 'bg-black/[0.01]'}`}>
 
               {/* ── 1. 도구 탭 ── */}
               {activeHeaderTab === 'tool' && (
@@ -3620,28 +3601,7 @@ export default function WorldMap({
                     미니맵 {showMinimap ? '표시 중' : '숨김'}
                   </button>
 
-                  <div className={`w-px h-5 shrink-0 mx-1 ${isDark ? 'bg-white/10' : 'bg-black/10'}`} />
 
-                  {/* 거리 측정 도구 */}
-                  <button
-                    onClick={() => { setEditMode('measure'); setTempPoints([]); setTempBrushStrokes([]); setCurrentBrushStroke([]); }}
-                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold border shrink-0 transition-all duration-150 ${
-                      editMode === 'measure'
-                        ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-sm'
-                        : isDark ? 'border-white/[0.08] text-gray-500 hover:bg-white/[0.04]' : 'border-black/[0.08] text-gray-400 hover:bg-black/[0.04]'
-                    }`}
-                  >
-                    <Ruler className="w-3.5 h-3.5 shrink-0" />
-                    거리 측정
-                  </button>
-                  {editMode === 'measure' && measurePoints.length > 1 && (
-                    <span className={`text-xs font-bold shrink-0 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                      {calculateDistanceInfo()}
-                    </span>
-                  )}
-                  {editMode === 'measure' && measurePoints.length > 0 && (
-                    <button onClick={() => setMeasurePoints([])} className="px-2 py-1 rounded-lg bg-red-500/15 text-red-400 text-[10px] font-bold hover:bg-red-500/25 border border-red-500/20 transition-colors shrink-0">측정 초기화</button>
-                  )}
                 </div>
               )}
 
@@ -4367,25 +4327,6 @@ export default function WorldMap({
               {/* ── 시점 탭 ── */}
               {activeHeaderTab === 'timeline' && (
                 <div className="flex items-center justify-between gap-6 shrink-0 min-w-max select-none w-full">
-                  <style>{`
-                    @keyframes novela-circular-marquee-anim {
-                      0% {
-                        transform: translateX(0%);
-                      }
-                      7.14% {
-                        transform: translateX(0%);
-                      }
-                      100% {
-                        transform: translateX(-50%);
-                      }
-                    }
-                    .novela-circular-marquee {
-                      display: inline-flex;
-                      white-space: nowrap;
-                      animation: novela-circular-marquee-anim 14s linear infinite;
-                      will-change: transform;
-                    }
-                  `}</style>
                   {/* 좌측: 현재 시점 표시 및 목록 드롭다운 */}
                   <div className="flex items-center gap-2 relative shrink-0">
                     <span className={`shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>현재 시점:</span>
@@ -5289,16 +5230,7 @@ export default function WorldMap({
                 return null;
               })()}
 
-              {/* 거리 측정 선 미리보기 */}
-              {measurePoints.length > 0 && (
-                <polyline 
-                  points={measurePoints.map(p => `${p.x},${p.y}`).join(' ')}
-                  fill="none"
-                  stroke="#E74C3C"
-                  strokeWidth="3.5"
-                  strokeDasharray="5,5"
-                />
-              )}
+
 
               {/* 점간(Node) 자석 스냅 시각적 가이드 인디케이터 (animate-ping 제거로 (0,0) 이동 잔상 원천 차단) */}
               {hoveredPoint && hoveredPoint.isPointSnapped && (
@@ -5872,18 +5804,7 @@ export default function WorldMap({
             )}
           </div>
 
-          {/* 거리 측정 결과 오버레이 팝업 */}
-          {editMode === 'measure' && measurePoints.length > 1 && (
-            <div className="absolute top-4 left-4 p-3.5 rounded-xl bg-black/85 border border-white/10 text-xs text-white flex flex-col gap-1.5 shadow-2xl z-50">
-              <span className="font-bold text-[#E74C3C]">📏 스케일 거리 연산기</span>
-              <p className="font-semibold text-gray-200">{calculateDistanceInfo()}</p>
-              <div className="flex gap-2.5 mt-1 border-t border-white/10 pt-2 text-[10px] text-gray-400">
-                <button onClick={() => setMeasurePoints([])} className="hover:text-white">측정 리셋</button>
-                <span>|</span>
-                <button onClick={() => setEditMode('select')} className="hover:text-white">종료</button>
-              </div>
-            </div>
-          )}
+
           </>
         </div>
 
