@@ -5,7 +5,7 @@ import {
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search, Bookmark,
   PenTool, Settings2, History, Ruler, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square,
-  Upload, AlertTriangle, Image, Tag, Paintbrush, Route, Folder, FolderOpen, Loader2, FileText, User
+  Upload, AlertTriangle, Image, Tag, Paintbrush, Route, Folder, FolderOpen, Loader2, FileText, User, ExternalLink
 } from 'lucide-react';
 import type { Project, Episode, Node, Foreshadowing } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
@@ -621,6 +621,7 @@ export default function WorldMap({
   const [charSearchInput, setCharSearchInput] = useState('');
   const [showCharacterSelectorModal, setShowCharacterSelectorModal] = useState(false);
   const [characterSelectorSearch, setCharacterSelectorSearch] = useState('');
+  const [showLayoutSelectorModal, setShowLayoutSelectorModal] = useState(false);
   const [showEpModal, setShowEpModal] = useState(false);
   const [epSearchInput, setEpSearchInput] = useState('');
   const [epFolderOpen, setEpFolderOpen] = useState<Set<string>>(new Set());
@@ -6312,6 +6313,69 @@ export default function WorldMap({
                   )}
                 </div>
               </div>
+
+              <hr className={isDark ? 'border-white/[0.06]' : 'border-black/[0.06]'} />
+
+              {/* 하위 레이아웃(세부 지도) 연결 섹션 */}
+              <div className="flex flex-col gap-2 mt-1">
+                <label className="font-semibold text-gray-400 text-xs flex items-center gap-1.5">
+                  <Map className="w-3.5 h-3.5 text-[#7480E2]" />
+                  <span>하위 레이아웃 계층 연동</span>
+                </label>
+
+                {elementEditChildMap ? (() => {
+                  const targetMapId = elementEditChildMap;
+                  const connectedTargetEl = elements.find(item => item.childMapId === targetMapId || item.id === targetMapId);
+                  const connectedMapName = connectedTargetEl ? connectedTargetEl.name : (targetMapId === 'root' ? '세계 지도' : '연결된 세부 지도');
+
+                  return (
+                    <div className="flex flex-col gap-2 p-3 rounded-xl border border-[#5E6AD2]/30 bg-[#5E6AD2]/10">
+                      <div className="flex items-center justify-between min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                          <span className="font-bold text-xs text-[#7480E2] truncate">{connectedMapName}</span>
+                          <span className="px-1.5 py-0.5 rounded bg-[#5E6AD2]/20 text-[10px] text-[#7480E2] font-semibold shrink-0">연결됨</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            pushHistory();
+                            setElementEditChildMap('');
+                            setElements(prev => prev.map(item => item.id === el.id ? { ...item, childMapId: undefined } : item));
+                          }}
+                          className="px-2 py-1 rounded bg-red-500/20 hover:bg-red-500/30 text-red-400 text-[11px] font-bold transition-colors shrink-0"
+                          title="연결 해제"
+                        >
+                          연결 해제
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMapPath(prev => {
+                            if (prev.some(p => p.id === targetMapId)) return prev;
+                            return [...prev, { id: targetMapId, name: connectedMapName }];
+                          });
+                          setIsDetailOpen(false);
+                        }}
+                        className="w-full py-1.5 px-3 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-md shadow-[#5E6AD2]/20"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>해당 레이아웃 바로 열기</span>
+                      </button>
+                    </div>
+                  );
+                })() : (
+                  <button
+                    type="button"
+                    onClick={() => setShowLayoutSelectorModal(true)}
+                    className="w-full py-2 px-3 rounded-xl border border-dashed border-[#5E6AD2]/40 hover:border-[#5E6AD2] bg-[#5E6AD2]/5 hover:bg-[#5E6AD2]/15 text-[#7480E2] font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>레이아웃 연결하기</span>
+                  </button>
+                )}
+              </div>
             </fieldset>
 
             {/* 상세 속성 하단 제어 버튼 */}
@@ -8048,6 +8112,109 @@ export default function WorldMap({
                 className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold transition-colors"
               >
                 닫기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 보유 레이아웃 선택 및 연결 모달 (LayoutSelectorModal) ── */}
+      {showLayoutSelectorModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[110] p-4 select-none animate-fadeIn">
+          <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl flex flex-col gap-4 ${
+            isDark ? 'bg-[#121316] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Map className="w-4 h-4 text-[#7480E2]" />
+                <h3 className="font-bold text-sm">보유 레이아웃 선택 및 연결</h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowLayoutSelectorModal(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
+              {/* 1. 최상위 세계 지도 */}
+              {currentMapId !== 'root' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedElementId) {
+                      pushHistory();
+                      setElementEditChildMap('root');
+                      setElements(prev => prev.map(item => item.id === selectedElementId ? { ...item, childMapId: 'root' } : item));
+                    }
+                    setShowLayoutSelectorModal(false);
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-[#5E6AD2]/10 hover:border-[#5E6AD2]/30 text-left transition-all"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Map className="w-4 h-4 text-[#7480E2]" />
+                    <span className="font-bold text-xs text-gray-200">세계 지도 (최상위 맵)</span>
+                  </div>
+                  <span className="text-xs text-[#7480E2] font-semibold">선택</span>
+                </button>
+              )}
+
+              {/* 2. 보유한 다른 하위 레이아웃 목록 */}
+              {elements
+                .filter(item => item.id !== selectedElementId && ((item.childMapId && item.childMapId !== '') || item.parentMapId === 'layout-root' || item.type === 'group'))
+                .map(item => {
+                  const targetMapId = item.childMapId || item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        if (selectedElementId) {
+                          pushHistory();
+                          setElementEditChildMap(targetMapId);
+                          setElements(prev => prev.map(el => el.id === selectedElementId ? { ...el, childMapId: targetMapId } : el));
+                        }
+                        setShowLayoutSelectorModal(false);
+                      }}
+                      className="w-full flex items-center justify-between p-3 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-[#5E6AD2]/10 hover:border-[#5E6AD2]/30 text-left transition-all"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Folder className="w-4 h-4 text-[#F59E0B] shrink-0" />
+                        <span className="font-bold text-xs text-gray-200 truncate">{item.name}</span>
+                      </div>
+                      <span className="text-xs text-[#7480E2] font-semibold shrink-0">연결</span>
+                    </button>
+                  );
+                })}
+
+              {/* 3. 신규 세부 레이아웃 새로 생성하여 바로 연결 */}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLayoutSelectorModal(false);
+                  if (selectedElementId) {
+                    const el = elements.find(item => item.id === selectedElementId);
+                    setNewLayoutName(el ? `${el.name} 세부 지도` : '신규 세부 레이아웃');
+                    setNewLayoutParentMapId(selectedElementId);
+                    setShowNewLayoutModal(true);
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-2 p-3.5 rounded-xl border border-dashed border-[#5E6AD2]/40 bg-[#5E6AD2]/10 hover:bg-[#5E6AD2]/20 text-[#7480E2] font-bold text-xs transition-all mt-1"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ 신규 세부 레이아웃 새로 만들어 연결하기</span>
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setShowLayoutSelectorModal(false)}
+                className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold transition-colors"
+              >
+                취소
               </button>
             </div>
           </div>
