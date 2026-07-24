@@ -41,6 +41,7 @@ export default function Footer({ themeMode }: FooterProps) {
             <Link to="/info?tab=privacy" className="hover:text-[#5E6AD2] transition-colors text-red-400 font-bold">개인정보처리방침</Link>
             <Link to="/info?tab=ai" className="hover:text-[#5E6AD2] transition-colors">AI 서비스 안내</Link>
             <Link to="/info?tab=copyright" className="hover:text-[#5E6AD2] transition-colors">저작권 정책</Link>
+            <Link to="/info?tab=copyright#opensource" className="hover:text-[#5E6AD2] transition-colors text-gray-400 font-normal">오픈소스 라이선스</Link>
           </div>
           {/* 3열: 고객지원 */}
           <div className="flex flex-col gap-2">

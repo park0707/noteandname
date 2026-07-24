@@ -401,6 +401,73 @@ function CopyrightContent({ isDark }: { isDark: boolean }) {
           </table>
         </div>
       </Section>
+
+      {/* 폰트 저작권 아래 오픈소스 라이선스 및 출처 고지 섹션 */}
+      <Section title="오픈소스 라이선스 및 출처 고지 (Open Source License)" isDark={isDark}>
+        <P>노벨플로우 서비스 제작에 활용된 오픈소스 소프트웨어 라이브러리 및 폰트 라이선스 출처 명세입니다. 사용된 모든 소프트웨어는 상업적 무료 이용이 100% 허용되는 라이선스(MIT, ISC, SIL OFL 1.1)를 따릅니다.</P>
+        <div className="overflow-x-auto mt-4" id="opensource">
+          <table className={`w-full text-xs border-collapse ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+            <thead>
+              <tr className={`border-b text-left ${isDark ? 'border-white/[0.08] bg-white/[0.02]' : 'border-black/[0.08] bg-black/[0.02]'}`}>
+                <th className="px-3 py-2 font-bold">소프트웨어/패키지 명</th>
+                <th className="px-3 py-2 font-bold">라이선스</th>
+                <th className="px-3 py-2 font-bold">저작권 고지 (Copyright Notice)</th>
+                <th className="px-3 py-2 font-bold">용도</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">React & React DOM (v19)</td>
+                <td className="px-3 py-2 font-mono text-[#7480E2]">MIT License</td>
+                <td className="px-3 py-2 font-mono">Copyright (c) Meta Platforms, Inc. and affiliates.</td>
+                <td className="px-3 py-2">UI 프레임워크</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">Supabase JS SDK (v2)</td>
+                <td className="px-3 py-2 font-mono text-[#7480E2]">MIT License</td>
+                <td className="px-3 py-2 font-mono">Copyright (c) Supabase, Inc.</td>
+                <td className="px-3 py-2">클라우드 DB SDK</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">Lucide React (v1)</td>
+                <td className="px-3 py-2 font-mono text-[#7480E2]">ISC License</td>
+                <td className="px-3 py-2 font-mono">Copyright (c) Lucide Contributors / Eric Fennis</td>
+                <td className="px-3 py-2">SVG UI 아이콘</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">Three.js (v0.185)</td>
+                <td className="px-3 py-2 font-mono text-[#7480E2]">MIT License</td>
+                <td className="px-3 py-2 font-mono">Copyright (c) 2010-2026 three.js authors</td>
+                <td className="px-3 py-2">3D 그래픽 렌더링 Engine</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">React Flow (v11)</td>
+                <td className="px-3 py-2 font-mono text-[#7480E2]">MIT License</td>
+                <td className="px-3 py-2 font-mono">Copyright (c) webkid GmbH / xyflow</td>
+                <td className="px-3 py-2">노드 에디터 다이어그램</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">React Resizable Panels</td>
+                <td className="px-3 py-2 font-mono text-[#7480E2]">MIT License</td>
+                <td className="px-3 py-2 font-mono">Copyright (c) Brian Vaughn</td>
+                <td className="px-3 py-2">분할 레이아웃 패널</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">React Router DOM (v7)</td>
+                <td className="px-3 py-2 font-mono text-[#7480E2]">MIT License</td>
+                <td className="px-3 py-2 font-mono">Copyright (c) Remix Software Inc.</td>
+                <td className="px-3 py-2">웹 라우터 라이브러리</td>
+              </tr>
+              <tr className={`border-b ${isDark ? 'border-white/[0.04]' : 'border-black/[0.04]'}`}>
+                <td className="px-3 py-2 font-semibold">Google Fonts 컬렉션 (Inter, Outfit, 나눔글꼴 등)</td>
+                <td className="px-3 py-2 font-mono text-[#7480E2]">SIL OFL 1.1</td>
+                <td className="px-3 py-2 font-mono">Copyright (c) Google, NAVER Corp., etc.</td>
+                <td className="px-3 py-2">웹 타이포그래피 폰트</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Section>
     </div>
   );
 }

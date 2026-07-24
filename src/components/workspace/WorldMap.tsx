@@ -12,6 +12,7 @@ import { useAlertConfirm } from '../../context/AlertConfirmContext';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 
+
 // --- Types for WorldMap ---
 export interface MapSnapshot {
   id: string;
@@ -68,6 +69,10 @@ export interface MapElement {
   childMapId?: string;
   createdSnapshotId?: string; // 최초 생성된 시점 스냅샷 ID (미래 시점에서 생성된 요소는 과거 시점에서 숨김 처리)
   
+  // 3D 입체 및 높낮이(Elevation/Extrusion) 속성
+  elevation?: number; // Z축 기본 고도/높이 (예: 0~100)
+  extrusionHeight?: number; // 3D 돌출 높이 (예: 0~200)
+
   // 시점 스냅샷별 오버라이드 데이터 (Snapshot ID -> ElementState)
   statesBySnapshot?: Record<string, {
     visible: boolean;
@@ -93,6 +98,8 @@ export interface MapElement {
     categoryTags?: string[];
     associatedCharacters?: string[];
     associatedEpisodes?: string[];
+    elevation?: number;
+    extrusionHeight?: number;
   }>;
 }
 
@@ -192,6 +199,7 @@ export default function WorldMap({
 
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null);
   const [selectedElementIds, setSelectedElementIds] = useState<string[]>([]);
+
 
   // 마키/선택 상자 드래그 상태
   const [selectionBoxStart, setSelectionBoxStart] = useState<{ x: number; y: number } | null>(null);
@@ -611,7 +619,8 @@ export default function WorldMap({
   const [tagSearchInput, setTagSearchInput] = useState('');
   const [newTagNameInput, setNewTagNameInput] = useState('');
 
-  // --- 레이어 스택 순서 관리 모달 상태 ---
+  // --- 오픈소스 라이선스 출처 모달 상태 ---
+  const [showOpenSourceLicenseModal, setShowOpenSourceLicenseModal] = useState(false);
   const [showLayerStackModal, setShowLayerStackModal] = useState(false);
   const [draggedLayerId, setDraggedLayerId] = useState<string | null>(null);
   const [dragOverLayerId, setDragOverLayerId] = useState<string | null>(null);
@@ -2522,28 +2531,37 @@ export default function WorldMap({
     let targetX = 0;
     let targetY = 0;
 
-    if (el.type === 'pin' && el.x !== undefined && el.y !== undefined) {
-      targetX = el.x;
-      targetY = el.y;
+    if ((el.type === 'pin' || el.type === 'character') && (el.x !== undefined || el.bx !== undefined)) {
+      targetX = el.x !== undefined ? el.x : (el.bx !== undefined ? el.bx : 0);
+      targetY = el.y !== undefined ? el.y : (el.by !== undefined ? el.by : 0);
+      if (el.bw) targetX += el.bw / 2;
+      if (el.bh) targetY += el.bh / 2;
     } else if ((el.type === 'polygon' || el.type === 'route') && el.points && el.points.length > 0) {
       const sum = el.points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), { x: 0, y: 0 });
       targetX = sum.x / el.points.length;
       targetY = sum.y / el.points.length;
-    } else if ((el.type === 'border_rect' || el.type === 'border_circle') && el.bx !== undefined && el.by !== undefined) {
+    } else if ((el.type === 'border_rect' || el.type === 'border_circle') && (el.bx !== undefined || el.x !== undefined)) {
+      const bx = (el.bx !== undefined ? el.bx : el.x) || 0;
+      const by = (el.by !== undefined ? el.by : el.y) || 0;
       if (el.type === 'border_rect') {
-        targetX = el.bx + (el.bw ?? 0) / 2;
-        targetY = el.by + (el.bh ?? 0) / 2;
+        targetX = bx + (el.bw ?? 0) / 2;
+        targetY = by + (el.bh ?? 0) / 2;
       } else {
-        targetX = el.bx;
-        targetY = el.by;
+        targetX = bx;
+        targetY = by;
       }
-    } else if (el.type === 'image' && el.bx !== undefined && el.by !== undefined) {
-      targetX = el.bx + (el.bw ?? 400) / 2;
-      targetY = el.by + (el.bh ?? 300) / 2;
+    } else if ((el.type === 'image') && (el.bx !== undefined || el.x !== undefined)) {
+      const bx = (el.bx !== undefined ? el.bx : el.x) || 0;
+      const by = (el.by !== undefined ? el.by : el.y) || 0;
+      targetX = bx + (el.bw ?? 400) / 2;
+      targetY = by + (el.bh ?? 300) / 2;
     } else if (el.type === 'brush' && el.brushStrokes) {
       const bbox = getBrushBoundingBox(el.brushStrokes);
       targetX = bbox.minX + bbox.w / 2;
       targetY = bbox.minY + bbox.h / 2;
+    } else if (el.x !== undefined || el.bx !== undefined) {
+      targetX = (el.x !== undefined ? el.x : el.bx) || 0;
+      targetY = (el.y !== undefined ? el.y : el.by) || 0;
     } else {
       return;
     }
@@ -3630,6 +3648,8 @@ export default function WorldMap({
               {/* ── 보기/필터 탭 ── */}
               {activeHeaderTab === 'view_filter' && (
                 <div className="flex items-center gap-2.5 shrink-0 text-xs">
+
+
                   {/* 1. 사이드 바 종류 필터 */}
                   <div className="relative" ref={sidebarFilterRef}>
                     <button
@@ -4642,6 +4662,7 @@ export default function WorldMap({
             presetBg === 'cosmic' ? 'bg-[#050608]' : presetBg === 'grid' ? (isDark ? 'bg-[#18191B]' : 'bg-[#F3F4F6]') : (isDark ? 'bg-[#1A1813]' : 'bg-[#FAF4E8]')
           }`}
         >
+          <>
           
           {/* SVG 드로잉 및 패닝 컨테이너 (GPU 가속 & 지연 무무 1:1 추종) */}
           <div 
@@ -4840,6 +4861,9 @@ export default function WorldMap({
                 if (el.type === 'polygon') {
                   const color = el.color || '#5E6AD2';
                   const opacity = (selectedElementId === el.id && isDetailOpen) ? (elementEditOpacity / 100) : (el.opacity !== undefined ? el.opacity : 0.3);
+                  const borderWidth = (selectedElementId === el.id && isDetailOpen) ? elementEditBorderWidth : (el.borderWidth || 3);
+                  const borderStyle = (selectedElementId === el.id && isDetailOpen) ? elementEditBorderStyle : (el.borderStyle || 'solid');
+                  const strokeDash = borderStyle === 'dashed' ? '8,6' : borderStyle === 'dotted' ? '3,3' : (el.statesBySnapshot?.[activeSnapshotId] ? "6,4" : undefined);
                   const ptsString = el.points?.map(p => `${p.x},${p.y}`).join(' ') || '';
                   const isSelected = isElementSelected(el.id);
 
@@ -4881,8 +4905,8 @@ export default function WorldMap({
                         fill={color}
                         fillOpacity={opacity}
                         stroke={isSelected ? "#E74C3C" : color}
-                        strokeWidth={isSelected ? "4.5" : "3.5"}
-                        strokeDasharray={el.statesBySnapshot?.[activeSnapshotId] ? "6,4" : undefined}
+                        strokeWidth={isSelected ? borderWidth + 1.5 : borderWidth}
+                        strokeDasharray={strokeDash}
                         onMouseDown={(e) => handleElementMouseDown(e, el)}
                         onClick={(e) => handleElementClick(el, e)}
                         onDoubleClick={(e) => {
@@ -4969,10 +4993,12 @@ export default function WorldMap({
                 // --- 2-4. 붓 그리기 영역 요소 ---
                 if (el.type === 'brush') {
                   const isSelected = isElementSelected(el.id);
-                  const color = el.color || '#5E6AD2';
-                  const baseOpacity = el.opacity !== undefined ? el.opacity : 0.4;
+                  const color = (selectedElementId === el.id && isDetailOpen) ? elementEditColor : (el.color || '#5E6AD2');
+                  const baseOpacity = (selectedElementId === el.id && isDetailOpen) ? (elementEditOpacity / 100) : (el.opacity !== undefined ? el.opacity : 0.4);
                   const opacity = isSelected ? Math.min(1, baseOpacity + 0.2) : baseOpacity;
-                  const brushWidthVal = el.brushWidth || 20;
+                  const borderStyle = (selectedElementId === el.id && isDetailOpen) ? elementEditBorderStyle : (el.borderStyle || 'solid');
+                  const strokeDash = borderStyle === 'dashed' ? '8,6' : borderStyle === 'dotted' ? '3,3' : undefined;
+                  const brushWidthVal = (selectedElementId === el.id && isDetailOpen) ? elementEditBorderWidth : (el.brushWidth || 20);
                   const pathData = buildStrokesPathData(el.brushStrokes || []);
 
                   return (
@@ -4984,7 +5010,7 @@ export default function WorldMap({
                       {el.brushStrokeObjects && el.brushStrokeObjects.length > 0 ? (
                         el.brushStrokeObjects.map((sObj, sIdx) => {
                           const sPathData = buildStrokesPathData([sObj.points]);
-                          const sWidth = sObj.width || el.brushWidth || 20;
+                          const sWidth = (selectedElementId === el.id && isDetailOpen) ? elementEditBorderWidth : (sObj.width || el.brushWidth || 20);
                           const sShape = sObj.shape || el.brushShape || 'circle';
                           return (
                             <path
@@ -4993,6 +5019,7 @@ export default function WorldMap({
                               fill="none"
                               stroke={isSelected ? '#E74C3C' : color}
                               strokeWidth={sWidth}
+                              strokeDasharray={strokeDash}
                               strokeLinecap={sShape === 'square' ? 'square' : 'round'}
                               strokeLinejoin={sShape === 'square' ? 'miter' : 'round'}
                               opacity={opacity}
@@ -5014,6 +5041,7 @@ export default function WorldMap({
                           fill="none"
                           stroke={isSelected ? '#E74C3C' : color}
                           strokeWidth={brushWidthVal}
+                          strokeDasharray={strokeDash}
                           strokeLinecap={el.brushShape === 'square' ? 'square' : 'round'}
                           strokeLinejoin={el.brushShape === 'square' ? 'miter' : 'round'}
                           opacity={opacity}
@@ -5051,29 +5079,53 @@ export default function WorldMap({
 
                 // --- 2-5. 구역 테두리 (사각형 및 원형) 요소 ---
                 if (el.type === 'border_rect' || el.type === 'border_circle') {
-                  const color = el.color || '#5E6AD2';
-                  const opacity = el.opacity !== undefined ? el.opacity : 1.0;
-                  const strokeWidth = el.borderWidth || 3;
-                  const borderStyle = el.borderStyle || 'solid';
+                  const color = (selectedElementId === el.id && isDetailOpen) ? elementEditColor : (el.color || '#5E6AD2');
+                  const opacity = (selectedElementId === el.id && isDetailOpen) ? (elementEditOpacity / 100) : (el.opacity !== undefined ? el.opacity : 0.2);
+                  const strokeWidth = (selectedElementId === el.id && isDetailOpen) ? elementEditBorderWidth : (el.borderWidth || 3);
+                  const borderStyle = (selectedElementId === el.id && isDetailOpen) ? elementEditBorderStyle : (el.borderStyle || 'solid');
                   const isSelected = isElementSelected(el.id);
                   const strokeDash = borderStyle === 'dashed' ? '8,6' : borderStyle === 'dotted' ? '3,3' : undefined;
 
+                  const tex = (selectedElementId === el.id && isDetailOpen) ? elementEditTexture : el.texture;
+                  const customImg = (selectedElementId === el.id && isDetailOpen) ? elementEditCustomTextureImage : el.customTextureImage;
+                  const hasTex = tex && tex !== 'none';
+                  const clipId = `border-tex-clip-${el.id}`;
+                  const customPatternId = `border-pattern-custom-img-${el.id}`;
+
                   if (el.type === 'border_rect') {
+                    const bx = el.bx ?? 0;
+                    const by = el.by ?? 0;
+                    const bw = el.bw || 100;
+                    const bh = el.bh || 100;
+
                     return (
                       <g 
                         key={el.id}
                         onMouseEnter={() => setHoveredElementId(el.id)}
                         onMouseLeave={() => setHoveredElementId(null)}
                       >
+                        {hasTex && (
+                          <defs>
+                            <clipPath id={clipId}>
+                              <rect x={bx} y={by} width={bw} height={bh} />
+                            </clipPath>
+                            {tex === 'custom_image' && customImg && (
+                              <pattern id={customPatternId} width="120" height="120" patternUnits="userSpaceOnUse">
+                                <image href={customImg} width="120" height="120" preserveAspectRatio="xMidYMid slice" />
+                              </pattern>
+                            )}
+                          </defs>
+                        )}
                         <rect
-                          x={el.bx}
-                          y={el.by}
-                          width={el.bw}
-                          height={el.bh}
-                          fill="none"
+                          x={bx}
+                          y={by}
+                          width={bw}
+                          height={bh}
+                          fill={color}
+                          fillOpacity={opacity}
                           stroke={isSelected ? '#E74C3C' : color}
                           strokeWidth={isSelected ? strokeWidth + 1.5 : strokeWidth}
-                          strokeOpacity={opacity}
+                          strokeOpacity={1}
                           strokeDasharray={strokeDash}
                           onMouseDown={(e) => handleElementMouseDown(e, el)}
                           onClick={(e) => handleElementClick(el, e)}
@@ -5083,37 +5135,72 @@ export default function WorldMap({
                           }}
                           className={`transition-colors duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
                         />
+                        {hasTex && (
+                          <rect
+                            x={bx}
+                            y={by}
+                            width={bw}
+                            height={bh}
+                            fill={tex === 'custom_image' ? `url(#${customPatternId})` : `url(#pattern-mountain-${tex})`}
+                            fillOpacity={tex === 'custom_image' ? opacity : 1}
+                            clipPath={`url(#${clipId})`}
+                            style={{ pointerEvents: 'none' }}
+                          />
+                        )}
                         {editMode === 'select' && (
                           <rect
-                            x={el.bx}
-                            y={el.by}
-                            width={el.bw}
-                            height={el.bh}
+                            x={bx}
+                            y={by}
+                            width={bw}
+                            height={bh}
                             fill="none"
                             stroke="transparent"
                             strokeWidth="24"
                             className="cursor-move pointer-events-auto"
                             onMouseDown={(e) => handleElementMouseDown(e, el)}
+                            onClick={(e) => handleElementClick(el, e)}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              handleElementDoubleClick(el);
+                            }}
                           />
                         )}
                       </g>
                     );
                   } else {
+                    const cx = el.bx ?? 0;
+                    const cy = el.by ?? 0;
+                    const rx = el.bw || 50;
+                    const ry = el.bh || 50;
+
                     return (
                       <g 
                         key={el.id}
                         onMouseEnter={() => setHoveredElementId(el.id)}
                         onMouseLeave={() => setHoveredElementId(null)}
                       >
+                        {hasTex && (
+                          <defs>
+                            <clipPath id={clipId}>
+                              <ellipse cx={cx} cy={cy} rx={rx} ry={ry} />
+                            </clipPath>
+                            {tex === 'custom_image' && customImg && (
+                              <pattern id={customPatternId} width="120" height="120" patternUnits="userSpaceOnUse">
+                                <image href={customImg} width="120" height="120" preserveAspectRatio="xMidYMid slice" />
+                              </pattern>
+                            )}
+                          </defs>
+                        )}
                         <ellipse
-                          cx={el.bx}
-                          cy={el.by}
-                          rx={el.bw}
-                          ry={el.bh}
-                          fill="none"
+                          cx={cx}
+                          cy={cy}
+                          rx={rx}
+                          ry={ry}
+                          fill={color}
+                          fillOpacity={opacity}
                           stroke={isSelected ? '#E74C3C' : color}
                           strokeWidth={isSelected ? strokeWidth + 1.5 : strokeWidth}
-                          strokeOpacity={opacity}
+                          strokeOpacity={1}
                           strokeDasharray={strokeDash}
                           onMouseDown={(e) => handleElementMouseDown(e, el)}
                           onClick={(e) => handleElementClick(el, e)}
@@ -5123,17 +5210,34 @@ export default function WorldMap({
                           }}
                           className={`transition-colors duration-200 ${isSelected ? 'stroke-[4px]' : 'hover:stroke-white'} ${editMode === 'select' ? 'cursor-move' : 'cursor-pointer'}`}
                         />
+                        {hasTex && (
+                          <rect
+                            x={cx - rx}
+                            y={cy - ry}
+                            width={rx * 2}
+                            height={ry * 2}
+                            fill={tex === 'custom_image' ? `url(#${customPatternId})` : `url(#pattern-mountain-${tex})`}
+                            fillOpacity={tex === 'custom_image' ? opacity : 1}
+                            clipPath={`url(#${clipId})`}
+                            style={{ pointerEvents: 'none' }}
+                          />
+                        )}
                         {editMode === 'select' && (
                           <ellipse
-                            cx={el.bx}
-                            cy={el.by}
-                            rx={el.bw}
-                            ry={el.bh}
+                            cx={cx}
+                            cy={cy}
+                            rx={rx}
+                            ry={ry}
                             fill="none"
                             stroke="transparent"
                             strokeWidth="24"
                             className="cursor-move pointer-events-auto"
                             onMouseDown={(e) => handleElementMouseDown(e, el)}
+                            onClick={(e) => handleElementClick(el, e)}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              handleElementDoubleClick(el);
+                            }}
                           />
                         )}
                       </g>
@@ -5780,6 +5884,7 @@ export default function WorldMap({
               </div>
             </div>
           )}
+          </>
         </div>
 
       </div>
@@ -5983,9 +6088,9 @@ export default function WorldMap({
                 </>
               )}
 
-              {el.type === 'polygon' && (
+              {(el.type === 'polygon' || el.type === 'border_rect' || el.type === 'border_circle') && (
                 <div className="flex flex-col gap-2">
-                  <label className="font-semibold text-gray-400">지형 텍스처 무늬</label>
+                  <label className="font-semibold text-gray-400">채우기 텍스처 무늬 및 배경</label>
                   <select 
                     value={elementEditTexture}
                     onChange={e => setElementEditTexture(e.target.value)}
@@ -5993,7 +6098,7 @@ export default function WorldMap({
                       isDark ? 'bg-[#1E1F22] border-white/[0.08] text-white' : 'bg-white border-black/[0.08] text-black'
                     }`}
                   >
-                    <option value="none">없음</option>
+                    <option value="none">없음 (단색 채우기)</option>
                     <option value="slash">빗금</option>
                     <option value="dots">점무늬</option>
                     <option value="sand">모래</option>
@@ -6067,8 +6172,8 @@ export default function WorldMap({
                 </div>
               )}
 
-              {/* 테두리 (사각형 및 원형) 전용 옵션 */}
-              {(el.type === 'border_rect' || el.type === 'border_circle') && (
+              {/* 테두리 (다각형, 붓, 사각형 및 원형) 옵션 */}
+              {(el.type === 'polygon' || el.type === 'brush' || el.type === 'border_rect' || el.type === 'border_circle') && (
                 <>
                   <div className="flex flex-col gap-1.5">
                     <label className="font-semibold text-gray-400">테두리 선 스타일</label>
@@ -6090,13 +6195,13 @@ export default function WorldMap({
                       <input 
                         type="range"
                         min="1"
-                        max="10"
+                        max="100"
                         step="1"
                         value={elementEditBorderWidth}
                         onChange={e => setElementEditBorderWidth(parseInt(e.target.value))}
                         className="flex-1 h-1.5 bg-[#5E6AD2]/20 rounded-lg appearance-none cursor-pointer accent-[#5E6AD2]"
                       />
-                      <span className="font-mono text-xs w-6 text-right">{elementEditBorderWidth}px</span>
+                      <span className="font-mono text-xs w-8 text-right">{elementEditBorderWidth}px</span>
                     </div>
                   </div>
                 </>
@@ -8215,6 +8320,65 @@ export default function WorldMap({
                 className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold transition-colors"
               >
                 취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 오픈소스 라이선스 및 출처 고지 모달 (OpenSourceLicenseModal) ── */}
+      {showOpenSourceLicenseModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[110] p-4 select-none animate-fadeIn">
+          <div className={`w-full max-w-lg rounded-2xl border p-5 shadow-2xl flex flex-col gap-4 max-h-[85vh] ${
+            isDark ? 'bg-[#121316] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-[#7480E2]" />
+                <h3 className="font-bold text-sm">오픈소스 라이선스 및 출처 고지 (Open Source Notices)</h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowOpenSourceLicenseModal(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400 leading-relaxed">
+              본 서비스(노벨플로우)는 다음과 같은 상업적 이용이 가능한 무료 오픈소스 라이브러리 및 폰트를 활용하여 제작되었습니다. 각 라이브러리의 저작권 및 라이선스 조건을 준수합니다.
+            </p>
+
+            <div className="flex flex-col gap-3 overflow-y-auto pr-1">
+              {[
+                { name: 'React & React DOM (v19)', license: 'MIT License', copyright: 'Copyright (c) Meta Platforms, Inc. and affiliates.', desc: 'UI 컴포넌트 렌더링 프레임워크' },
+                { name: 'Supabase JS SDK (v2)', license: 'MIT License', copyright: 'Copyright (c) Supabase, Inc.', desc: '실시간 데이터베이스 및 백엔드 클라이언트 SDK' },
+                { name: 'Lucide React (v1)', license: 'ISC License', copyright: 'Copyright (c) Lucide Contributors / Eric Fennis', desc: '표준 UI SVG 아이콘 컬렉션' },
+                { name: 'Three.js (v0.185)', license: 'MIT License', copyright: 'Copyright (c) 2010-2026 three.js authors', desc: '3D 그래픽 렌더링 엔진' },
+                { name: 'React Flow (v11)', license: 'MIT License', copyright: 'Copyright (c) webkid GmbH / xyflow', desc: '노드 기반 다이어그램 에디터' },
+                { name: 'React Resizable Panels', license: 'MIT License', copyright: 'Copyright (c) Brian Vaughn', desc: '분할 반응형 패널 레이아웃' },
+                { name: 'React Router DOM (v7)', license: 'MIT License', copyright: 'Copyright (c) Remix Software Inc.', desc: '웹 라우팅 디스패처' },
+                { name: 'Google Fonts (Inter, Outfit, 나눔글꼴, Noto 등)', license: 'SIL Open Font License 1.1', copyright: 'Copyright (c) Google, NAVER, etc.', desc: '웹 타이포그래피 폰트' }
+              ].map((item, idx) => (
+                <div key={idx} className="p-3 rounded-xl border border-white/10 bg-white/[0.02] flex flex-col gap-1 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-gray-200">{item.name}</span>
+                    <span className="px-2 py-0.5 rounded bg-[#5E6AD2]/20 text-[#7480E2] font-semibold text-[10px]">{item.license}</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-gray-400">{item.copyright}</span>
+                  <span className="text-[11px] text-gray-500 mt-0.5">{item.desc}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setShowOpenSourceLicenseModal(false)}
+                className="px-4 py-2 rounded-xl bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-bold transition-colors"
+              >
+                확인 및 닫기
               </button>
             </div>
           </div>
