@@ -24,6 +24,10 @@ export interface Node {
   x: number;
   y: number;
   color: string;
+  role?: string;
+  summary?: string;
+  description?: string;
+  avatar?: string;
 }
 
 export interface Link {

@@ -25,8 +25,9 @@ export interface MapSnapshot {
 export interface MapElement {
   id: string;
   name: string;
-  type: 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group' | 'brush' | 'image';
+  type: 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group' | 'brush' | 'image' | 'character';
   parentMapId: string; // 계층 구조 연동을 위함 (기본 'root')
+  characterId?: string; // 연결된 인물 관계도 노드 ID
   
   // Pin 전용 속성
   x?: number;
@@ -131,6 +132,7 @@ export default function WorldMap({
     { type: 'route', label: '이동 교역로', Icon: Route },
     { type: 'brush', label: '붓 그리기 영역', Icon: Paintbrush },
     { type: 'pin', label: '거점 핀 마커', Icon: MapPin },
+    { type: 'character', label: '캐릭터 마크', Icon: User },
     { type: 'border_rect', label: '구역 사각형 테두리', Icon: Square },
     { type: 'border_circle', label: '구역 원형 테두리', Icon: Circle },
   ];
@@ -349,7 +351,7 @@ export default function WorldMap({
 
   // --- 사이드바 항목 종류 필터 상태 ---
   const [selectedSidebarTypes, setSelectedSidebarTypes] = useState<string[]>([
-    'pin', 'brush', 'polygon', 'route', 'border_rect', 'border_circle', 'image'
+    'pin', 'character', 'brush', 'polygon', 'route', 'border_rect', 'border_circle', 'image'
   ]);
   const [showSidebarFilterDropdown, setShowSidebarFilterDropdown] = useState(false);
   const sidebarFilterRef = useRef<HTMLDivElement>(null);
@@ -617,6 +619,8 @@ export default function WorldMap({
   // --- 인물/에피소드 선택 모달 상태 ---
   const [showCharModal, setShowCharModal] = useState(false);
   const [charSearchInput, setCharSearchInput] = useState('');
+  const [showCharacterSelectorModal, setShowCharacterSelectorModal] = useState(false);
+  const [characterSelectorSearch, setCharacterSelectorSearch] = useState('');
   const [showEpModal, setShowEpModal] = useState(false);
   const [epSearchInput, setEpSearchInput] = useState('');
   const [epFolderOpen, setEpFolderOpen] = useState<Set<string>>(new Set());
@@ -1659,8 +1663,8 @@ export default function WorldMap({
         brushStrokeObjects?: Array<{ points: Array<{ x: number; y: number }>; width: number; shape?: 'circle' | 'square' }>;
       }> = {};
       members.forEach(item => {
-        if (item.type === 'pin') {
-          initialCoords[item.id] = { x: item.x || 0, y: item.y || 0 };
+        if (item.type === 'pin' || item.type === 'character') {
+          initialCoords[item.id] = { x: item.x || item.bx || 0, y: item.y || item.by || 0, w: item.bw || 64, h: item.bh || 64 };
         } else if (item.type === 'border_rect' || item.type === 'border_circle' || item.type === 'image') {
           initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0, w: item.bw || 0, h: item.bh || 0 };
         } else if (item.type === 'brush' || item.brushStrokes || item.brushStrokeObjects) {
@@ -1720,8 +1724,8 @@ export default function WorldMap({
       brushStrokeObjects?: Array<{ points: Array<{ x: number; y: number }>; width: number; shape?: 'circle' | 'square' }>;
     }> = {};
     members.forEach(item => {
-      if (item.type === 'pin') {
-        initialCoords[item.id] = { x: item.x || 0, y: item.y || 0 };
+      if (item.type === 'pin' || item.type === 'character') {
+        initialCoords[item.id] = { x: item.x || item.bx || 0, y: item.y || item.by || 0, w: item.bw || 64, h: item.bh || 64 };
       } else if (item.type === 'border_rect' || item.type === 'border_circle' || item.type === 'image') {
         initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0, w: item.bw || 0, h: item.bh || 0 };
       } else if (item.type === 'brush' || item.brushStrokes || item.brushStrokeObjects) {
@@ -1959,7 +1963,7 @@ export default function WorldMap({
         const initW = initial.w ?? 0;
         const initH = initial.h ?? 0;
         
-        if (item.type === 'border_rect' || item.type === 'brush' || item.type === 'image' || item.type === 'pin' || item.type === 'polygon' || item.type === 'route') {
+        if (item.type === 'border_rect' || item.type === 'brush' || item.type === 'image' || item.type === 'pin' || item.type === 'character' || item.type === 'polygon' || item.type === 'route') {
           x1 = initial.x;
           y1 = initial.y;
           x2 = initial.x + initW;
@@ -2062,8 +2066,8 @@ export default function WorldMap({
           return updateElementSnapshotState(item, activeSnapshotId, {
             points: nextPts
           });
-        } else if (item.type === 'pin') {
-          // 핀 마커는 항상 완벽한 정원형(Circular Aspect Ratio 1:1)을 유지 (반지름 기반 1:1 확장/축소)
+        } else if (item.type === 'pin' || item.type === 'character') {
+          // 핀/캐릭터 마크는 항상 완벽한 정원형(Circular Aspect Ratio 1:1)을 유지 (지름 기반 1:1 확장/축소)
           const rawW = newX2 - newX1;
           const rawH = newY2 - newY1;
           const totalSide = Math.max(28, Math.max(rawW, rawH));
@@ -2230,7 +2234,7 @@ export default function WorldMap({
         const initial = dragInitialElementsCoords[item.id];
         if (!initial) return item;
         
-        if (item.type === 'pin') {
+        if (item.type === 'pin' || item.type === 'character') {
           return updateElementSnapshotState(item, activeSnapshotId, {
             x: initial.x + finalDx,
             y: initial.y + finalDy
@@ -2641,7 +2645,7 @@ export default function WorldMap({
   interface FlatTreeNode {
     id: string;
     name: string;
-    type: 'root' | 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group' | 'brush' | 'image';
+    type: 'root' | 'pin' | 'polygon' | 'route' | 'border_rect' | 'border_circle' | 'group' | 'brush' | 'image' | 'character';
     depth: number;
     childMapId?: string;
     parentMapId?: string;
@@ -3949,6 +3953,18 @@ export default function WorldMap({
                     }`}
                   >
                     <MapPin className="w-3.5 h-3.5 shrink-0" />핀 거점
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowCharacterSelectorModal(true)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold shrink-0 transition-all duration-150 ${
+                      showCharacterSelectorModal
+                        ? 'bg-[#5E6AD2] text-white shadow-sm'
+                        : isDark ? 'text-gray-300 hover:text-white hover:bg-white/[0.06]' : 'text-gray-600 hover:text-gray-900 hover:bg-black/[0.05]'
+                    }`}
+                  >
+                    <User className="w-3.5 h-3.5 shrink-0" />캐릭터 배치
                   </button>
 
                   {/* 포인트 도구 (선 긋기 / 영역 그리기 드롭다운 포함) */}
@@ -5323,9 +5339,9 @@ export default function WorldMap({
                   </g>
                 ))}
               
-              {/* 선택된 요소(테두리, 붓, 이미지, 핀, 다각형, 이동 교역로)의 리사이즈 드래그 핸들 (Anchor Points) */}
+              {/* 선택된 요소(테두리, 붓, 이미지, 핀, 캐릭터, 다각형, 이동 교역로)의 리사이즈 드래그 핸들 (Anchor Points) */}
               {editMode === 'select' && selectedElementId && elements
-                .filter(el => el.id === selectedElementId && !isElementLocked(el.type) && (el.type === 'border_rect' || el.type === 'border_circle' || el.type === 'brush' || el.type === 'image' || el.type === 'pin' || el.type === 'polygon' || el.type === 'route'))
+                .filter(el => el.id === selectedElementId && !isElementLocked(el.type) && (el.type === 'border_rect' || el.type === 'border_circle' || el.type === 'brush' || el.type === 'image' || el.type === 'pin' || el.type === 'character' || el.type === 'polygon' || el.type === 'route'))
                 .map(el => {
                   let tl = { x: 0, y: 0 };
                   let tr = { x: 0, y: 0 };
@@ -5358,12 +5374,12 @@ export default function WorldMap({
                     tr = { x: boxX + boxW, y: boxY };
                     bl = { x: boxX, y: boxY + boxH };
                     br = { x: boxX + boxW, y: boxY + boxH };
-                  } else if (el.type === 'pin') {
-                    const pinSize = el.bw || el.bh || 40;
+                  } else if (el.type === 'pin' || el.type === 'character') {
+                    const pinSize = el.bw || el.bh || (el.type === 'character' ? 64 : 40);
                     const margin = Math.max(12, pinSize * 0.2);
                     const totalSide = pinSize + margin * 2;
-                    boxX = (el.x || 0) - totalSide / 2;
-                    boxY = (el.y || 0) - totalSide / 2;
+                    boxX = (el.x || el.bx || 0) - totalSide / 2;
+                    boxY = (el.y || el.by || 0) - totalSide / 2;
                     boxW = totalSide;
                     boxH = totalSide;
 
@@ -5458,94 +5474,6 @@ export default function WorldMap({
               );
             })()}
 
-            {/* 호버 라벨 오버레이 팝업 (하한선 2배 확장 Min 16px 보장) */}
-            {showElementNames && hoveredElementId && (() => {
-              const el = elements.find(x => x.id === hoveredElementId);
-              if (!el) return null;
-
-              // 화면 배율 하한선을 2배 확장하여 (Min 16px) 화면 확대 시에도 16px 미만으로 작아지지 않게 보장
-              const effectiveZoomForLabel = Math.max(1.0, zoom);
-              const targetScreenFontSize = Math.max(16, Math.min(22, Math.round(16 / Math.pow(effectiveZoomForLabel, 0.45))));
-              const effectiveFontSize = targetScreenFontSize / zoom;
-              const fontScale = effectiveFontSize / 16;
-
-              const labelHeight = 28 * fontScale;
-              const labelRx = 5 * fontScale;
-              const strokeWidth = 1.3 * fontScale;
-
-              const getLabelWidth = (text: string): number => {
-                let width = 0;
-                for (let i = 0; i < text.length; i++) {
-                  const code = text.charCodeAt(i);
-                  if (code >= 0 && code <= 128) {
-                    width += 10 * fontScale;
-                  } else {
-                    width += 18 * fontScale;
-                  }
-                }
-                return width + (18 * fontScale);
-              };
-
-              const offsetX = 12 * fontScale;
-              const offsetY = 12 * fontScale;
-
-              let pos = { x: 0, y: 0 };
-              if (hoveredMousePos) {
-                // 마우스 커서의 바로 우측 상단에 띄우기
-                pos = { x: hoveredMousePos.x + offsetX, y: hoveredMousePos.y - offsetY };
-              } else {
-                // Fallback (요소 앵커 위치)
-                if (el.type === 'pin') {
-                  pos = { x: (el.x || 0) + offsetX, y: (el.y || 0) - (18 * fontScale) };
-                } else if (el.type === 'polygon' || el.type === 'route') {
-                  const pts = el.points || [];
-                  if (pts.length > 0) {
-                    let maxX = pts[0].x;
-                    let minY = pts[0].y;
-                    pts.forEach(p => {
-                      if (p.x > maxX) maxX = p.x;
-                      if (p.y < minY) minY = p.y;
-                    });
-                    pos = { x: maxX + offsetX, y: minY - (12 * fontScale) };
-                  }
-                } else if (el.type === 'brush' && el.brushStrokes) {
-                  const bbox = getBrushBoundingBox(el.brushStrokes);
-                  pos = { x: bbox.maxX + offsetX, y: bbox.minY - (12 * fontScale) };
-                } else if (el.type === 'border_rect' || el.type === 'image') {
-                  pos = { x: (el.bx || 0) + (el.bw || 0) + offsetX, y: (el.by || 0) - (12 * fontScale) };
-                } else if (el.type === 'border_circle') {
-                  pos = { x: (el.bx || 0) + (el.bw || 0) + offsetX, y: (el.by || 0) - (el.bh || 0) - (12 * fontScale) };
-                }
-              }
-
-              return (
-                <svg className="absolute inset-0 w-full h-full overflow-visible pointer-events-none select-none">
-                  <g filter="drop-shadow(0px 3px 6px rgba(0,0,0,0.35))">
-                    <rect
-                      x={pos.x}
-                      y={pos.y - (20 * fontScale)}
-                      rx={labelRx}
-                      fill={isDark ? "#121316" : "#FFFFFF"}
-                      stroke="#5E6AD2"
-                      strokeWidth={strokeWidth}
-                      opacity="0.96"
-                      height={labelHeight}
-                      width={getLabelWidth(el.name)}
-                    />
-                    <text
-                      x={pos.x + (9 * fontScale)}
-                      y={pos.y - (2 * fontScale)}
-                      fontSize={effectiveFontSize}
-                      fontWeight="800"
-                      fill={isDark ? "#A5B4FC" : "#4F46E5"}
-                    >
-                      {el.name}
-                    </text>
-                  </g>
-                </svg>
-              );
-            })()}
-
             {/* 4. 절대 배치형 거점 핀(Pin Marker) 리스트 */}
             {layerVisibility.political && selectedSidebarTypes.includes('pin') && currentActiveElements
               .filter(rawEl => rawEl.type === 'pin')
@@ -5574,7 +5502,7 @@ export default function WorldMap({
                     style={{
                       left: `${el.x}px`,
                       top: `${el.y}px`,
-                      zIndex: 10 + elements.findIndex(item => item.id === el.id),
+                      zIndex: (isSelected ? 100 : 40) + elements.findIndex(item => item.id === el.id),
                       cursor: editMode === 'select' ? 'move' : 'pointer'
                     }}
                     onMouseDown={(e) => {
@@ -5601,6 +5529,69 @@ export default function WorldMap({
                       }}
                     >
                       <IconComponent style={{ width: `${iconSize}px`, height: `${iconSize}px` }} className="text-white shrink-0" />
+                    </div>
+                  </div>
+                );
+              })}
+
+            {/* 4-2. 절대 배치형 캐릭터 마크(Character Marker) 리스트 */}
+            {layerVisibility.political && selectedSidebarTypes.includes('character') && currentActiveElements
+              .filter(rawEl => rawEl.type === 'character')
+              .map(rawEl => {
+                const el = getElementDisplayData(rawEl, activeSnapshotId);
+                if (el.isSnapshotHidden) return null;
+
+                const isSelected = isElementSelected(el.id);
+                const relNode = relationNodes.find(n => n.id === el.characterId);
+                const charName = relNode?.name || el.name;
+                const charAvatar = relNode?.avatar;
+                
+                const diameter = el.bw || el.bh || 64;
+                const scaleRatio = diameter / 64;
+
+                const borderWidth = Math.max(2, Math.round(3 * scaleRatio));
+
+                return (
+                  <div 
+                    key={el.id}
+                    className="absolute pointer-events-auto flex flex-col items-center gap-1 group transform -translate-x-1/2 -translate-y-1/2 select-none"
+                    style={{
+                      left: `${el.x || el.bx || 0}px`,
+                      top: `${el.y || el.by || 0}px`,
+                      zIndex: (isSelected ? 100 : 50) + elements.findIndex(item => item.id === el.id),
+                      cursor: editMode === 'select' ? 'move' : 'pointer'
+                    }}
+                    onMouseDown={(e) => {
+                      if (editMode === 'select') {
+                        handleElementMouseDown(e, el);
+                      }
+                    }}
+                    onClick={(e) => handleElementClick(el, e)}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      handleElementDoubleClick(el);
+                    }}
+                    onMouseEnter={() => setHoveredElementId(el.id)}
+                    onMouseLeave={() => setHoveredElementId(null)}
+                  >
+                    {/* 원형 아바타 마크 */}
+                    <div 
+                      className={`rounded-full shadow-2xl transition-transform hover:scale-105 flex items-center justify-center overflow-hidden border-2 relative ${
+                        isSelected ? 'ring-4 ring-[#5E6AD2] border-white bg-[#5E6AD2]' : 'border-white/80 bg-gray-900'
+                      }`}
+                      style={{
+                        width: `${diameter}px`,
+                        height: `${diameter}px`,
+                        borderWidth: `${borderWidth}px`
+                      }}
+                    >
+                      {charAvatar ? (
+                        <img src={charAvatar} alt={charName} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-[#5E6AD2]/30 flex items-center justify-center font-bold text-white tracking-wider" style={{ fontSize: `${Math.max(12, Math.round(20 * scaleRatio))}px` }}>
+                          {charName.slice(0, 1)}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -5673,6 +5664,95 @@ export default function WorldMap({
                   </React.Fragment>
                 );
               });
+            })()}
+
+            {/* 6. 이름 보기가 켜진 요소 또는 호버/선택된 요소 이름 라벨 오버레이 (모든 지형, 핀, 캐릭터 마크보다 zIndex 200 최상위에 배치하여 절대 가려지지 않게 보장) */}
+            {showElementNames && (hoveredElementId || selectedElementId) && (() => {
+              const targetId = hoveredElementId || selectedElementId;
+              const el = elements.find(x => x.id === targetId);
+              if (!el) return null;
+
+              // 화면 배율 하한선을 2배 확장하여 (Min 16px) 화면 확대 시에도 16px 미만으로 작아지지 않게 보장
+              const effectiveZoomForLabel = Math.max(1.0, zoom);
+              const targetScreenFontSize = Math.max(16, Math.min(22, Math.round(16 / Math.pow(effectiveZoomForLabel, 0.45))));
+              const effectiveFontSize = targetScreenFontSize / zoom;
+              const fontScale = effectiveFontSize / 16;
+
+              const labelHeight = 28 * fontScale;
+              const labelRx = 5 * fontScale;
+              const strokeWidth = 1.3 * fontScale;
+
+              const getLabelWidth = (text: string): number => {
+                let width = 0;
+                for (let i = 0; i < text.length; i++) {
+                  const code = text.charCodeAt(i);
+                  if (code >= 0 && code <= 128) {
+                    width += 10 * fontScale;
+                  } else {
+                    width += 18 * fontScale;
+                  }
+                }
+                return width + (18 * fontScale);
+              };
+
+              const offsetX = 12 * fontScale;
+              const offsetY = 12 * fontScale;
+
+              let pos = { x: 0, y: 0 };
+              if (hoveredMousePos && hoveredElementId) {
+                // 마우스 커서의 바로 우측 상단에 띄우기
+                pos = { x: hoveredMousePos.x + offsetX, y: hoveredMousePos.y - offsetY };
+              } else {
+                // Fallback (요소 앵커 위치)
+                if (el.type === 'pin' || el.type === 'character') {
+                  pos = { x: (el.x || el.bx || 0) + offsetX, y: (el.y || el.by || 0) - (18 * fontScale) };
+                } else if (el.type === 'polygon' || el.type === 'route') {
+                  const pts = el.points || [];
+                  if (pts.length > 0) {
+                    let maxX = pts[0].x;
+                    let minY = pts[0].y;
+                    pts.forEach(p => {
+                      if (p.x > maxX) maxX = p.x;
+                      if (p.y < minY) minY = p.y;
+                    });
+                    pos = { x: maxX + offsetX, y: minY - (12 * fontScale) };
+                  }
+                } else if (el.type === 'brush' && el.brushStrokes) {
+                  const bbox = getBrushBoundingBox(el.brushStrokes);
+                  pos = { x: bbox.maxX + offsetX, y: bbox.minY - (12 * fontScale) };
+                } else if (el.type === 'border_rect' || el.type === 'image') {
+                  pos = { x: (el.bx || 0) + (el.bw || 0) + offsetX, y: (el.by || 0) - (12 * fontScale) };
+                } else if (el.type === 'border_circle') {
+                  pos = { x: (el.bx || 0) + (el.bw || 0) + offsetX, y: (el.by || 0) - (el.bh || 0) - (12 * fontScale) };
+                }
+              }
+
+              return (
+                <svg className="absolute inset-0 w-full h-full overflow-visible pointer-events-none select-none" style={{ zIndex: 200 }}>
+                  <g filter="drop-shadow(0px 3px 6px rgba(0,0,0,0.35))">
+                    <rect
+                      x={pos.x}
+                      y={pos.y - (20 * fontScale)}
+                      rx={labelRx}
+                      fill={isDark ? "#121316" : "#FFFFFF"}
+                      stroke="#5E6AD2"
+                      strokeWidth={strokeWidth}
+                      opacity="0.96"
+                      height={labelHeight}
+                      width={getLabelWidth(el.name)}
+                    />
+                    <text
+                      x={pos.x + (9 * fontScale)}
+                      y={pos.y - (2 * fontScale)}
+                      fontSize={effectiveFontSize}
+                      fontWeight="800"
+                      fill={isDark ? "#A5B4FC" : "#4F46E5"}
+                    >
+                      {el.name}
+                    </text>
+                  </g>
+                </svg>
+              );
             })()}
 
             {/* Fog of War (안개 마스크 영역 효과) */}
@@ -7429,6 +7509,7 @@ export default function WorldMap({
 
                   const typeSpec = {
                     pin: { name: '거점 핀 마커', Icon: MapPin, color: 'text-amber-400' },
+                    character: { name: '캐릭터 마크', Icon: User, color: 'text-[#7480E2]' },
                     brush: { name: '붓 그리기 영역', Icon: Paintbrush, color: 'text-blue-400' },
                     polygon: { name: '다각형 영역', Icon: Map, color: 'text-purple-400' },
                     border_rect: { name: '구역 사각형 테두리', Icon: Square, color: 'text-green-400' },
@@ -7826,6 +7907,147 @@ export default function WorldMap({
                 className="flex-1 py-2 rounded-xl font-bold bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs transition-colors shadow-lg shadow-[#5E6AD2]/20"
               >
                 추가 완료
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 지도 보유 캐릭터 배치 모달 (CharacterSelectorModal) ── */}
+      {showCharacterSelectorModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[110] p-4 select-none animate-fadeIn">
+          <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl flex flex-col gap-4 ${
+            isDark ? 'bg-[#121316] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
+          }`}>
+            {/* 모달 헤더 */}
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-[#7480E2]" />
+                <h3 className="font-bold text-sm">지도 캐릭터 배치</h3>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowCharacterSelectorModal(false)}
+                className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 검색창 */}
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="캐릭터 이름 검색..."
+                value={characterSelectorSearch}
+                onChange={e => setCharacterSelectorSearch(e.target.value)}
+                className={`w-full pl-9 pr-3 py-1.5 rounded-xl border text-xs outline-none transition-colors ${
+                  isDark ? 'bg-black/30 border-white/10 text-white focus:border-[#5E6AD2]' : 'bg-gray-50 border-black/10 text-gray-900 focus:border-[#5E6AD2]'
+                }`}
+              />
+            </div>
+
+            {/* 캐릭터 목록 */}
+            <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
+              {relationNodes.filter(node => !characterSelectorSearch.trim() || node.name.toLowerCase().includes(characterSelectorSearch.trim().toLowerCase())).length === 0 ? (
+                <div className="text-center py-8 text-xs text-gray-500">
+                  {relationNodes.length === 0 ? '등록된 인물 관계도 캐릭터가 없습니다.' : '검색 결과가 없습니다.'}
+                </div>
+              ) : (
+                relationNodes
+                  .filter(node => !characterSelectorSearch.trim() || node.name.toLowerCase().includes(characterSelectorSearch.trim().toLowerCase()))
+                  .map(node => {
+                    const existingEl = elements.find(el => el.type === 'character' && el.characterId === node.id);
+                    const isAdded = !!existingEl;
+
+                    const descriptionText = node.role || node.summary || node.description || '소속/설정 정보 없음';
+
+                    return (
+                      <div 
+                        key={node.id} 
+                        className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
+                          isAdded 
+                            ? 'bg-[#5E6AD2]/10 border-[#5E6AD2]/30' 
+                            : isDark ? 'bg-white/[0.02] border-white/[0.06] hover:border-white/20' : 'bg-gray-50 border-black/[0.06] hover:border-black/20'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-9 h-9 rounded-full bg-[#5E6AD2]/20 border border-[#5E6AD2]/40 flex items-center justify-center font-bold text-sm text-[#7480E2] shrink-0 overflow-hidden">
+                            {node.avatar ? (
+                              <img src={node.avatar} alt={node.name} className="w-full h-full object-cover" />
+                            ) : (
+                              node.name.slice(0, 1)
+                            )}
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="font-bold text-xs truncate text-gray-200">{node.name}</span>
+                            <span className="text-[11px] text-gray-400 truncate">{descriptionText}</span>
+                          </div>
+                        </div>
+
+                        {isAdded ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (existingEl) {
+                                pushHistory();
+                                setElements(prev => prev.filter(el => el.id !== existingEl.id));
+                              }
+                            }}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 text-xs font-bold transition-colors shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            제거
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              pushHistory();
+                              const containerW = canvasContainerRef.current ? canvasContainerRef.current.clientWidth : 1200;
+                              const containerH = canvasContainerRef.current ? canvasContainerRef.current.clientHeight : 800;
+                              const camX = (-pan.x + containerW / 2) / zoom;
+                              const camY = (-pan.y + containerH / 2) / zoom;
+                              const diameter = 64;
+
+                              const newCharElement: MapElement = {
+                                id: `character-${Date.now()}`,
+                                name: node.name,
+                                type: 'character',
+                                parentMapId: currentMapId,
+                                characterId: node.id,
+                                bx: camX,
+                                by: camY,
+                                bw: diameter,
+                                bh: diameter,
+                                color: '#5E6AD2',
+                                summary: descriptionText,
+                                tags: []
+                              };
+
+                              setElements(prev => [...prev, newCharElement]);
+                              setSelectedElementId(newCharElement.id);
+                            }}
+                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-bold transition-colors shrink-0 shadow-md shadow-[#5E6AD2]/20"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            추가
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setShowCharacterSelectorModal(false)}
+                className="px-4 py-2 rounded-xl bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-bold transition-colors"
+              >
+                닫기
               </button>
             </div>
           </div>
