@@ -110,6 +110,12 @@ export interface MapScale {
   unit: 'km' | 'days_walk' | 'days_horse' | 'days_carriage'; // 단위
 }
 
+const TAG_COLOR_PALETTE = [
+  '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', 
+  '#EC4899', '#06B6D4', '#F97316', '#14B8A6', '#6366F1', 
+  '#A855F7', '#D97706', '#E11D48', '#0284C7', '#059669'
+];
+
 interface WorldMapProps {
   isDark: boolean;
   selectedProject: Project;
@@ -184,6 +190,15 @@ export default function WorldMap({
     return elementsBySnapshot[activeSnapshotId] || elementsBySnapshot['snap-default'] || [];
   }, [elementsBySnapshot, activeSnapshotId]);
 
+  // ID 기반 O(1) 초고속 요소 조회를 위한 Map 인덱싱 메모이제이션
+  const elementsMapById = useMemo(() => {
+    const map = new globalThis.Map<string, MapElement>();
+    for (let i = 0; i < elements.length; i++) {
+      map.set(elements[i].id, elements[i]);
+    }
+    return map;
+  }, [elements]);
+
   // 요소 수정/추가/삭제 시 현재 활성화된 시점의 목록만 독립 업데이트 (Setter Wrapper)
   const setElements = useCallback((updater: MapElement[] | ((prev: MapElement[]) => MapElement[])) => {
     setElementsBySnapshot(prevMap => {
@@ -220,8 +235,11 @@ export default function WorldMap({
   const [preDragElements, setPreDragElements] = useState<MapElement[] | null>(null);
   const [hasMovedDuringDrag, setHasMovedDuringDrag] = useState(false);
   
-  const activeSnapshotIdx = snapshots.findIndex(s => s.id === activeSnapshotId) === -1 ? 0 : snapshots.findIndex(s => s.id === activeSnapshotId);
-  const currentSnapshot = snapshots[activeSnapshotIdx] || snapshots[0];
+  const currentSnapshot = useMemo(() => {
+    const idx = snapshots.findIndex(s => s.id === activeSnapshotId);
+    const validIdx = idx === -1 ? 0 : idx;
+    return snapshots[validIdx] || snapshots[0];
+  }, [snapshots, activeSnapshotId]);
 
   const [isSnapshotEditUnlocked, setIsSnapshotEditUnlocked] = useState(false);
   const isLatestSnapshot = snapshots.length > 0 && activeSnapshotId === snapshots[snapshots.length - 1].id;
@@ -245,7 +263,6 @@ export default function WorldMap({
   const [memoEditDate, setMemoEditDate] = useState('');
   const [memoEditDescription, setMemoEditDescription] = useState('');
 
-  // --- 미니맵 (Minimap) 제어 상태 ---
   // --- 미니맵 (Minimap) 제어 상태 ---
   const [showMinimap, setShowMinimap] = useState(false);
   const [minimapPos, setMinimapPos] = useState<{ x: number; y: number } | null>(null);
@@ -329,20 +346,23 @@ export default function WorldMap({
     };
   }, [showTagFilterDropdown]);
 
+  const selectedTagsSet = useMemo(() => new Set(selectedDisplayTags), [selectedDisplayTags]);
+  const lockedTypesSet = useMemo(() => new Set(lockedElementTypes), [lockedElementTypes]);
+
   // 선택한 표시 태그에 따라 요소 가시성을 결정하는 헬퍼 함수
   const isElementVisibleByTagFilter = useCallback((el: MapElement): boolean => {
-    if (selectedDisplayTags.length === 0) return true; // 필터 미선택 시 전체 표시
+    if (selectedTagsSet.size === 0) return true; // 필터 미선택 시 전체 표시
     const hasNoTag = !el.categoryTags || el.categoryTags.length === 0;
-    if (selectedDisplayTags.includes('__NONE__') && hasNoTag) return true;
-    if (el.categoryTags && el.categoryTags.some(tagId => selectedDisplayTags.includes(tagId))) return true;
+    if (selectedTagsSet.has('__NONE__') && hasNoTag) return true;
+    if (el.categoryTags && el.categoryTags.some(tagId => selectedTagsSet.has(tagId))) return true;
     return false;
-  }, [selectedDisplayTags]);
+  }, [selectedTagsSet]);
 
   // 특정 요소 타입이 현재 잠겨 있는지 여부를 확인하는 헬퍼 함수
   const isElementLocked = useCallback((type: string | undefined): boolean => {
     if (!type) return false;
-    return lockedElementTypes.includes(type);
-  }, [lockedElementTypes]);
+    return lockedTypesSet.has(type);
+  }, [lockedTypesSet]);
   
   // 레이어별 가시성 토글
   const [layerVisibility] = useState({
@@ -600,11 +620,6 @@ export default function WorldMap({
 
   // --- 상세 정보창 모드 및 상태 ---
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const TAG_COLOR_PALETTE = [
-    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', 
-    '#EC4899', '#06B6D4', '#F97316', '#14B8A6', '#6366F1', 
-    '#A855F7', '#D97706', '#E11D48', '#0284C7', '#059669'
-  ];
 
   // --- 지도 전용 커스텀 태그 시스템 상태 ---
   interface MapTagItem {
@@ -691,8 +706,8 @@ export default function WorldMap({
   const pushHistory = useCallback((customElements?: MapElement[], customCharPos?: typeof characterPositions) => {
     setUndoStack(prev => {
       const entry = {
-        elements: JSON.parse(JSON.stringify(customElements || elements)),
-        characterPositions: JSON.parse(JSON.stringify(customCharPos || characterPositions))
+        elements: structuredClone(customElements || elements),
+        characterPositions: structuredClone(customCharPos || characterPositions)
       };
       const next = [...prev, entry];
       if (next.length > 50) next.shift(); // 최대 50개 제한
@@ -706,8 +721,8 @@ export default function WorldMap({
     if (undoStack.length === 0) return;
 
     const currentEntry = {
-      elements: JSON.parse(JSON.stringify(elements)),
-      characterPositions: JSON.parse(JSON.stringify(characterPositions))
+      elements: structuredClone(elements),
+      characterPositions: structuredClone(characterPositions)
     };
     setRedoStack(prev => [...prev, currentEntry]);
 
@@ -723,8 +738,8 @@ export default function WorldMap({
     if (redoStack.length === 0) return;
 
     const currentEntry = {
-      elements: JSON.parse(JSON.stringify(elements)),
-      characterPositions: JSON.parse(JSON.stringify(characterPositions))
+      elements: structuredClone(elements),
+      characterPositions: structuredClone(characterPositions)
     };
     setUndoStack(prev => [...prev, currentEntry]);
 
@@ -754,17 +769,17 @@ export default function WorldMap({
   const getTopLevelGroupOrElement = useCallback((id: string): string => {
     let currentId = id;
     while (true) {
-      const el = elements.find(item => item.id === currentId);
+      const el = elementsMapById.get(currentId);
       if (!el) break;
-      const parent = elements.find(p => p.id === el.parentMapId && p.type === 'group');
-      if (parent) {
+      const parent = elementsMapById.get(el.parentMapId);
+      if (parent && parent.type === 'group') {
         currentId = parent.id;
       } else {
         break;
       }
     }
     return currentId;
-  }, [elements]);
+  }, [elementsMapById]);
 
   /*
   const getSelectionTargetId = useCallback((elId: string, e: React.MouseEvent | React.TouchEvent) => {
@@ -783,7 +798,7 @@ export default function WorldMap({
     const visit = (id: string) => {
       if (visited.has(id)) return;
       visited.add(id);
-      const el = elements.find(item => item.id === id);
+      const el = elementsMapById.get(id);
       if (!el) return;
       
       list.push(el);
@@ -795,20 +810,20 @@ export default function WorldMap({
     
     ids.forEach(visit);
     return list;
-  }, [elements]);
+  }, [elementsMapById, elements]);
 
   const isElementSelected = useCallback((id: string): boolean => {
     if (selectedElementIds.includes(id)) return true;
     
     let currentId = id;
     while (true) {
-      const el = elements.find(item => item.id === currentId);
+      const el = elementsMapById.get(currentId);
       if (!el) break;
       if (selectedElementIds.includes(el.parentMapId)) return true;
       currentId = el.parentMapId;
     }
     return false;
-  }, [selectedElementIds, elements]);
+  }, [selectedElementIds, elementsMapById]);
 
   const getAllActiveElementsForMap = useCallback((mapId: string): MapElement[] => {
     const directElements = elements.filter(el => el.parentMapId === mapId);
@@ -1418,12 +1433,14 @@ export default function WorldMap({
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(async () => {
       try {
+        const activeId = activeSnapshotIdRef.current || 'snap-default';
+        const currentActiveElements = elementsBySnapshot[activeId] || elementsBySnapshot['snap-default'] || [];
         const { error } = await supabase
           .from('projects')
           .update({
             worldmap_data: {
               elementsBySnapshot,
-              elements,
+              elements: currentActiveElements,
               snapshots,
               config: { customBgImage: null, presetBg, scale, gridSize },
               characterPositions,
@@ -1437,11 +1454,14 @@ export default function WorldMap({
         console.error('WorldMap: Supabase 저장 실패:', err);
       }
     }, 2000);
-  }, [elementsBySnapshot, elements, snapshots, presetBg, scale, gridSize, characterPositions, savedBookmarks, mapTags, selectedProject, getStorageKeys, isGuest]);
+  }, [elementsBySnapshot, snapshots, presetBg, scale, gridSize, characterPositions, savedBookmarks, mapTags, selectedProject, getStorageKeys, isGuest]);
 
-  // 데이터 변경 시 자동 저장 트리거
+  // 데이터 변경 시 자동 저장 트리거 및 Unmount 타이머 Cleanup
   useEffect(() => {
     saveWorldMapData();
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [elementsBySnapshot, snapshots, presetBg, scale, gridSize, characterPositions, savedBookmarks, mapTags]);
 

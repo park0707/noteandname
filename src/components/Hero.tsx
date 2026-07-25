@@ -21,7 +21,7 @@ export default function Hero({ themeMode }: HeroProps) {
       <p className={`text-base md:text-lg max-w-2xl leading-relaxed mt-12 transition-colors duration-300 pt-5 ${themeMode === 'dark' ? 'text-[#A1A1AA]' : 'text-[#55555A]'
         }`}>
         하루 최소 5,000자 연재 마감의 숨 가쁜 일정 속에서도 화면을 벗어나지 않고<br />
-        인물 관계도, 복선 타임라인, 노션 동기화, 그리고 데스크톱 위젯을 함께 누리세요.
+        스마트 집필실, 세계관 지도, 인물 관계도, 복선 타임라인을 한곳에서 완벽히 누리세요.
       </p>
     </section>
   );

@@ -4,7 +4,7 @@ import {
   Scale,
   Network,
   GitCommit,
-  Link2,
+  PenTool,
   BookOpen,
   Map
 } from 'lucide-react';
@@ -28,9 +28,9 @@ const FEATURES: FeatureItem[] = [
     number: '01',
     icon: Sparkles,
     title: 'AI 작명 엔진',
-    subtitle: '장르와 세계관에 어울리는 이름을 손 쉽게 생성',
+    subtitle: '장르와 세계관에 어울리는 이름을 손쉽게 생성',
     description:
-      '엑스트라, 지명 등 작품에 필수적인 요소지만 성의를 들어가며 작명을 하기에느 번거로운 경험을 하신적이 있나요? 노벨플로우의 AI 작명 엔진은 작가님들이 원하는 태그 조합과 상세 설명을 통해 어울리는 이름을 빠르게 생성해드립니다. 또한 각 캐릭터나 아이템 장소 등의 개인적인 히스토리 관리와 이름의 저장 및 관리 기능을 지원합니다.',
+      '엑스트라, 지명 등 작품에 필수적인 요소지만 성의를 들어가며 작명을 하기에는 번거로운 경험을 하신 적이 있나요? 노벨플로우의 AI 작명 엔진은 작가님들이 원하는 태그 조합과 상세 설명을 통해 어울리는 이름을 빠르게 생성해드립니다. 또한 각 캐릭터나 아이템, 장소 등의 개인적인 히스토리 관리와 이름의 저장 및 관리 기능을 지원합니다.',
     tags: ['태그 조합', '상세 설명', '저장 및 관리', '히스토리 관리'],
     accent: '#5E6AD2',
   },
@@ -66,13 +66,13 @@ const FEATURES: FeatureItem[] = [
   },
   {
     number: '05',
-    icon: Link2,
-    title: '노션 양방향 동기화',
-    subtitle: '노션의 자유로움과 노벨플로우의 정밀함을 동시에',
+    icon: PenTool,
+    title: '스마트 집필실',
+    subtitle: '웹소설 연재에 최적화된 단락·서식 및 집필 환경',
     description:
-      '이미 노션에서 설정을 관리하고 계신가요? 노벨플로우와 노션을 연결하면 인물 카드, 세계관 항목, 타임라인 이벤트가 양방향으로 실시간 동기화됩니다. Redis 메시지 큐와 초당 2회 속도 제어(레이트 리미터)로 API 한도를 안전하게 지키면서, 충돌이 발생하면 어느 쪽 데이터를 우선할지 직접 선택할 수 있습니다.',
-    tags: ['OAuth 2.0 연동', 'Redis 큐', '2 rps 속도 제어', '충돌 해결'],
-    accent: '#5E6AD2',
+      '원클릭 자동 단락 들여쓰기, 큰따옴표 대화체 일괄 교정, 실시간 공백 포함/제외 글자 수 집계 등 연재 작가에게 꼭 필요한 집필 도구를 집약했습니다. 에디터 안에서 설정 위키와 복선 뱃지를 즉시 조회하며 몰입감을 유지할 수 있습니다.',
+    tags: ['원클릭 들여쓰기', '대화체 자동 교정', '실시간 글자 수 집계', '연재 최적화'],
+    accent: '#3B82F6',
   },
   {
     number: '06',
@@ -100,6 +100,11 @@ export default function Features({ themeMode }: FeaturesProps) {
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   useEffect(() => {
+    // 초기 로드 시 즉시 가시성 클래스 부여
+    itemRefs.current.forEach((el) => {
+      if (el) el.classList.add('feature-visible');
+    });
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -108,7 +113,7 @@ export default function Features({ themeMode }: FeaturesProps) {
           }
         });
       },
-      { threshold: 0.15 }
+      { threshold: 0 }
     );
 
     itemRefs.current.forEach((el) => {
@@ -137,7 +142,7 @@ export default function Features({ themeMode }: FeaturesProps) {
       </div>
 
       {/* 기능 카드 목록 */}
-      <div className="w-ful mx-auto px-12 md:px-24 flex flex-col gap-6">
+      <div className="w-full mx-auto px-12 md:px-24 flex flex-col gap-6">
         {FEATURES.map((feat, idx) => {
           const IconComponent = feat.icon;
           return (
