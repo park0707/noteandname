@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Columns, Rows, X, Plus, ChevronDown } from 'lucide-react';
 import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from 'react-resizable-panels';
 import type { LayoutNode, PanelNode } from './layoutUtils';
-import type { Project, Episode, Node, Foreshadowing } from './types';
+import type { Project, Episode, Node, Foreshadowing, ArchiveItem } from './types';
 
 // Import modular components
 import ProjectDashboard from './ProjectDashboard';
@@ -13,6 +13,7 @@ import ForeshadowingTimeline from './ForeshadowingTimeline';
 import CharacterHistory from './CharacterHistory';
 import WorldMap from './WorldMap';
 import WritingSpace from './WritingSpace';
+import ArchiveManager from './ArchiveManager';
 import InfoPage from '../../pages/InfoPage';
 
 interface WorkspaceLayoutManagerProps {
@@ -34,6 +35,8 @@ interface WorkspaceLayoutManagerProps {
   setRelationNodes: React.Dispatch<React.SetStateAction<Node[]>>;
   foreshadowings: Foreshadowing[];
   setForeshadowings: React.Dispatch<React.SetStateAction<Foreshadowing[]>>;
+  archiveItems: ArchiveItem[];
+  setArchiveItems: React.Dispatch<React.SetStateAction<ArchiveItem[]>>;
   notes: string;
   setNotes: (n: string) => void;
   saveStatus: string;
@@ -143,6 +146,8 @@ function PanelRenderer(props: PanelRendererProps) {
     setRelationNodes,
     foreshadowings,
     setForeshadowings,
+    archiveItems,
+    setArchiveItems,
     notes,
     setNotes,
     saveStatus,
@@ -182,6 +187,8 @@ function PanelRenderer(props: PanelRendererProps) {
     switch (panel.activeFeature) {
       case 'dashboard':
         return '프로젝트 홈';
+      case 'archive':
+        return '아카이브';
       case 'naming':
         return 'AI 작명 엔진';
       case 'jamo':
@@ -408,6 +415,14 @@ function PanelRenderer(props: PanelRendererProps) {
             relationNodes={relationNodes}
             isDark={isDark}
             targetWordCount={targetWordCount}
+          />
+        )}
+        {panel.activeFeature === 'archive' && (
+          <ArchiveManager
+            isDark={isDark}
+            archiveItems={archiveItems}
+            setArchiveItems={setArchiveItems}
+            projectId={selectedProject.id}
           />
         )}
         {panel.activeFeature === 'naming' && (

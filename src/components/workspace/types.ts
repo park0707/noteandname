@@ -76,3 +76,24 @@ export interface Foreshadowing {
   isResolved: boolean;
   createdAt: string;
 }
+
+export type ArchiveCategory = 'character' | 'equipment' | 'location' | 'skill' | 'etc';
+
+export interface ArchiveAttribute {
+  key: string;
+  value: string;
+}
+
+export interface ArchiveItem {
+  id: string;
+  projectId: string;
+  name: string;
+  category: ArchiveCategory;
+  summary: string;
+  description: string;
+  tags: string[];
+  attributes?: ArchiveAttribute[];
+  createdAt: string;
+  updatedAt: string;
+}
+

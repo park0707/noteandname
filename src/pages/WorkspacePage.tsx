@@ -18,7 +18,7 @@ import {
   closePanel,
   updateSplitRatio,
 } from '../components/workspace/layoutUtils';
-import type { Project, Episode, Node, Foreshadowing } from '../components/workspace/types';
+import type { Project, Episode, Node, Foreshadowing, ArchiveItem } from '../components/workspace/types';
 
 interface WorkspacePageProps {
   themeMode: 'dark' | 'light';
@@ -66,6 +66,10 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
 
   // 5. 복선 타임라인 데이터 공유 상태
   const [foreshadowings, setForeshadowings] = useState<Foreshadowing[]>([]);
+
+  // 6. 아카이브 (캐릭터/장비/장소 등) 공유 상태
+  const [archiveItems, setArchiveItems] = useState<ArchiveItem[]>([]);
+
 
   // 프로젝트 목록 불러오기
   const fetchProjects = useCallback(async () => {
@@ -645,6 +649,90 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     return () => clearTimeout(timer);
   }, [foreshadowings, selectedProject, user]);
 
+  // 아카이브 데이터 로드
+  useEffect(() => {
+    if (!selectedProject) {
+      setArchiveItems([]);
+      return;
+    }
+
+    const archiveKey = `novelflow_archives_${selectedProject.id}`;
+    const saved = localStorage.getItem(archiveKey);
+
+    if (saved) {
+      try {
+        setArchiveItems(JSON.parse(saved));
+        return;
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    // 기본 mock 아카이브 데이터 적재
+    const initialArchives: ArchiveItem[] = [
+      {
+        id: 'arch-mock-1',
+        projectId: selectedProject.id,
+        name: '유진 (주인공)',
+        category: 'character',
+        summary: '성광 마력을 각성한 성기사의 후예',
+        description: '숲속에서 자라난 소년으로, 정체불명의 성광 마력을 다룰 수 있다. 성격은 냉철하면서도 동료에 대한 정의감이 깊다.',
+        tags: ['주인공', '마법사', '성광'],
+        attributes: [
+          { key: '나이', value: '18세' },
+          { key: '신분', value: '기사 지망생' }
+        ],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'arch-mock-2',
+        projectId: selectedProject.id,
+        name: '별빛의 검',
+        category: 'equipment',
+        summary: '고대 성광 마력이 깃든 보구 검',
+        description: '밤하늘의 별빛을 모아 단조한 전설급 보구. 어둠 속성 마수에 대해 강력한 극성 상성을 가진다.',
+        tags: ['전설급', '무기', '보구'],
+        attributes: [
+          { key: '등급', value: '전설' },
+          { key: '소유자', value: '유진' }
+        ],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'arch-mock-3',
+        projectId: selectedProject.id,
+        name: '그림자 숲',
+        category: 'location',
+        summary: '살아서 돌아온 자가 없다는 죽음의 땅',
+        description: '항상 짙은 안개와 기괴하게 꼬인 수목으로 둘러싸여 있는 금단의 영역. 미지의 마수들이 서식한다.',
+        tags: ['금지구역', '위험지대', '던전'],
+        attributes: [
+          { key: '위험도', value: 'S랭크' }
+        ],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+    ];
+
+    setArchiveItems(initialArchives);
+    localStorage.setItem(archiveKey, JSON.stringify(initialArchives));
+  }, [selectedProject]);
+
+  // 아카이브 데이터 변경 시 자동 저장 (디바운스)
+  useEffect(() => {
+    if (!selectedProject) return;
+
+    const timer = setTimeout(() => {
+      const archiveKey = `novelflow_archives_${selectedProject.id}`;
+      localStorage.setItem(archiveKey, JSON.stringify(archiveItems));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [archiveItems, selectedProject]);
+
+
   // 프로젝트 생성
   const handleCreateProject = async (name: string, description: string) => {
     if (!user) return;
@@ -797,6 +885,8 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
                   themeMode={themeMode}
                   targetWordCount={targetWordCount}
                   setTargetWordCount={setTargetWordCount}
+                  archiveItems={archiveItems}
+                  setArchiveItems={setArchiveItems}
                 />
               </div>
             </div>
