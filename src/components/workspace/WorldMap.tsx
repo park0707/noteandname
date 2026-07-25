@@ -1828,13 +1828,15 @@ export default function WorldMap({
         h: bbox.h + padMargin * 2,
         points: JSON.parse(JSON.stringify(el.points))
       };
-    } else if (el.type === 'pin') {
-      const pinSize = el.bw || el.bh || 40;
+    } else if (el.type === 'pin' || el.type === 'character') {
+      const pinSize = el.bw || el.bh || (el.type === 'character' ? 64 : 40);
       const margin = Math.max(12, pinSize * 0.2);
       const totalSide = pinSize + margin * 2;
+      const centerX = el.x !== undefined ? el.x : (el.bx !== undefined ? el.bx : 0);
+      const centerY = el.y !== undefined ? el.y : (el.by !== undefined ? el.by : 0);
       initialCoords[el.id] = {
-        x: (el.x || 0) - totalSide / 2,
-        y: (el.y || 0) - totalSide / 2,
+        x: centerX - totalSide / 2,
+        y: centerY - totalSide / 2,
         w: totalSide,
         h: totalSide
       };
@@ -5654,6 +5656,7 @@ export default function WorldMap({
                   >
                     {/* 원형 아바타 마크 */}
                     <div 
+                      title={charSummary ? `${charName} - ${charSummary}` : charName}
                       className={`rounded-full shadow-2xl transition-transform hover:scale-105 flex items-center justify-center overflow-hidden border-2 relative ${
                         isSelected ? 'ring-4 ring-[#5E6AD2] border-white bg-[#5E6AD2]' : 'border-white/80 bg-gray-900'
                       }`}
@@ -5666,17 +5669,10 @@ export default function WorldMap({
                       {charAvatar ? (
                         <img src={charAvatar} alt={charName} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center font-bold text-white tracking-wider" style={{ backgroundColor: catColor }}>
-                          <CatIcon style={{ width: `${Math.max(16, Math.round(24 * scaleRatio))}px`, height: `${Math.max(16, Math.round(24 * scaleRatio))}px` }} />
+                        <div className="w-full h-full flex items-center justify-center text-white" style={{ backgroundColor: catColor }}>
+                          <CatIcon className="w-[55%] h-[55%] stroke-[2.2]" />
                         </div>
                       )}
-                    </div>
-                    {/* 마크 하단 명칭 라벨 */}
-                    <div 
-                      title={charSummary ? `${charName} - ${charSummary}` : charName}
-                      className="px-2 py-0.5 rounded-md bg-gray-900/85 border border-white/20 backdrop-blur-xs text-[10px] font-bold text-white shadow-md truncate max-w-28 pointer-events-none"
-                    >
-                      {charName}
                     </div>
                   </div>
                 );
