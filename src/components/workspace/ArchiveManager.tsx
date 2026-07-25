@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Search,
   Plus,
@@ -56,6 +56,26 @@ export default function ArchiveManager({
   // 태그 생성 상태
   const [newTagInput, setNewTagInput] = useState('');
   const [customTags, setCustomTags] = useState<string[]>([]);
+
+  // 프로젝트별 커스텀 태그 로드 및 자동 저장
+  useEffect(() => {
+    if (!projectId) return;
+    const tagKey = `novelflow_custom_tags_${projectId}`;
+    const saved = localStorage.getItem(tagKey);
+    if (saved) {
+      try {
+        setCustomTags(JSON.parse(saved));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const tagKey = `novelflow_custom_tags_${projectId}`;
+    localStorage.setItem(tagKey, JSON.stringify(customTags));
+  }, [customTags, projectId]);
 
   // 상세 뷰 및 수정/생성 상태
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -184,6 +204,11 @@ export default function ArchiveManager({
 
     const now = new Date().toISOString();
 
+    // 상세에서 사용된 모든 태그를 프로젝트 커스텀 태그 목록에도 병합 등록
+    if (editTags.length > 0) {
+      setCustomTags(prev => Array.from(new Set([...prev, ...editTags])));
+    }
+
     if (isCreating) {
       // 신규 생성
       const newItem: ArchiveItem = {
@@ -234,12 +259,15 @@ export default function ArchiveManager({
     showAlert('삭제되었습니다.');
   };
 
-  // 상세 뷰 태그 입력 추가
+  // 상세 뷰 태그 입력 추가 (자동으로 태그 관리 모달 목록에도 등록)
   const handleAddTagInDetail = () => {
     const trimmed = tagInputInDetail.trim();
     if (!trimmed) return;
     if (!editTags.includes(trimmed)) {
       setEditTags(prev => [...prev, trimmed]);
+    }
+    if (!customTags.includes(trimmed)) {
+      setCustomTags(prev => [...prev, trimmed]);
     }
     setTagInputInDetail('');
   };

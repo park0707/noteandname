@@ -5,9 +5,9 @@ import {
   MapPin, Swords, Castle, Mountain, Sparkles, 
   ZoomIn, ZoomOut, Check, X, Download, RotateCcw, RotateCw, Search, Bookmark,
   PenTool, Settings2, History, Eye, EyeOff, Grid3X3, Magnet, Lock, Map, Circle, Square,
-  Upload, AlertTriangle, Image, Tag, Paintbrush, Route, Folder, FolderOpen, Loader2, FileText, User, ExternalLink
+  Upload, AlertTriangle, Image, Tag, Paintbrush, Route, Folder, FolderOpen, Loader2, FileText, User, ExternalLink, Archive, Shield, Zap, Package, Filter
 } from 'lucide-react';
-import type { Project, Episode, Node, Foreshadowing } from './types';
+import type { Project, Episode, Node, Foreshadowing, ArchiveItem } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
@@ -122,6 +122,7 @@ interface WorldMapProps {
   episodes: Episode[];
   relationNodes: Node[];
   foreshadowings: Foreshadowing[];
+  archiveItems?: ArchiveItem[];
 }
 
 export default function WorldMap({ 
@@ -129,7 +130,8 @@ export default function WorldMap({
   selectedProject, 
   episodes, 
   relationNodes, 
-  foreshadowings: _foreshadowings 
+  foreshadowings: _foreshadowings,
+  archiveItems = []
 }: WorldMapProps) {
   const { showAlert, showConfirm } = useAlertConfirm();
   const { user } = useAuth();
@@ -644,6 +646,9 @@ export default function WorldMap({
   const [charSearchInput, setCharSearchInput] = useState('');
   const [showCharacterSelectorModal, setShowCharacterSelectorModal] = useState(false);
   const [characterSelectorSearch, setCharacterSelectorSearch] = useState('');
+  const [archiveSelectorCategory, setArchiveSelectorCategory] = useState<string>('all');
+  const [archiveSelectorSelectedTags, setArchiveSelectorSelectedTags] = useState<string[]>([]);
+  const [isArchiveTagFilterOpen, setIsArchiveTagFilterOpen] = useState(false);
   const [showLayoutSelectorModal, setShowLayoutSelectorModal] = useState(false);
   const [showEpModal, setShowEpModal] = useState(false);
   const [epSearchInput, setEpSearchInput] = useState('');
@@ -666,6 +671,15 @@ export default function WorldMap({
   const [elementEditChars, setElementEditChars] = useState<string[]>([]);
   const [elementEditEpisodes, setElementEditEpisodes] = useState<string[]>([]);
   const [elementEditChildMap, setElementEditChildMap] = useState('');
+
+  // 아카이브 항목들의 전체 등록 태그 목록
+  const allArchiveTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    archiveItems.forEach(item => {
+      item.tags?.forEach(t => tagSet.add(t));
+    });
+    return Array.from(tagSet);
+  }, [archiveItems]);
 
   // --- 신규 스냅샷 생성 폼 상태 ---
   const [showNewSnapshotModal, setShowNewSnapshotModal] = useState(false);
@@ -3965,7 +3979,7 @@ export default function WorldMap({
                         : isDark ? 'text-gray-300 hover:text-white hover:bg-white/[0.06]' : 'text-gray-600 hover:text-gray-900 hover:bg-black/[0.05]'
                     }`}
                   >
-                    <User className="w-3.5 h-3.5 shrink-0" />캐릭터 배치
+                    <Archive className="w-3.5 h-3.5 shrink-0" />아카이브 배치
                   </button>
 
                   {/* 포인트 도구 (선 긋기 / 영역 그리기 드롭다운 포함) */}
@@ -5599,9 +5613,16 @@ export default function WorldMap({
                 if (el.isSnapshotHidden) return null;
 
                 const isSelected = isElementSelected(el.id);
+                const archiveItem = archiveItems.find(a => a.id === el.characterId);
                 const relNode = relationNodes.find(n => n.id === el.characterId);
-                const charName = relNode?.name || el.name;
+                const charName = archiveItem?.name || relNode?.name || el.name;
+                const charSummary = archiveItem?.summary || relNode?.summary || el.summary || '';
                 const charAvatar = relNode?.avatar;
+                const charCat = archiveItem?.category;
+
+                // 아카이브 카테고리 아이콘 지정
+                const CatIcon = charCat === 'equipment' ? Shield : charCat === 'location' ? MapPin : charCat === 'skill' ? Zap : charCat === 'etc' ? Package : User;
+                const catColor = charCat === 'equipment' ? '#F59E0B' : charCat === 'location' ? '#10B981' : charCat === 'skill' ? '#0EA5E9' : charCat === 'etc' ? '#A855F7' : '#5E6AD2';
                 
                 const diameter = el.bw || el.bh || 64;
                 const scaleRatio = diameter / 64;
@@ -5645,10 +5666,17 @@ export default function WorldMap({
                       {charAvatar ? (
                         <img src={charAvatar} alt={charName} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full bg-[#5E6AD2]/30 flex items-center justify-center font-bold text-white tracking-wider" style={{ fontSize: `${Math.max(12, Math.round(20 * scaleRatio))}px` }}>
-                          {charName.slice(0, 1)}
+                        <div className="w-full h-full flex items-center justify-center font-bold text-white tracking-wider" style={{ backgroundColor: catColor }}>
+                          <CatIcon style={{ width: `${Math.max(16, Math.round(24 * scaleRatio))}px`, height: `${Math.max(16, Math.round(24 * scaleRatio))}px` }} />
                         </div>
                       )}
+                    </div>
+                    {/* 마크 하단 명칭 라벨 */}
+                    <div 
+                      title={charSummary ? `${charName} - ${charSummary}` : charName}
+                      className="px-2 py-0.5 rounded-md bg-gray-900/85 border border-white/20 backdrop-blur-xs text-[10px] font-bold text-white shadow-md truncate max-w-28 pointer-events-none"
+                    >
+                      {charName}
                     </div>
                   </div>
                 );
@@ -8023,7 +8051,7 @@ export default function WorldMap({
         </div>
       )}
 
-      {/* ── 지도 보유 캐릭터 배치 모달 (CharacterSelectorModal) ── */}
+      {/* ── 지도 보유 아카이브 배치 모달 (ArchiveSelectorModal) ── */}
       {showCharacterSelectorModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-[110] p-4 select-none animate-fadeIn">
           <div className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl flex flex-col gap-4 ${
@@ -8032,8 +8060,8 @@ export default function WorldMap({
             {/* 모달 헤더 */}
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <User className="w-4 h-4 text-[#7480E2]" />
-                <h3 className="font-bold text-sm">지도 캐릭터 배치</h3>
+                <Archive className="w-4 h-4 text-[#7480E2]" />
+                <h3 className="font-bold text-sm">지도 아카이브 대상 배치</h3>
               </div>
               <button 
                 type="button"
@@ -8049,7 +8077,7 @@ export default function WorldMap({
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input
                 type="text"
-                placeholder="캐릭터 이름 검색..."
+                placeholder="아카이브 이름 검색..."
                 value={characterSelectorSearch}
                 onChange={e => setCharacterSelectorSearch(e.target.value)}
                 className={`w-full pl-9 pr-3 py-1.5 rounded-xl border text-xs outline-none transition-colors ${
@@ -8058,96 +8086,294 @@ export default function WorldMap({
               />
             </div>
 
-            {/* 캐릭터 목록 */}
-            <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
-              {relationNodes.filter(node => !characterSelectorSearch.trim() || node.name.toLowerCase().includes(characterSelectorSearch.trim().toLowerCase())).length === 0 ? (
-                <div className="text-center py-8 text-xs text-gray-500">
-                  {relationNodes.length === 0 ? '등록된 인물 관계도 캐릭터가 없습니다.' : '검색 결과가 없습니다.'}
-                </div>
-              ) : (
-                relationNodes
-                  .filter(node => !characterSelectorSearch.trim() || node.name.toLowerCase().includes(characterSelectorSearch.trim().toLowerCase()))
-                  .map(node => {
-                    const existingEl = elements.find(el => el.type === 'character' && el.characterId === node.id);
-                    const isAdded = !!existingEl;
+            {/* 카테고리 필터 탭 */}
+            <div className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar">
+              {[
+                { key: 'all', label: '전체', icon: null },
+                { key: 'character', label: '캐릭터', icon: User },
+                { key: 'equipment', label: '장비', icon: Shield },
+                { key: 'location', label: '장소', icon: MapPin },
+                { key: 'skill', label: '기술', icon: Zap },
+                { key: 'etc', label: '기타', icon: Package },
+              ].map(cat => {
+                const IconComp = cat.icon;
+                const isSelected = archiveSelectorCategory === cat.key;
+                return (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    onClick={() => setArchiveSelectorCategory(cat.key)}
+                    className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold shrink-0 transition-all ${
+                      isSelected
+                        ? 'bg-[#5E6AD2] text-white shadow-xs'
+                        : isDark ? 'bg-white/[0.04] text-gray-400 hover:text-white hover:bg-white/[0.08]' : 'bg-black/[0.04] text-gray-600 hover:text-black hover:bg-black/[0.08]'
+                    }`}
+                  >
+                    {IconComp && <IconComp className="w-3 h-3" />}
+                    <span>{cat.label}</span>
+                  </button>
+                );
+              })}
+            </div>
 
-                    const descriptionText = node.role || node.summary || node.description || '소속/설정 정보 없음';
+            {/* 태그 필터 접이식 항목 칸 */}
+            {allArchiveTags.length > 0 && (
+              <div className="flex flex-col gap-1.5 border-t border-b border-white/5 py-2">
+                <button
+                  type="button"
+                  onClick={() => setIsArchiveTagFilterOpen(prev => !prev)}
+                  className={`flex items-center justify-between w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    archiveSelectorSelectedTags.length > 0
+                      ? 'bg-[#5E6AD2]/15 text-[#7480E2]'
+                      : isDark ? 'text-gray-300 hover:bg-white/[0.05]' : 'text-gray-600 hover:bg-black/[0.05]'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Filter className="w-3.5 h-3.5 text-[#5E6AD2]" />
+                    <span>태그 필터</span>
+                    {archiveSelectorSelectedTags.length > 0 && (
+                      <span className="px-1.5 py-0.2 text-[10px] font-bold rounded-full bg-[#5E6AD2] text-white">
+                        {archiveSelectorSelectedTags.length}
+                      </span>
+                    )}
+                  </div>
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isArchiveTagFilterOpen ? 'rotate-180' : ''}`} />
+                </button>
 
-                    return (
-                      <div 
-                        key={node.id} 
-                        className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
-                          isAdded 
-                            ? 'bg-[#5E6AD2]/10 border-[#5E6AD2]/30' 
-                            : isDark ? 'bg-white/[0.02] border-white/[0.06] hover:border-white/20' : 'bg-gray-50 border-black/[0.06] hover:border-black/20'
-                        }`}
+                {/* 펼쳐졌을 때 나타나는 태그 칩 목록 */}
+                {isArchiveTagFilterOpen && (
+                  <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-black/20 dark:bg-white/[0.03] border border-white/[0.06] animate-in fade-in duration-150 max-h-32 overflow-y-auto">
+                    {allArchiveTags.map(tag => {
+                      const isSelected = archiveSelectorSelectedTags.includes(tag);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => {
+                            setArchiveSelectorSelectedTags(prev =>
+                              prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]
+                            );
+                          }}
+                          className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${
+                            isSelected
+                              ? 'bg-[#5E6AD2] border-[#5E6AD2] text-white shadow-xs'
+                              : isDark
+                                ? 'bg-white/[0.04] border-white/10 text-gray-300 hover:border-white/30'
+                                : 'bg-black/[0.04] border-black/10 text-gray-600 hover:border-black/30'
+                          }`}
+                        >
+                          #{tag}
+                        </button>
+                      );
+                    })}
+                    {archiveSelectorSelectedTags.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setArchiveSelectorSelectedTags([])}
+                        className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
                       >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div className="w-9 h-9 rounded-full bg-[#5E6AD2]/20 border border-[#5E6AD2]/40 flex items-center justify-center font-bold text-sm text-[#7480E2] shrink-0 overflow-hidden">
-                            {node.avatar ? (
-                              <img src={node.avatar} alt={node.name} className="w-full h-full object-cover" />
-                            ) : (
-                              node.name.slice(0, 1)
-                            )}
-                          </div>
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span className="font-bold text-xs truncate text-gray-200">{node.name}</span>
-                            <span className="text-[11px] text-gray-400 truncate">{descriptionText}</span>
-                          </div>
-                        </div>
+                        초기화
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
-                        {isAdded ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (existingEl) {
+            {/* 캐릭터 / 아카이브 목록 */}
+            <div className="flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
+              {archiveItems.length > 0 ? (
+                /* 1. 아카이브 항목 목록 지원 (카테고리 및 태그 필터링 완벽 반영) */
+                archiveItems.filter(item => {
+                  if (characterSelectorSearch.trim() && !item.name.toLowerCase().includes(characterSelectorSearch.trim().toLowerCase())) return false;
+                  if (archiveSelectorCategory !== 'all' && item.category !== archiveSelectorCategory) return false;
+                  if (archiveSelectorSelectedTags.length > 0 && !archiveSelectorSelectedTags.some(t => item.tags?.includes(t))) return false;
+                  return true;
+                }).length === 0 ? (
+                  <div className="text-center py-8 text-xs text-gray-500">
+                    검색 및 필터 조건에 부합하는 항목이 없습니다.
+                  </div>
+                ) : (
+                  archiveItems
+                    .filter(item => {
+                      if (characterSelectorSearch.trim() && !item.name.toLowerCase().includes(characterSelectorSearch.trim().toLowerCase())) return false;
+                      if (archiveSelectorCategory !== 'all' && item.category !== archiveSelectorCategory) return false;
+                      if (archiveSelectorSelectedTags.length > 0 && !archiveSelectorSelectedTags.some(t => item.tags?.includes(t))) return false;
+                      return true;
+                    })
+                    .map(item => {
+                      const existingEl = elements.find(el => el.characterId === item.id);
+                      const isAdded = !!existingEl;
+                      const descriptionText = item.summary || item.description || '설정 정보 없음';
+                      const CatIcon = item.category === 'equipment' ? Shield : item.category === 'location' ? MapPin : item.category === 'skill' ? Zap : item.category === 'etc' ? Package : User;
+
+                      return (
+                        <div 
+                          key={item.id} 
+                          className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
+                            isAdded 
+                              ? 'bg-[#5E6AD2]/10 border-[#5E6AD2]/30' 
+                              : isDark ? 'bg-white/[0.02] border-white/[0.06] hover:border-white/20' : 'bg-gray-50 border-black/[0.06] hover:border-black/20'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-9 h-9 rounded-full bg-[#5E6AD2]/20 border border-[#5E6AD2]/40 flex items-center justify-center font-bold text-sm text-[#7480E2] shrink-0 overflow-hidden">
+                              <CatIcon className="w-4 h-4" />
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-xs truncate text-gray-200">{item.name}</span>
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/10 text-gray-400 shrink-0 font-medium">
+                                  {item.category === 'equipment' ? '장비' : item.category === 'location' ? '장소' : item.category === 'skill' ? '기술' : item.category === 'etc' ? '기타' : '캐릭터'}
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-gray-400 truncate">{descriptionText}</span>
+                            </div>
+                          </div>
+
+                          {isAdded ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (existingEl) {
+                                  pushHistory();
+                                  setElements(prev => prev.filter(el => el.id !== existingEl.id));
+                                }
+                              }}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 text-xs font-bold transition-colors shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              제거
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
                                 pushHistory();
-                                setElements(prev => prev.filter(el => el.id !== existingEl.id));
-                              }
-                            }}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 text-xs font-bold transition-colors shrink-0"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            제거
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              pushHistory();
-                              const containerW = canvasContainerRef.current ? canvasContainerRef.current.clientWidth : 1200;
-                              const containerH = canvasContainerRef.current ? canvasContainerRef.current.clientHeight : 800;
-                              const camX = (-pan.x + containerW / 2) / zoom;
-                              const camY = (-pan.y + containerH / 2) / zoom;
-                              const diameter = 64;
+                                const containerW = canvasContainerRef.current ? canvasContainerRef.current.clientWidth : 1200;
+                                const containerH = canvasContainerRef.current ? canvasContainerRef.current.clientHeight : 800;
+                                const camX = (-pan.x + containerW / 2) / zoom;
+                                const camY = (-pan.y + containerH / 2) / zoom;
+                                const diameter = 64;
 
-                              const newCharElement: MapElement = {
-                                id: `character-${Date.now()}`,
-                                name: node.name,
-                                type: 'character',
-                                parentMapId: currentMapId,
-                                characterId: node.id,
-                                bx: camX,
-                                by: camY,
-                                bw: diameter,
-                                bh: diameter,
-                                color: '#5E6AD2',
-                                summary: descriptionText,
-                                tags: []
-                              };
+                                const newCharElement: MapElement = {
+                                  id: `archive-${Date.now()}`,
+                                  name: item.name,
+                                  type: 'character',
+                                  parentMapId: currentMapId,
+                                  characterId: item.id,
+                                  bx: camX,
+                                  by: camY,
+                                  bw: diameter,
+                                  bh: diameter,
+                                  color: item.category === 'equipment' ? '#F59E0B' : item.category === 'location' ? '#10B981' : item.category === 'skill' ? '#0EA5E9' : item.category === 'etc' ? '#A855F7' : '#5E6AD2',
+                                  summary: descriptionText,
+                                  tags: item.tags || []
+                                };
 
-                              setElements(prev => [...prev, newCharElement]);
-                              setSelectedElementId(newCharElement.id);
-                            }}
-                            className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-bold transition-colors shrink-0 shadow-md shadow-[#5E6AD2]/20"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            추가
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })
+                                setElements(prev => [...prev, newCharElement]);
+                                setSelectedElementId(newCharElement.id);
+                              }}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-bold transition-colors shrink-0 shadow-md shadow-[#5E6AD2]/20"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              배치
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })
+                )
+              ) : (
+                /* 2. 폴백: 기존 인물 관계도 노드 리스트 */
+                relationNodes.filter(node => !characterSelectorSearch.trim() || node.name.toLowerCase().includes(characterSelectorSearch.trim().toLowerCase())).length === 0 ? (
+                  <div className="text-center py-8 text-xs text-gray-500">
+                    등록된 아카이브 및 인물 관계도 대상이 없습니다.
+                  </div>
+                ) : (
+                  relationNodes
+                    .filter(node => !characterSelectorSearch.trim() || node.name.toLowerCase().includes(characterSelectorSearch.trim().toLowerCase()))
+                    .map(node => {
+                      const existingEl = elements.find(el => el.type === 'character' && el.characterId === node.id);
+                      const isAdded = !!existingEl;
+                      const descriptionText = node.role || node.summary || node.description || '소속/설정 정보 없음';
+
+                      return (
+                        <div 
+                          key={node.id} 
+                          className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-all ${
+                            isAdded 
+                              ? 'bg-[#5E6AD2]/10 border-[#5E6AD2]/30' 
+                              : isDark ? 'bg-white/[0.02] border-white/[0.06] hover:border-white/20' : 'bg-gray-50 border-black/[0.06] hover:border-black/20'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-9 h-9 rounded-full bg-[#5E6AD2]/20 border border-[#5E6AD2]/40 flex items-center justify-center font-bold text-sm text-[#7480E2] shrink-0 overflow-hidden">
+                              {node.avatar ? (
+                                <img src={node.avatar} alt={node.name} className="w-full h-full object-cover" />
+                              ) : (
+                                node.name.slice(0, 1)
+                              )}
+                            </div>
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <span className="font-bold text-xs truncate text-gray-200">{node.name}</span>
+                              <span className="text-[11px] text-gray-400 truncate">{descriptionText}</span>
+                            </div>
+                          </div>
+
+                          {isAdded ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (existingEl) {
+                                  pushHistory();
+                                  setElements(prev => prev.filter(el => el.id !== existingEl.id));
+                                }
+                              }}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 border border-red-500/30 text-xs font-bold transition-colors shrink-0"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              제거
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                pushHistory();
+                                const containerW = canvasContainerRef.current ? canvasContainerRef.current.clientWidth : 1200;
+                                const containerH = canvasContainerRef.current ? canvasContainerRef.current.clientHeight : 800;
+                                const camX = (-pan.x + containerW / 2) / zoom;
+                                const camY = (-pan.y + containerH / 2) / zoom;
+                                const diameter = 64;
+
+                                const newCharElement: MapElement = {
+                                  id: `character-${Date.now()}`,
+                                  name: node.name,
+                                  type: 'character',
+                                  parentMapId: currentMapId,
+                                  characterId: node.id,
+                                  bx: camX,
+                                  by: camY,
+                                  bw: diameter,
+                                  bh: diameter,
+                                  color: '#5E6AD2',
+                                  summary: descriptionText,
+                                  tags: []
+                                };
+
+                                setElements(prev => [...prev, newCharElement]);
+                                setSelectedElementId(newCharElement.id);
+                              }}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#5E6AD2] hover:bg-[#7480E2] text-white text-xs font-bold transition-colors shrink-0 shadow-md shadow-[#5E6AD2]/20"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              배치
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })
+                )
               )}
             </div>
 

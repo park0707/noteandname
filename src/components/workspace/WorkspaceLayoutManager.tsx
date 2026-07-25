@@ -463,6 +463,7 @@ function PanelRenderer(props: PanelRendererProps) {
             episodes={episodes}
             relationNodes={relationNodes}
             foreshadowings={foreshadowings}
+            archiveItems={archiveItems}
           />
         )}
         {panel.activeFeature === 'info' && (

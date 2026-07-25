@@ -649,88 +649,190 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     return () => clearTimeout(timer);
   }, [foreshadowings, selectedProject, user]);
 
-  // 아카이브 데이터 로드
+  // 아카이브 데이터 로드 (Supabase DB 연동 + LocalStorage 폴백)
   useEffect(() => {
     if (!selectedProject) {
       setArchiveItems([]);
       return;
     }
 
-    const archiveKey = `novelflow_archives_${selectedProject.id}`;
-    const saved = localStorage.getItem(archiveKey);
+    const loadArchives = async () => {
+      const archiveKey = `novelflow_archives_${selectedProject.id}`;
+      const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
 
-    if (saved) {
-      try {
-        setArchiveItems(JSON.parse(saved));
+      if (isGuest) {
+        const saved = localStorage.getItem(archiveKey);
+        if (saved) {
+          try {
+            setArchiveItems(JSON.parse(saved));
+            return;
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        // 기본 mock 아카이브 데이터 적재 (전체 카테고리 포함)
+        const initialArchives: ArchiveItem[] = [
+          {
+            id: 'arch-mock-1',
+            projectId: selectedProject.id,
+            name: '유진 (주인공)',
+            category: 'character',
+            summary: '성광 마력을 각성한 성기사의 후예',
+            description: '숲속에서 자라난 소년으로, 정체불명의 성광 마력을 다룰 수 있다. 성격은 냉철하면서도 동료에 대한 정의감이 깊다.',
+            tags: ['주인공', '마법사', '성광'],
+            attributes: [
+              { key: '나이', value: '18세' },
+              { key: '신분', value: '기사 지망생' }
+            ],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: 'arch-mock-2',
+            projectId: selectedProject.id,
+            name: '별빛의 검',
+            category: 'equipment',
+            summary: '고대 성광 마력이 깃든 보구 검',
+            description: '밤하늘의 별빛을 모아 단조한 전설급 보구. 어둠 속성 마수에 대해 강력한 극성 상성을 가진다.',
+            tags: ['전설급', '무기', '보구'],
+            attributes: [
+              { key: '등급', value: '전설' },
+              { key: '소유자', value: '유진' }
+            ],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: 'arch-mock-3',
+            projectId: selectedProject.id,
+            name: '그림자 숲',
+            category: 'location',
+            summary: '살아서 돌아온 자가 없다는 죽음의 땅',
+            description: '항상 짙은 안개와 기괴하게 꼬인 수목으로 둘러싸여 있는 금단의 영역. 미지의 마수들이 서식한다.',
+            tags: ['금지구역', '위험지대', '던전'],
+            attributes: [
+              { key: '위험도', value: 'S랭크' }
+            ],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: 'arch-mock-4',
+            projectId: selectedProject.id,
+            name: '성광의 영역',
+            category: 'skill',
+            summary: '주변 대지를 정화하고 아군을 보호하는 고위 마법',
+            description: '반경 50m 이내의 모든 어둠 속성 상해를 무효화하고 아군의 마력을 소폭 회복시키는 릴리즈 스킬.',
+            tags: ['성광', '결계', '치유'],
+            attributes: [
+              { key: '소모마력', value: '500 MP' },
+              { key: '시전시간', value: '3초' }
+            ],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: 'arch-mock-5',
+            projectId: selectedProject.id,
+            name: '아카샤 서판',
+            category: 'etc',
+            summary: '고대 문명이 남긴 미지의 지식 기록체',
+            description: '해석할 수 없는 고대 문자가 새겨져 있는 미지의 서판. 특정 별자리가 겹칠 때 반응한다.',
+            tags: ['고대유물', '비급', '미스터리'],
+            attributes: [
+              { key: '발견장소', value: '그림자 숲 지하' }
+            ],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }
+        ];
+        setArchiveItems(initialArchives);
+        localStorage.setItem(archiveKey, JSON.stringify(initialArchives));
         return;
-      } catch (e) {
-        console.error(e);
       }
-    }
 
-    // 기본 mock 아카이브 데이터 적재
-    const initialArchives: ArchiveItem[] = [
-      {
-        id: 'arch-mock-1',
-        projectId: selectedProject.id,
-        name: '유진 (주인공)',
-        category: 'character',
-        summary: '성광 마력을 각성한 성기사의 후예',
-        description: '숲속에서 자라난 소년으로, 정체불명의 성광 마력을 다룰 수 있다. 성격은 냉철하면서도 동료에 대한 정의감이 깊다.',
-        tags: ['주인공', '마법사', '성광'],
-        attributes: [
-          { key: '나이', value: '18세' },
-          { key: '신분', value: '기사 지망생' }
-        ],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: 'arch-mock-2',
-        projectId: selectedProject.id,
-        name: '별빛의 검',
-        category: 'equipment',
-        summary: '고대 성광 마력이 깃든 보구 검',
-        description: '밤하늘의 별빛을 모아 단조한 전설급 보구. 어둠 속성 마수에 대해 강력한 극성 상성을 가진다.',
-        tags: ['전설급', '무기', '보구'],
-        attributes: [
-          { key: '등급', value: '전설' },
-          { key: '소유자', value: '유진' }
-        ],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      },
-      {
-        id: 'arch-mock-3',
-        projectId: selectedProject.id,
-        name: '그림자 숲',
-        category: 'location',
-        summary: '살아서 돌아온 자가 없다는 죽음의 땅',
-        description: '항상 짙은 안개와 기괴하게 꼬인 수목으로 둘러싸여 있는 금단의 영역. 미지의 마수들이 서식한다.',
-        tags: ['금지구역', '위험지대', '던전'],
-        attributes: [
-          { key: '위험도', value: 'S랭크' }
-        ],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+      // 로그인 정규 사용자의 경우 Supabase DB 연동
+      try {
+        const { data, error } = await supabase
+          .from('archives')
+          .select('*')
+          .eq('project_id', selectedProject.id)
+          .order('updated_at', { ascending: false });
+
+        if (error) throw error;
+
+        if (data && data.length > 0) {
+          const dbArchives: ArchiveItem[] = data.map(d => ({
+            id: d.id,
+            projectId: d.project_id,
+            name: d.name,
+            category: d.category,
+            summary: d.summary || '',
+            description: d.description || '',
+            tags: d.tags || [],
+            attributes: d.attributes || [],
+            createdAt: d.created_at,
+            updatedAt: d.updated_at,
+          }));
+          setArchiveItems(dbArchives);
+          localStorage.setItem(archiveKey, JSON.stringify(dbArchives));
+        } else {
+          const saved = localStorage.getItem(archiveKey);
+          if (saved) {
+            setArchiveItems(JSON.parse(saved));
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load archives from Supabase, fallback to local:', err);
+        const saved = localStorage.getItem(archiveKey);
+        if (saved) {
+          try {
+            setArchiveItems(JSON.parse(saved));
+          } catch (e) {
+            console.error(e);
+          }
+        }
       }
-    ];
+    };
 
-    setArchiveItems(initialArchives);
-    localStorage.setItem(archiveKey, JSON.stringify(initialArchives));
-  }, [selectedProject]);
+    loadArchives();
+  }, [selectedProject, user]);
 
-  // 아카이브 데이터 변경 시 자동 저장 (디바운스)
+  // 아카이브 데이터 변경 시 자동 저장 (디바운스 + Supabase DB sync)
   useEffect(() => {
     if (!selectedProject) return;
 
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       const archiveKey = `novelflow_archives_${selectedProject.id}`;
       localStorage.setItem(archiveKey, JSON.stringify(archiveItems));
-    }, 1000);
+
+      const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
+      if (!isGuest && archiveItems.length > 0) {
+        try {
+          const upsertData = archiveItems.map(a => ({
+            id: a.id.startsWith('arch-mock-') ? crypto.randomUUID() : a.id,
+            project_id: selectedProject.id,
+            name: a.name,
+            category: a.category,
+            summary: a.summary,
+            description: a.description,
+            tags: a.tags,
+            attributes: a.attributes,
+            created_at: a.createdAt,
+            updated_at: a.updatedAt
+          }));
+          const { error } = await supabase
+            .from('archives')
+            .upsert(upsertData);
+          if (error) throw error;
+        } catch (err) {
+          console.error('Failed to sync archives to Supabase:', err);
+        }
+      }
+    }, 1500);
 
     return () => clearTimeout(timer);
-  }, [archiveItems, selectedProject]);
+  }, [archiveItems, selectedProject, user]);
 
 
   // 프로젝트 생성
