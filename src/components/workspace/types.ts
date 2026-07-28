@@ -97,3 +97,106 @@ export interface ArchiveItem {
   updatedAt: string;
 }
 
+// ============================================================================
+// Naming Engine Interfaces
+// ============================================================================
+
+export type TagGroupKey = 'genre' | 'culture' | 'trait' | 'mood' | 'phonetic' | 'social_status' | 'subtype';
+
+export interface SubtypeItem {
+  id: string;
+  name: string;
+  category: ArchiveCategory;
+  description?: string;
+  examples?: string;
+  recommendedMoods?: string[];
+  recommendedPhonetics?: string[];
+  conflictTags?: string[];
+}
+
+export interface NameCandidate {
+  id?: string;
+  name: string;
+  meaning: string;
+  similarity: number; // 기존 ArchiveItem과의 자모 유사도 (0~100)
+  matchItem?: string; // 유사도 경고 시 매칭된 기존 항목명
+  originMythologyId?: string; // 설화 파생 이름일 경우 출처 ID
+  originStoryTitle?: string; // 설화 파생 이름 출처 제목
+  category?: ArchiveCategory;
+  gender?: 'male' | 'female' | 'neutral';
+  tags?: string[];
+  subtype?: string;
+  isConflict?: boolean;
+  conflictReason?: string;
+}
+
+export interface MythologyEntry {
+  id: string;
+  culture: string; // '그리스로마' | '북유럽' | '켈트' | '한국전통' | '동양' | '아랍' 등
+  storyTitle: string;
+  characterName: string;
+  romanization?: string;
+  koreanReading?: string;
+  meaning?: string;
+  storySummary: string;
+  fameLevel: 'major' | 'minor';
+  tags: string[];
+  sourceUrl?: string;
+  derivedNames?: string[];
+}
+
+export interface TagWeight {
+  tagId: string;
+  label: string;
+  groupKey: TagGroupKey;
+  weight: number;
+}
+
+export interface NamingConstraint {
+  forbiddenSyllables: string[];
+  requiredSyllables: string[];
+  minLength: number;
+  maxLength: number;
+}
+
+export interface NamingPreset {
+  id: string;
+  projectId?: string;
+  name: string;
+  targetCategory: ArchiveCategory;
+  tagWeights: TagWeight[];
+  constraints?: NamingConstraint;
+  createdAt?: string;
+}
+
+export interface NameBankItem {
+  id: string;
+  projectId: string;
+  name: string;
+  targetCategory: ArchiveCategory;
+  meaning: string;
+  originMythologyId?: string;
+  status: 'saved' | 'used' | 'discarded';
+  linkedArchiveItemId?: string;
+  createdAt: string;
+}
+
+export interface HanjaEntry {
+  char: string; // 한자
+  hun: string;  // 훈 (뜻)
+  eum: string;  // 음 (소리)
+  meaningTag: string; // 예: '검', '바람', '불', '하늘', '달', '지혜', '용기'
+  category?: string;
+}
+
+export interface GenerateNameParams {
+  targetCategory: ArchiveCategory;
+  subtype?: string;
+  tagWeights: TagWeight[];
+  keywords: string;
+  constraints?: NamingConstraint;
+  count?: number;
+  gender?: 'all' | 'male' | 'female';
+}
+
+

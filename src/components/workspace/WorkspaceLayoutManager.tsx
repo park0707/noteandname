@@ -6,8 +6,7 @@ import type { Project, Episode, Node, Foreshadowing, ArchiveItem } from './types
 
 // Import modular components
 import ProjectDashboard from './ProjectDashboard';
-import AiNamingEngine from './AiNamingEngine';
-import JamoFilter from './JamoFilter';
+import NamingEngineHub from './naming/NamingEngineHub';
 import RelationsMap from './RelationsMap';
 import ForeshadowingTimeline from './ForeshadowingTimeline';
 import CharacterHistory from './CharacterHistory';
@@ -426,15 +425,35 @@ function PanelRenderer(props: PanelRendererProps) {
           />
         )}
         {panel.activeFeature === 'naming' && (
-          <AiNamingEngine
+          <NamingEngineHub
             isDark={isDark}
-            relationNodes={relationNodes}
+            projectId={selectedProject.id}
+            archiveItems={archiveItems}
+            onAddArchiveItem={(newItem) => {
+              const fullItem: ArchiveItem = {
+                ...newItem,
+                id: `arch-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              };
+              setArchiveItems(prev => [fullItem, ...prev]);
+            }}
           />
         )}
         {panel.activeFeature === 'jamo' && (
-          <JamoFilter
+          <NamingEngineHub
             isDark={isDark}
-            relationNodes={relationNodes}
+            projectId={selectedProject.id}
+            archiveItems={archiveItems}
+            onAddArchiveItem={(newItem) => {
+              const fullItem: ArchiveItem = {
+                ...newItem,
+                id: `arch-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              };
+              setArchiveItems(prev => [fullItem, ...prev]);
+            }}
           />
         )}
         {panel.activeFeature === 'relations' && (
