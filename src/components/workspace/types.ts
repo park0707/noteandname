@@ -101,7 +101,7 @@ export interface ArchiveItem {
 // Naming Engine Interfaces
 // ============================================================================
 
-export type TagGroupKey = 'genre' | 'culture' | 'trait' | 'mood' | 'phonetic' | 'social_status' | 'subtype';
+export type TagGroupKey = 'custom' | 'genre' | 'culture' | 'trait' | 'mood' | 'element' | 'archetype' | 'phonetic' | 'social_status' | 'subtype';
 
 export interface SubtypeItem {
   id: string;

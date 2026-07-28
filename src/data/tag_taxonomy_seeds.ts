@@ -1,7 +1,7 @@
 import type { ArchiveCategory, SubtypeItem, TagGroupKey } from '../components/workspace/types';
 
 // ============================================================================
-// 1. 전체 확장 태그 택사노미 (150+ 시드 태그)
+// 1. 전체 확장 태그 택사노미 (250+ 시드 태그)
 // ============================================================================
 
 export interface TagSeed {
@@ -14,7 +14,7 @@ export interface TagSeed {
 
 export const EXTENDED_TAG_TAXONOMY: TagSeed[] = [
   // --------------------------------------------------------------------------
-  // A. 장르 (Genre) — 전 카테고리 공통 적용
+  // A. 장르 / 서브장르 (Genre) — 전 카테고리 공통 적용
   // --------------------------------------------------------------------------
   { id: 'g-1', groupKey: 'genre', label: '정통 판타지', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
   { id: 'g-2', groupKey: 'genre', label: '서양 판타지', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
@@ -35,9 +35,26 @@ export const EXTENDED_TAG_TAXONOMY: TagSeed[] = [
   { id: 'g-17', groupKey: 'genre', label: '코즈믹 호러', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
   { id: 'g-18', groupKey: 'genre', label: '사이버펑크', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
   { id: 'g-19', groupKey: 'genre', label: '대체역사/사극', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-20', groupKey: 'genre', label: '아포칼립스/재난', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-21', groupKey: 'genre', label: '성좌물/신격체', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-22', groupKey: 'genre', label: '영지물/영주', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-23', groupKey: 'genre', label: '학원물/아카데미', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-24', groupKey: 'genre', label: '스릴러/오컬트/퇴마', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-25', groupKey: 'genre', label: '괴수물/크리처', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-26', groupKey: 'genre', label: '차원이동/트립', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-27', groupKey: 'genre', label: '디스토피아/서바이벌', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-28', groupKey: 'genre', label: '동양풍 로판', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-29', groupKey: 'genre', label: '영애물/회귀', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-30', groupKey: 'genre', label: '착각계/코미디', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-31', groupKey: 'genre', label: '경영/제작/조합', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-32', groupKey: 'genre', label: '도시 판타지(어반)', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-33', groupKey: 'genre', label: '스페이스 오페라/SF', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-34', groupKey: 'genre', label: '무협-마교/혈교', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-35', groupKey: 'genre', label: '무협-세가/정파', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'g-36', groupKey: 'genre', label: '선협-선인/단전', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
 
   // --------------------------------------------------------------------------
-  // B. 문화권 / 스타일 (Culture) — 전 카테고리 공통 적용
+  // B. 문화권 / 양식적 스타일 (Culture & Style) — 전 카테고리 공통 적용
   // --------------------------------------------------------------------------
   { id: 'c-1', groupKey: 'culture', label: '서양 중세', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
   { id: 'c-2', groupKey: 'culture', label: '북유럽/바이킹', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
@@ -53,9 +70,23 @@ export const EXTENDED_TAG_TAXONOMY: TagSeed[] = [
   { id: 'c-12', groupKey: 'culture', label: '한국 전통', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
   { id: 'c-13', groupKey: 'culture', label: '중국 무협', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
   { id: 'c-14', groupKey: 'culture', label: '일본 헤이안/요괴', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-15', groupKey: 'culture', label: '메소포타미아/바빌로니아', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-16', groupKey: 'culture', label: '비잔틴/동로마', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-17', groupKey: 'culture', label: '르네상스/이탈리아', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-18', groupKey: 'culture', label: '로코코/프랑스 궁정', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-19', groupKey: 'culture', label: '서부 개척/카우보이', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-20', groupKey: 'culture', label: '스코틀랜드/하이랜드', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-21', groupKey: 'culture', label: '아일랜드/가일', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-22', groupKey: 'culture', label: '폴리네시아/해양', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-23', groupKey: 'culture', label: '실크로드/중앙아시아', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-24', groupKey: 'culture', label: '디젤펑크', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-25', groupKey: 'culture', label: '솔라펑크', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-26', groupKey: 'culture', label: '네오도쿄/아시안 펑크', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-27', groupKey: 'culture', label: '고딕 호러', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'c-28', groupKey: 'culture', label: '현대 밀리터리', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
 
   // --------------------------------------------------------------------------
-  // C. 성격 (Personality / Archetype) — character 전용 (etc는 '조직 성향' 변형)
+  // C. 성격 / 인격 아키타입 (Personality & Character Archetype)
   // --------------------------------------------------------------------------
   { id: 'p-1', groupKey: 'trait', label: '냉혹함', applicableCategories: ['character', 'etc'] },
   { id: 'p-2', groupKey: 'trait', label: '고귀함', applicableCategories: ['character', 'etc'] },
@@ -72,9 +103,25 @@ export const EXTENDED_TAG_TAXONOMY: TagSeed[] = [
   { id: 'p-13', groupKey: 'trait', label: '교활함/지혜', applicableCategories: ['character', 'etc'] },
   { id: 'p-14', groupKey: 'trait', label: '오만함', applicableCategories: ['character', 'etc'] },
   { id: 'p-15', groupKey: 'trait', label: '헌신적/충직', applicableCategories: ['character', 'etc'] },
+  { id: 'p-16', groupKey: 'trait', label: '츤데레/겉차속따', applicableCategories: ['character'] },
+  { id: 'p-17', groupKey: 'trait', label: '얀데레/집착', applicableCategories: ['character'] },
+  { id: 'p-18', groupKey: 'trait', label: '마이페이스/엉뚱', applicableCategories: ['character'] },
+  { id: 'p-19', groupKey: 'trait', label: '지략가/책사', applicableCategories: ['character', 'etc'] },
+  { id: 'p-20', groupKey: 'trait', label: '호구/성인군자', applicableCategories: ['character'] },
+  { id: 'p-21', groupKey: 'trait', label: '퇴폐미/나른함', applicableCategories: ['character'] },
+  { id: 'p-22', groupKey: 'trait', label: '순정파', applicableCategories: ['character'] },
+  { id: 'p-23', groupKey: 'trait', label: '광기 어린 백치', applicableCategories: ['character'] },
+  { id: 'p-24', groupKey: 'trait', label: '방탕아/헐렁함', applicableCategories: ['character'] },
+  { id: 'p-25', groupKey: 'trait', label: '소시오패스/사이코', applicableCategories: ['character', 'etc'] },
+  { id: 'p-26', groupKey: 'trait', label: '도도함/자존심', applicableCategories: ['character'] },
+  { id: 'p-27', groupKey: 'trait', label: '장난기/장난꾸러기', applicableCategories: ['character'] },
+  { id: 'p-28', groupKey: 'trait', label: '충의지사/절개', applicableCategories: ['character', 'etc'] },
+  { id: 'p-29', groupKey: 'trait', label: '혈기왕성/열혈', applicableCategories: ['character'] },
+  { id: 'p-30', groupKey: 'trait', label: '몽환적/독선적', applicableCategories: ['character'] },
+  { id: 'p-31', groupKey: 'trait', label: '냉철한 완벽주의자', applicableCategories: ['character', 'etc'] },
 
   // --------------------------------------------------------------------------
-  // D. 분위기 (Mood) — 범용 무드 (location, equipment, skill, etc, character 보조)
+  // D. 분위기 / 미학적 느낌 (Mood & Aesthetic)
   // --------------------------------------------------------------------------
   { id: 'm-1', groupKey: 'mood', label: '신비로운', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
   { id: 'm-2', groupKey: 'mood', label: '황폐한', applicableCategories: ['location', 'equipment', 'etc'] },
@@ -92,9 +139,75 @@ export const EXTENDED_TAG_TAXONOMY: TagSeed[] = [
   { id: 'm-14', groupKey: 'mood', label: '은은한', applicableCategories: ['location', 'equipment', 'skill'] },
   { id: 'm-15', groupKey: 'mood', label: '파괴적인', applicableCategories: ['equipment', 'skill'] },
   { id: 'm-16', groupKey: 'mood', label: '야만적인', applicableCategories: ['equipment', 'location', 'etc'] },
+  { id: 'm-17', groupKey: 'mood', label: '서늘한/차가운', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'm-18', groupKey: 'mood', label: '피비린내 나는/잔혹한', applicableCategories: ['location', 'equipment', 'skill', 'etc'] },
+  { id: 'm-19', groupKey: 'mood', label: '신성하고 찬란한', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'm-20', groupKey: 'mood', label: '시원하고 경쾌한', applicableCategories: ['character', 'location', 'skill'] },
+  { id: 'm-21', groupKey: 'mood', label: '아늑하고 따뜻한', applicableCategories: ['location', 'etc'] },
+  { id: 'm-22', groupKey: 'mood', label: '퇴폐적인', applicableCategories: ['character', 'location', 'equipment', 'etc'] },
+  { id: 'm-23', groupKey: 'mood', label: '기괴하고 기이한', applicableCategories: ['location', 'equipment', 'skill', 'etc'] },
+  { id: 'm-24', groupKey: 'mood', label: '메마른/차가운', applicableCategories: ['location', 'equipment', 'etc'] },
+  { id: 'm-25', groupKey: 'mood', label: '서정적이고 아련한', applicableCategories: ['character', 'location', 'skill'] },
+  { id: 'm-26', groupKey: 'mood', label: '압도적인/압도감', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'm-27', groupKey: 'mood', label: '은밀하고 서늘한', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'm-28', groupKey: 'mood', label: '타오르는/뜨거운', applicableCategories: ['character', 'location', 'equipment', 'skill'] },
+  { id: 'm-29', groupKey: 'mood', label: '칠흑 같은', applicableCategories: ['location', 'equipment', 'skill', 'etc'] },
+  { id: 'm-30', groupKey: 'mood', label: '공허한/허무한', applicableCategories: ['character', 'location', 'skill'] },
+  { id: 'm-31', groupKey: 'mood', label: '기계적/냉정한', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
 
   // --------------------------------------------------------------------------
-  // E. 음성 / 발음 어감 (Phonetic Feel) — 음성상징학 기반
+  // E. 자연 원소 & 상징 모티브 (Element & Symbol Motif)
+  // --------------------------------------------------------------------------
+  { id: 'e-1', groupKey: 'element', label: '화염/불꽃', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-2', groupKey: 'element', label: '얼음/빙설', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-3', groupKey: 'element', label: '뇌전/번개', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-4', groupKey: 'element', label: '대지/바위', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-5', groupKey: 'element', label: '암흑/그림자', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-6', groupKey: 'element', label: '신성/빛', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-7', groupKey: 'element', label: '바람/폭풍', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-8', groupKey: 'element', label: '환영/환술', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-9', groupKey: 'element', label: '독/맹독', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-10', groupKey: 'element', label: '시간/공간', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-11', groupKey: 'element', label: '용/드래곤', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-12', groupKey: 'element', label: '혈통/피', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-13', groupKey: 'element', label: '별/은하', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-14', groupKey: 'element', label: '깃털/날개', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-15', groupKey: 'element', label: '유리가루/수정', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-16', groupKey: 'element', label: '보석/금속', applicableCategories: ['character', 'location', 'equipment', 'etc'] },
+  { id: 'e-17', groupKey: 'element', label: '영혼/사령', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-18', groupKey: 'element', label: '혼돈/심연', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-19', groupKey: 'element', label: '자연/나무', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-20', groupKey: 'element', label: '바다/해일', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-21', groupKey: 'element', label: '혈마/마기', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-22', groupKey: 'element', label: '주술/부적', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-23', groupKey: 'element', label: '나노기계/사이보그', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'e-24', groupKey: 'element', label: '그래비티/중력', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+
+  // --------------------------------------------------------------------------
+  // F. 서사적 아키타입 / 역할 (Narrative Archetype & Role)
+  // --------------------------------------------------------------------------
+  { id: 'ar-1', groupKey: 'archetype', label: '아카데미 수석/학생', applicableCategories: ['character'] },
+  { id: 'ar-2', groupKey: 'archetype', label: '황태자/소공자', applicableCategories: ['character'] },
+  { id: 'ar-3', groupKey: 'archetype', label: '가문의 수치/서자', applicableCategories: ['character'] },
+  { id: 'ar-4', groupKey: 'archetype', label: '신탁의 아이/성녀', applicableCategories: ['character'] },
+  { id: 'ar-5', groupKey: 'archetype', label: '흑막/조종자', applicableCategories: ['character'] },
+  { id: 'ar-6', groupKey: 'archetype', label: '성좌/신격체', applicableCategories: ['character'] },
+  { id: 'ar-7', groupKey: 'archetype', label: '길드장/마스터', applicableCategories: ['character'] },
+  { id: 'ar-8', groupKey: 'archetype', label: '구원자/희생자', applicableCategories: ['character'] },
+  { id: 'ar-9', groupKey: 'archetype', label: '소드마스터/검성', applicableCategories: ['character'] },
+  { id: 'ar-10', groupKey: 'archetype', label: '탑의 주인(탑주)', applicableCategories: ['character'] },
+  { id: 'ar-11', groupKey: 'archetype', label: '대문파 장문인', applicableCategories: ['character'] },
+  { id: 'ar-12', groupKey: 'archetype', label: '차원 방랑자', applicableCategories: ['character'] },
+  { id: 'ar-13', groupKey: 'archetype', label: '군주/치세자', applicableCategories: ['character'] },
+  { id: 'ar-14', groupKey: 'archetype', label: '첩보원/간작', applicableCategories: ['character'] },
+  { id: 'ar-15', groupKey: 'archetype', label: '괴도/방랑자', applicableCategories: ['character'] },
+  { id: 'ar-16', groupKey: 'archetype', label: '소환수/신수', applicableCategories: ['character'] },
+  { id: 'ar-17', groupKey: 'archetype', label: '은둔고수/도인', applicableCategories: ['character'] },
+  { id: 'ar-18', groupKey: 'archetype', label: '슬럼가 수장', applicableCategories: ['character'] },
+  { id: 'ar-19', groupKey: 'archetype', label: '용병대장', applicableCategories: ['character'] },
+
+  // --------------------------------------------------------------------------
+  // G. 음성 / 발음 어감 (Phonetic Feel) — 음성상징학 기반
   // --------------------------------------------------------------------------
   { id: 'ph-1', groupKey: 'phonetic', label: '둥근 소리 (Bouba형)', description: 'ㅁ·ㄴ·ㄹ·ㅇ + 원순모음(ㅗㅜ) -> 부드러움·온화함', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
   { id: 'ph-2', groupKey: 'phonetic', label: '날카로운 소리 (Kiki형)', description: 'ㄱ·ㅋ·ㄲ, ㅌ·ㅊ + 전설모음(ㅣㅔ) -> 예리함·공격성', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
@@ -107,9 +220,16 @@ export const EXTENDED_TAG_TAXONOMY: TagSeed[] = [
   { id: 'ph-9', groupKey: 'phonetic', label: '다음절 (3자 이상)', description: '유려한 서사적 어감', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
   { id: 'ph-10', groupKey: 'phonetic', label: '개방모음 (ㅏㅑ 위주)', description: '웅장하고 확 트인 어감', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
   { id: 'ph-11', groupKey: 'phonetic', label: '폐쇄모음 (ㅣㅡ 위주)', description: '섬세하고 은밀한 어감', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'ph-12', groupKey: 'phonetic', label: '울림소리 (유성음 ㅂㄷㄱ, ㅁㄴㅇ)', description: '안정감 있고 울림이 강함', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'ph-13', groupKey: 'phonetic', label: '공기 섞인 소리 (ㅎ, ㅅ, ㅆ)', description: '공감대 형성, 미스터리함', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'ph-14', groupKey: 'phonetic', label: '낭독형 서사조 (3글자 대칭)', description: '서사극적 어감', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'ph-15', groupKey: 'phonetic', label: '고대어/라틴어풍 발음', description: '이국적이고 고전적 어감', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'ph-16', groupKey: 'phonetic', label: '한자 성어형 4음절', description: '동양적 중후함', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'ph-17', groupKey: 'phonetic', label: '외자(1글자) 강음', description: '극도의 절제와 임팩트', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
+  { id: 'ph-18', groupKey: 'phonetic', label: '이중 모음(ㅘ, ㅝ, ㅟ)', description: '화려하고 신비로운 반향', applicableCategories: ['character', 'location', 'equipment', 'skill', 'etc'] },
 
   // --------------------------------------------------------------------------
-  // F. 신분 / 역할 / 소유자 등급 / 조직 유형 (Social Status & Role)
+  // H. 신분 / 서사적 역할 / 계급 (Social Status & Role)
   // --------------------------------------------------------------------------
   { id: 's-1', groupKey: 'social_status', label: '황제/황후/국왕', applicableCategories: ['character', 'equipment', 'etc'] },
   { id: 's-2', groupKey: 'social_status', label: '공작/백작 귀족', applicableCategories: ['character', 'equipment', 'etc'] },
@@ -122,7 +242,16 @@ export const EXTENDED_TAG_TAXONOMY: TagSeed[] = [
   { id: 's-9', groupKey: 'social_status', label: '라이벌/최종보스', applicableCategories: ['character'] },
   { id: 's-10', groupKey: 'social_status', label: '왕실 전용', applicableCategories: ['equipment'] },
   { id: 's-11', groupKey: 'social_status', label: '전설적 영웅 소유', applicableCategories: ['equipment'] },
-  { id: 's-12', groupKey: 'social_status', label: '금기/흑마법사 소유', applicableCategories: ['equipment'] }
+  { id: 's-12', groupKey: 'social_status', label: '금기/흑마법사 소유', applicableCategories: ['equipment'] },
+  { id: 's-13', groupKey: 'social_status', label: '황태자/공주', applicableCategories: ['character', 'equipment', 'etc'] },
+  { id: 's-14', groupKey: 'social_status', label: '자작/남작 하급귀족', applicableCategories: ['character', 'equipment', 'etc'] },
+  { id: 's-15', groupKey: 'social_status', label: '평민/슬럼가', applicableCategories: ['character', 'equipment'] },
+  { id: 's-16', groupKey: 'social_status', label: '성좌/신의 대리인', applicableCategories: ['character', 'equipment', 'etc'] },
+  { id: 's-17', groupKey: 'social_status', label: '헌터/S급 에이스', applicableCategories: ['character', 'equipment', 'etc'] },
+  { id: 's-18', groupKey: 'social_status', label: '탑주/마탑 마법사', applicableCategories: ['character', 'equipment', 'etc'] },
+  { id: 's-19', groupKey: 'social_status', label: '가문의 서자/망나니', applicableCategories: ['character'] },
+  { id: 's-20', groupKey: 'social_status', label: '세가 가주/문주', applicableCategories: ['character', 'equipment', 'etc'] },
+  { id: 's-21', groupKey: 'social_status', label: '마교 교주/혈족', applicableCategories: ['character', 'equipment', 'etc'] }
 ];
 
 // ============================================================================
@@ -134,9 +263,15 @@ export const CATEGORY_SUBTYPES: Record<ArchiveCategory, SubtypeItem[]> = {
     { id: 'sub-char-1', name: '종족 - 인간', category: 'character', description: '다재다능하고 다양한 문화권의 인물' },
     { id: 'sub-char-2', name: '종족 - 엘프/하이엘프', category: 'character', description: '우아하고 신비로우며 고대 지혜를 지닌 인물', recommendedMoods: ['고귀함', '신비로운', '우아함'], recommendedPhonetics: ['유음 (ㄹ 위주)', '비음 (ㅁㄴㅇ 위주)'] },
     { id: 'sub-char-3', name: '종족 - 드워프/수인', category: 'character', description: '단단하고 강인하며 거친 성향의 인물', recommendedMoods: ['견고한', '거침/야만적'], recommendedPhonetics: ['파열음 겹받침 (묵직함)', '경음 (된소리 ㄲㄸㅃㅆㅉ)'] },
-    { id: 'sub-char-4', name: '직군 - 기사/검사', category: 'character', description: '충직하고 용맹한 무사' },
-    { id: 'sub-char-5', name: '직군 - 마법사/현자', category: 'character', description: '지혜롭고 지적인 마도 연구자' },
-    { id: 'sub-char-6', name: '직군 - 암살자/도적', category: 'character', description: '은밀하고 은밀하게 움직이는 자' }
+    { id: 'sub-char-4', name: '종족 - 마족/반마족', category: 'character', description: '음산하고 치명적이며 강력한 마기를 품은 존재', recommendedMoods: ['저주받은', '위압적인', '서늘한/차가운'], recommendedPhonetics: ['격음 (거센소리 ㅋㅌㅍㅊ)', '날카로운 소리 (Kiki형)'] },
+    { id: 'sub-char-5', name: '종족 - 천사/신족/영령', category: 'character', description: '신성하고 찬란하며 결점이 없는 천상계 인물', recommendedMoods: ['신성하고 찬란한', '성스러운', '고귀함'], recommendedPhonetics: ['둥근 소리 (Bouba형)', '유음 (ㄹ 위주)'] },
+    { id: 'sub-char-6', name: '종족 - 뱀파이어/언데드', category: 'character', description: '퇴폐적이고 매혹적이며 불사의 피를 가진 영주', recommendedMoods: ['퇴폐적인', '피비린내 나는/잔혹한', '은밀하고 서늘한'], recommendedPhonetics: ['비음 (ㅁㄴㅇ 위주)', '폐쇄모음 (ㅣㅡ 위주)'] },
+    { id: 'sub-char-7', name: '직군 - 기사/검사', category: 'character', description: '충직하고 용맹한 무사' },
+    { id: 'sub-char-8', name: '직군 - 마법사/현자', category: 'character', description: '지혜롭고 지적인 마도 연구자' },
+    { id: 'sub-char-9', name: '직군 - 암살자/도적', category: 'character', description: '은밀하고 은밀하게 움직이는 자' },
+    { id: 'sub-char-10', name: '직군 - 헌터/능력자', category: 'character', description: '현대/어반 판타지에서 게이트를 정복하는 S급 에이스', recommendedMoods: ['카리스마', '압도적인/압도감'], recommendedPhonetics: ['단음절 (1~2자)'] },
+    { id: 'sub-char-11', name: '직군 - 성좌/신격체', category: 'character', description: '차원 너머에서 계약자를 관조하는 절대적 존재', recommendedMoods: ['장엄한', '신비로운', '오만함'], recommendedPhonetics: ['낭독형 서사조 (3글자 대칭)'] },
+    { id: 'sub-char-12', name: '직군 - 무림인/선인', category: 'character', description: '단전과 내공을 수행하여 경지에 오른 동양 무사', recommendedMoods: ['침착함/냉정', '견고한'], recommendedPhonetics: ['한자 성어형 4음절'] }
   ],
   equipment: [
     {
@@ -171,16 +306,16 @@ export const CATEGORY_SUBTYPES: Record<ArchiveCategory, SubtypeItem[]> = {
     },
     {
       id: 'sub-eq-polearm',
-      name: '장병기 (할버드/랜스)',
+      name: '장병기 (할버드/랜스/창)',
       category: 'equipment',
-      description: '할버드, 글레이브, 랜스 등 진형 관통 무기',
+      description: '할버드, 글레이브, 랜스, 삼지창 등 진형 관통 무기',
       examples: '할버드, 글레이브, 랜스',
       recommendedMoods: ['위압적인', '장엄한', '견고한'],
       recommendedPhonetics: ['다음절 (3자 이상)', '개방모음 (ㅏㅑ 위주)']
     },
     {
       id: 'sub-eq-ranged',
-      name: '투사무기 (장궁/석궁)',
+      name: '투사무기 (장궁/석궁/표창)',
       category: 'equipment',
       description: '장궁, 석궁, 표창, 차크람 등 원거리 무기',
       examples: '장궁, 석궁, 표창',
@@ -198,21 +333,30 @@ export const CATEGORY_SUBTYPES: Record<ArchiveCategory, SubtypeItem[]> = {
     },
     {
       id: 'sub-eq-armor',
-      name: '방어구 (갑주/방패)',
+      name: '방어구 (갑주/방패/투구)',
       category: 'equipment',
-      description: '플레이트 아머, 수호 방패, 투구',
+      description: '플레이트 아머, 수호 방패, 투구, 흉갑',
       examples: '플레이트, 수호방패',
       recommendedMoods: ['견고한', '위압적인', '장엄한'],
       recommendedPhonetics: ['파열음 겹받침 (묵직함)']
     },
     {
       id: 'sub-eq-accessory',
-      name: '장신구 (반지/아뮬렛)',
+      name: '장신구 (반지/아뮬렛/부적)',
       category: 'equipment',
-      description: '인장 반지, 부적, 목걸이, 유물',
+      description: '인장 반지, 부적, 목걸이, 유물, 아뮬렛',
       examples: '반지, 아뮬렛, 인장',
       recommendedMoods: ['은은한', '신비로운', '저주받은'],
       recommendedPhonetics: ['단음절 (1~2자)', '비음 (ㅁㄴㅇ 위주)']
+    },
+    {
+      id: 'sub-eq-gun',
+      name: '총기/마도공학 (마도총/드론)',
+      category: 'equipment',
+      description: '마도 리볼버, 퀀텀 캐논, 나노 드론, 고대 아티팩트',
+      examples: '마도총, 퀀텀캐논, 드론',
+      recommendedMoods: ['기계적/냉정한', '파괴적인'],
+      recommendedPhonetics: ['날카로운 소리 (Kiki형)', '단음절 (1~2자)']
     }
   ],
   location: [
@@ -260,6 +404,21 @@ export const CATEGORY_SUBTYPES: Record<ArchiveCategory, SubtypeItem[]> = {
       description: '지하 미궁, 봉인된 유적, 스산한 폐허',
       recommendedMoods: ['음산한', '저주받은', '황폐한'],
       recommendedPhonetics: ['폐쇄모음 (ㅣㅡ 위주)', '격음 (거센소리 ㅋㅌㅍㅊ)']
+    },
+    {
+      id: 'sub-loc-gate',
+      name: '지형 - 게이트/차원 균열',
+      category: 'location',
+      description: '헌터물 게이트, 시공간 틈새, 파멸의 탑',
+      recommendedMoods: ['혼돈스러운', '위압적인', '칠흑 같은'],
+      recommendedPhonetics: ['경음 (된소리 ㄲㄸㅃㅆㅉ)', '단음절 (1~2자)']
+    },
+    {
+      id: 'sub-loc-academy',
+      name: '지형 - 아카데미/사관학교',
+      category: 'location',
+      description: '제국 마법 아카데미, 무림 맹주 전각, 헌터 사관학교',
+      recommendedMoods: ['장엄한', '화려한', '고귀함']
     }
   ],
   skill: [
@@ -294,6 +453,14 @@ export const CATEGORY_SUBTYPES: Record<ArchiveCategory, SubtypeItem[]> = {
       description: '흑마술, 강령술, 부식, 저주',
       recommendedMoods: ['저주받은', '음산한', '파괴적인'],
       recommendedPhonetics: ['날카로운 소리 (Kiki형)', '폐쇄모음 (ㅣㅡ 위주)']
+    },
+    {
+      id: 'sub-sk-constellation',
+      name: '계열 - 성좌 권능/시스템 스킬',
+      category: 'skill',
+      description: '신격의 강림, 고유 특성, 패시브 상태창 스킬',
+      recommendedMoods: ['압도적인/압도감', '신성하고 찬란한'],
+      recommendedPhonetics: ['낭독형 서사조 (3글자 대칭)']
     }
   ],
   etc: [
@@ -333,6 +500,14 @@ export const CATEGORY_SUBTYPES: Record<ArchiveCategory, SubtypeItem[]> = {
       category: 'etc',
       description: '거칠고 자유분방한 거대 용병단',
       recommendedMoods: ['야만적인', '위압적인', '파괴적인']
+    },
+    {
+      id: 'sub-etc-family',
+      name: '조직 - 무림 세가/명망 가문',
+      category: 'etc',
+      description: '오랜 역사와 가전 무공을 계승하는 거대 세가',
+      recommendedMoods: ['고귀함', '견고한'],
+      recommendedPhonetics: ['한자 성어형 4음절']
     }
   ]
 };
