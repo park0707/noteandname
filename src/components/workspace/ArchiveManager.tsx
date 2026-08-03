@@ -16,16 +16,20 @@ import {
   FolderOpen,
   Filter,
   Check,
-  ChevronDown
+  ChevronDown,
+  Scale
 } from 'lucide-react';
-import type { ArchiveItem, ArchiveCategory, ArchiveAttribute } from './types';
+import type { ArchiveItem, ArchiveCategory, ArchiveAttribute, Node } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
+import JamoSimilarityReportModal from './archive/JamoSimilarityReportModal';
 
 interface ArchiveManagerProps {
   isDark: boolean;
   archiveItems: ArchiveItem[];
   setArchiveItems: React.Dispatch<React.SetStateAction<ArchiveItem[]>>;
   projectId: string;
+  relationNodes?: Node[];
+  setRelationNodes?: React.Dispatch<React.SetStateAction<Node[]>>;
 }
 
 const CATEGORY_MAP: Record<ArchiveCategory, { label: string; icon: typeof User; color: string; bgColor: string }> = {
@@ -41,6 +45,7 @@ export default function ArchiveManager({
   archiveItems,
   setArchiveItems,
   projectId,
+  setRelationNodes,
 }: ArchiveManagerProps) {
   const { showConfirm, showAlert } = useAlertConfirm();
 
@@ -49,9 +54,10 @@ export default function ArchiveManager({
   const [selectedCategory, setSelectedCategory] = useState<ArchiveCategory | 'all'>('all');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  // 모달 오픈 상태 (태그 필터 모달 vs 태그 관리 모달)
+  // 모달 오픈 상태 (태그 필터 모달 vs 태그 관리 모달 vs 자모 유사도 분석 모달)
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
+  const [isJamoModalOpen, setIsJamoModalOpen] = useState(false);
 
   // 태그 생성 상태
   const [newTagInput, setNewTagInput] = useState('');
@@ -245,6 +251,26 @@ export default function ArchiveManager({
             : item
         )
       );
+
+      // 인물 관계도 노드 자동 동기화
+      if (setRelationNodes && selectedItem) {
+        const oldName = selectedItem.name;
+        const newName = editName.trim();
+        setRelationNodes(prev =>
+          prev.map(n => {
+            if (n.archiveItemId === selectedItem.id || n.name === oldName) {
+              return {
+                ...n,
+                name: newName,
+                summary: editSummary.trim(),
+                description: editDescription.trim()
+              };
+            }
+            return n;
+          })
+        );
+      }
+
       showAlert('항목이 수정되었습니다.');
     }
   };
@@ -255,6 +281,12 @@ export default function ArchiveManager({
     if (!(await showConfirm(`'${selectedItem.name}' 항목을 삭제하시겠습니까?`))) return;
 
     setArchiveItems(prev => prev.filter(item => item.id !== selectedItem.id));
+
+    // 인물 관계도 노드 자동 동기화
+    if (setRelationNodes && selectedItem) {
+      setRelationNodes(prev => prev.filter(n => n.archiveItemId !== selectedItem.id && n.name !== selectedItem.name));
+    }
+
     handleBackToList();
     showAlert('삭제되었습니다.');
   };
@@ -669,14 +701,28 @@ export default function ArchiveManager({
           </p>
         </div>
 
-        {/* 요구사항 1: "+ 항목 추가" 버튼 */}
-        <button
-          onClick={handleOpenCreateForm}
-          className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[#5E6AD2] hover:bg-[#4E5AC2] text-white flex items-center gap-1.5 shadow-md shadow-[#5E6AD2]/20 transition-all"
-        >
-          <Plus className="w-4 h-4" />
-          <span>항목 추가</span>
-        </button>
+        {/* 헤더 우측 버튼 그룹: "유사도 필터링" + "+ 항목 추가" */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsJamoModalOpen(true)}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all ${
+              isDark
+                ? 'border-white/[0.1] bg-white/[0.04] text-[#EDEDEF] hover:bg-white/[0.08]'
+                : 'border-black/[0.1] bg-black/[0.03] text-[#121316] hover:bg-black/[0.06]'
+            }`}
+          >
+            <Scale className="w-4 h-4 text-[#5E6AD2]" />
+            <span>유사도 필터링</span>
+          </button>
+
+          <button
+            onClick={handleOpenCreateForm}
+            className="px-3.5 py-2 rounded-xl text-xs font-bold bg-[#5E6AD2] hover:bg-[#4E5AC2] text-white flex items-center gap-1.5 shadow-md shadow-[#5E6AD2]/20 transition-all"
+          >
+            <Plus className="w-4 h-4" />
+            <span>항목 추가</span>
+          </button>
+        </div>
       </div>
 
       {/* 2. 상단 이름 검색 창 */}
@@ -1043,6 +1089,16 @@ export default function ArchiveManager({
             </div>
           </div>
         </div>
+      )}
+
+      {/* 자모 유사도 분석 모달 */}
+      {isJamoModalOpen && (
+        <JamoSimilarityReportModal
+          isDark={isDark}
+          archiveItems={archiveItems}
+          onClose={() => setIsJamoModalOpen(false)}
+          onSelectItem={(item) => handleOpenDetail(item)}
+        />
       )}
     </div>
   );

@@ -97,23 +97,32 @@ button {
     outline: none;
 }
 
-/* 스크롤바 커스터마이징 (디자인 스펙 반영) */
+/* 스크롤바 커스터마이징 (고대비 슬라이더 스크롤바 디자인 스펙 반영) */
 ::-webkit-scrollbar {
-    width: 4px;
-    height: 4px;
+    width: 8px;
+    height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-    background: transparent;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
-    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.25);
+    background: #5E6AD2;
+    border-radius: 4px;
+}
+
+/* Firefox 전역 스크롤바 트랙 */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.25) rgba(0, 0, 0, 0.2);
 }
 
 /* 3. 레이아웃 컨테이너 */

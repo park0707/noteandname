@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { FileText } from 'lucide-react';
-import type { Project, Episode, Node, Snapshot } from './types';
+import type { Project, Episode, Node, Snapshot, Foreshadowing } from './types';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
@@ -37,6 +37,8 @@ interface WritingSpaceProps {
   relationNodes: Node[];
   isDark: boolean;
   targetWordCount?: number;
+  foreshadowings?: Foreshadowing[];
+  setForeshadowings?: Dispatch<SetStateAction<Foreshadowing[]>>;
 }
 
 export default function WritingSpace(props: WritingSpaceProps) {
@@ -49,12 +51,15 @@ export default function WritingSpace(props: WritingSpaceProps) {
     editorSaveStatus,
     isDark,
     targetWordCount = 3000,
+    foreshadowings,
+    setForeshadowings,
   } = props;
 
   const { user } = useAuth();
   const { showAlert } = useAlertConfirm();
 
   const activeEpisode = episodes.find(ep => ep.id === selectedEpisodeId) || null;
+  const activeEpisodeIndex = episodes.findIndex(ep => ep.id === selectedEpisodeId) + 1 || 1;
 
   // 1. 에피소드 및 휴지통 커스텀 훅
   const {
@@ -861,6 +866,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
           handleMoveToTrash={handleMoveToTrash}
           setShowTrashModal={setShowTrashModal}
           trashCount={trashEpisodes.length}
+          foreshadowings={foreshadowings}
         />
       </div>
 
@@ -920,6 +926,12 @@ export default function WritingSpace(props: WritingSpaceProps) {
               setBgColorPickerPos={setBgColorPickerPos}
               saveSelection={saveSelection}
               restoreSelection={restoreSelection}
+              foreshadowings={foreshadowings}
+              setForeshadowings={setForeshadowings}
+              selectedProjectId={selectedProject.id}
+              activeEpisodeIndex={activeEpisodeIndex}
+              episodes={episodes}
+              selectedEpisodeId={selectedEpisodeId}
             />
 
             {/* 찾기 및 바꾸기 바 */}

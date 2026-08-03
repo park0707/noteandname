@@ -28,6 +28,7 @@ export interface Node {
   summary?: string;
   description?: string;
   avatar?: string;
+  archiveItemId?: string;
 }
 
 export interface Link {
@@ -73,6 +74,8 @@ export interface Foreshadowing {
   description: string;
   createdChapter: number;
   targetChapter: number;
+  createdEpisodeId?: string;
+  createdEpisodeTitle?: string;
   isResolved: boolean;
   createdAt: string;
 }
@@ -140,7 +143,14 @@ export interface MythologyEntry {
   meaning?: string;
   storySummary: string;
   fameLevel: 'major' | 'minor';
-  tags: string[];
+  tags: string[]; // 표준 택사노미 세분화 태그 리스트
+  categoryTags?: {
+    genre?: string[];
+    trait?: string[];
+    mood?: string[];
+    element?: string[];
+    archetype?: string[];
+  };
   sourceUrl?: string;
   derivedNames?: string[];
 }
@@ -189,14 +199,59 @@ export interface HanjaEntry {
   category?: string;
 }
 
+export type EraType = '고대' | '중세' | '근대' | '현대' | '미래/SF';
+export type SocialClassType = '평민' | '귀족/양반' | '선비/학자';
+
+export interface WorldbuildingRuleTag {
+  id: string;
+  projectId?: string;
+  name: string; // 예: "🏷️ 펠드 마법가문"
+  description?: string;
+  baseEra?: EraType;
+  baseRegion?: string;
+  socialClass?: SocialClassType;
+  customRulesPrompt?: string; // 자연어 명명 규칙 (예: "접두사 '펠드-' 필수, 화염/마도공학 어감")
+  requiredSyllables?: string[];
+  forbiddenSyllables?: string[];
+  createdAt?: string;
+}
+
+export type NamingSidebarItemKey = 'category' | 'tag' | 'description' | 'mythology' | 'hanja';
+
+export interface EnabledNamingItems {
+  category: boolean;
+  tag: boolean;
+  description: boolean;
+  mythology: boolean;
+  hanja: boolean;
+}
+
+export interface EnabledEngineSections {
+  tag: boolean;
+  mythology: boolean;
+  naturalLanguage: boolean;
+}
+
 export interface GenerateNameParams {
   targetCategory: ArchiveCategory;
   subtype?: string;
+  customCategory?: string;
+  era?: EraType;
+  majorRegion?: string;
+  subRegion?: string;
+  socialClass?: SocialClassType;
+  worldbuildingRuleTags?: WorldbuildingRuleTag[];
+  activeRuleTagIds?: string[];
+  randomFallbackNotice?: string;
   tagWeights: TagWeight[];
   keywords: string;
   constraints?: NamingConstraint;
   count?: number;
   gender?: 'all' | 'male' | 'female';
+  enabledItems?: EnabledNamingItems;
+  enabledSections?: EnabledEngineSections;
+  selectedMythologyEntry?: MythologyEntry;
 }
+
 
 

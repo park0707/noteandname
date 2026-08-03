@@ -8,7 +8,7 @@ interface MythologyExplorerProps {
   onSaveToBank: (candidate: NameCandidate) => void;
 }
 
-const CULTURES = ['전체', '한국전통', '그리스로마', '북유럽', '켈트', '아랍'];
+const CULTURES = ['전체', '한국전통', '중국/동양', '일본', '그리스로마', '북유럽', '켈트', '이집트', '아랍/중동', '메소포타미아', '슬라브', '인도', '아메리카'];
 
 export const MythologyExplorer: React.FC<MythologyExplorerProps> = ({
   archiveItems,

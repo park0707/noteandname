@@ -9,6 +9,8 @@ import {
   Strikethrough,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Search,
   Minimize2,
   Maximize2,
@@ -23,8 +25,12 @@ import {
   Indent,
   Outdent,
   Eraser,
-  Sparkles
+  Sparkles,
+  GitCommit,
+  CheckCircle2
 } from 'lucide-react';
+import type { Foreshadowing, Episode } from '../types';
+import { getOrderedDocumentList } from '../utils';
 import { FONT_CATEGORY_LABELS } from '../../../lib/fonts';
 import type { FontOption } from '../../../lib/fonts';
 import { useAlertConfirm } from '../../../context/AlertConfirmContext';
@@ -39,6 +45,8 @@ import TableInsertModal from './Modals/TableInsertModal';
 import LinkInsertModal from './Modals/LinkInsertModal';
 import DividerConfigModal from './Modals/DividerConfigModal';
 import CreateCustomDividerModal from './Modals/CreateCustomDividerModal';
+import PlantForeshadowingModal from './Modals/PlantForeshadowingModal';
+import ResolveForeshadowingModal from './Modals/ResolveForeshadowingModal';
 
 interface EditorToolbarProps {
   isDark: boolean;
@@ -91,6 +99,12 @@ interface EditorToolbarProps {
   restoreSelection: () => void;
   firstLineIndent: boolean;
   setFirstLineIndent: (v: boolean) => void;
+  foreshadowings?: Foreshadowing[];
+  setForeshadowings?: Dispatch<SetStateAction<Foreshadowing[]>>;
+  selectedProjectId?: string;
+  activeEpisodeIndex?: number;
+  episodes?: Episode[];
+  selectedEpisodeId?: string | null;
 }
 
 export default function EditorToolbar(props: EditorToolbarProps) {
@@ -101,6 +115,12 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     setIsFocusMode,
     execFormat,
     editorFontSize,
+    foreshadowings,
+    setForeshadowings,
+    selectedProjectId,
+    activeEpisodeIndex = 1,
+    episodes = [],
+    selectedEpisodeId = null,
     currentFontFamily,
     currentFontSize,
     recentFontIds,
@@ -152,12 +172,60 @@ export default function EditorToolbar(props: EditorToolbarProps) {
   const fontDropdownRef = useRef<HTMLDivElement>(null);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
   const snapshotDropdownRef = useRef<HTMLDivElement>(null);
+  const foreshadowingDropdownRef = useRef<HTMLDivElement>(null);
   const [showDividerDropdown, setShowDividerDropdown] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [showSnapshotDropdown, setShowSnapshotDropdown] = useState(false);
+  const [showForeshadowingDropdown, setShowForeshadowingDropdown] = useState(false);
   const [dropdownCoords, setDropdownCoords] = useState<{ top: number; left: number } | null>(null);
   const [fontDropdownCoords, setFontDropdownCoords] = useState<{ top: number; left: number } | null>(null);
   const [snapshotDropdownCoords, setSnapshotDropdownCoords] = useState<{ top: number; left: number } | null>(null);
+  const [exportDropdownCoords, setExportDropdownCoords] = useState<{ top: number; left: number } | null>(null);
+  const [foreshadowingDropdownCoords, setForeshadowingDropdownCoords] = useState<{ top: number; left: number } | null>(null);
+
+  const [showPlantModal, setShowPlantModal] = useState(false);
+  const [showResolveModal, setShowResolveModal] = useState(false);
+  const secondaryToolbarRef = useRef<HTMLDivElement | null>(null);
+  const [showLeftScroll, setShowLeftScroll] = useState(false);
+  const [showRightScroll, setShowRightScroll] = useState(false);
+
+  const handleScrollSecondaryToolbar = (direction: 'left' | 'right') => {
+    if (!secondaryToolbarRef.current) return;
+    const scrollAmount = 200;
+    secondaryToolbarRef.current.scrollBy({
+      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      behavior: 'smooth'
+    });
+  };
+
+  const checkSecondaryToolbarScroll = () => {
+    if (!secondaryToolbarRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = secondaryToolbarRef.current;
+    setShowLeftScroll(scrollLeft > 2);
+    setShowRightScroll(scrollLeft < scrollWidth - clientWidth - 2);
+  };
+
+  useEffect(() => {
+    const el = secondaryToolbarRef.current;
+    if (!el) return;
+    checkSecondaryToolbarScroll();
+    el.addEventListener('scroll', checkSecondaryToolbarScroll);
+    window.addEventListener('resize', checkSecondaryToolbarScroll);
+    return () => {
+      el.removeEventListener('scroll', checkSecondaryToolbarScroll);
+      window.removeEventListener('resize', checkSecondaryToolbarScroll);
+    };
+  }, [isFocusMode]);
+
+  const orderedDocs = getOrderedDocumentList(episodes);
+  const currentDocIndex = selectedEpisodeId
+    ? orderedDocs.findIndex((d: Episode) => d.id === selectedEpisodeId) + 1
+    : activeEpisodeIndex;
+
+  const hasDueForeshadowing = foreshadowings
+    ? foreshadowings.some(f => !f.isResolved && f.targetChapter <= (currentDocIndex > 0 ? currentDocIndex : 1))
+    : false;
+
   const [fontSizeInput, setFontSizeInput] = useState(
     currentFontSize === 'mixed' ? '' : currentFontSize.toString()
   );
@@ -182,10 +250,13 @@ export default function EditorToolbar(props: EditorToolbarProps) {
       if (showSnapshotDropdown && snapshotDropdownRef.current && !snapshotDropdownRef.current.contains(target)) {
         setShowSnapshotDropdown(false);
       }
+      if (showForeshadowingDropdown && foreshadowingDropdownRef.current && !foreshadowingDropdownRef.current.contains(target)) {
+        setShowForeshadowingDropdown(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showExportDropdown, showStatsDropdown, showFontDropdown, showSnapshotDropdown, setShowFontDropdown, setShowStatsDropdown]);
+  }, [showExportDropdown, showStatsDropdown, showFontDropdown, showSnapshotDropdown, showForeshadowingDropdown, setShowFontDropdown, setShowStatsDropdown]);
 
   const [showCreateDividerModal, setShowCreateDividerModal] = useState(false);
 
@@ -1036,303 +1107,423 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
       {/* 2. 보조 설정 바 */}
       {!isFocusMode && (
-        <div className={`px-6 py-2 border-b flex items-center justify-between gap-4 text-xs overflow-visible flex-wrap ${themeStyles.toolbar}`}>
-          {/* 특수 편집 도구 */}
-          <div className="flex items-center gap-3 shrink-0">
+        <div className={`relative flex items-center border-b shrink-0 ${themeStyles.toolbar}`}>
+          {/* 좌측 슬라이드 이동 버튼 */}
+          {showLeftScroll && (
+            <button
+              onClick={() => handleScrollSecondaryToolbar('left')}
+              className={`absolute left-0 z-20 h-full px-1 flex items-center justify-center backdrop-blur-md transition-opacity ${
+                isDark ? 'bg-[#161719]/90 text-gray-300 hover:text-white' : 'bg-white/90 text-gray-600 hover:text-black'
+              }`}
+              title="왼쪽으로 슬라이드"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
 
-            <div className="relative shrink-0">
-              <button
-                ref={buttonRef}
-                onClick={toggleDividerDropdown}
-                className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors flex items-center gap-1 shrink-0 ${
-                  isDark
-                    ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400'
-                    : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
-                }`}
-                title="장면 전환용 구분선 종류 선택"
-              >
-                <span>구분선</span>
-                <span className="text-[8px] opacity-60">▼</span>
-              </button>
-
-              {showDividerDropdown && (
-                <div
-                  onMouseLeave={() => setShowDividerDropdown(false)}
-                  style={dropdownCoords ? { top: `${dropdownCoords.top}px`, left: `${dropdownCoords.left}px` } : undefined}
-                  className={`fixed w-72 rounded-xl border p-1.5 shadow-2xl z-50 flex flex-col gap-0.5 max-h-80 overflow-y-auto backdrop-blur-md ${
+          {/* 슬라이드 가능한 보조 설정 영역 */}
+          <div
+            ref={secondaryToolbarRef}
+            onWheel={(e) => {
+              if (secondaryToolbarRef.current && e.deltaY !== 0 && !e.shiftKey) {
+                secondaryToolbarRef.current.scrollLeft += e.deltaY;
+              }
+            }}
+            className="px-6 py-2 flex items-center justify-between gap-6 text-xs overflow-x-auto flex-nowrap min-w-0 w-full scrollbar-none select-none"
+          >
+            {/* 특수 편집 도구 */}
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="relative shrink-0">
+                <button
+                  ref={buttonRef}
+                  onClick={toggleDividerDropdown}
+                  className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors flex items-center gap-1 shrink-0 ${
                     isDark
-                      ? 'bg-[#1E1F22]/95 border-white/[0.08] text-gray-200 shadow-black/80'
-                      : 'bg-white/95 border-black/[0.08] text-gray-800 shadow-black/10'
+                      ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400'
+                      : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
                   }`}
+                  title="장면 전환용 구분선 종류 선택"
                 >
-                  {/* 최근 사용 구분선 */}
-                  {recentDividers.length > 0 && (
-                    <>
-                      <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">최근 구분선</div>
-                      {recentDividers.map((div: any) => (
-                        <button
-                          key={div.id}
-                          onClick={() => handleInsertDividerWithRecent(div.name, div.html)}
-                          className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                          title={div.name}
-                        >
-                          <span className="truncate block w-full">{div.name}</span>
-                        </button>
-                      ))}
-                      <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
-                    </>
-                  )}
+                  <span>구분선</span>
+                  <span className="text-[8px] opacity-60">▼</span>
+                </button>
 
-                  {/* 기본 구분선 */}
-                  <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">기본 구분선</div>
-                  <button
-                    onClick={() => openDividerConfigModal({ type: 'line', style: 'dashed', defaultName: '점선 구분선' })}
-                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                {showDividerDropdown && (
+                  <div
+                    onMouseLeave={() => setShowDividerDropdown(false)}
+                    style={dropdownCoords ? { top: `${dropdownCoords.top}px`, left: `${dropdownCoords.left}px` } : undefined}
+                    className={`fixed w-72 rounded-xl border p-1.5 shadow-2xl z-50 flex flex-col gap-0.5 max-h-80 overflow-y-auto backdrop-blur-md ${
+                      isDark
+                        ? 'bg-[#1E1F22]/95 border-white/[0.08] text-gray-200 shadow-black/80'
+                        : 'bg-white/95 border-black/[0.08] text-gray-800 shadow-black/10'
+                    }`}
                   >
-                    점선 구분선 (설정 후 삽입)
-                  </button>
-                  <button
-                    onClick={() => openDividerConfigModal({ type: 'line', style: 'solid', defaultName: '실선 구분선' })}
-                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                  >
-                    실선 구분선 (설정 후 삽입)
-                  </button>
-                  <button
-                    onClick={() => openDividerConfigModal({ type: 'line', style: 'double', defaultName: '이중선 구분선' })}
-                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                  >
-                    이중선 구분선 (설정 후 삽입)
-                  </button>
-                  <button
-                    onClick={() => openDividerConfigModal({ type: 'text', symbol: '★ ★ ★', defaultName: '별 장식선' })}
-                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                  >
-                    별 장식선 (★ ★ ★)
-                  </button>
-                  <button
-                    onClick={() => openDividerConfigModal({ type: 'text', symbol: '~ ~ ~', defaultName: '물결선' })}
-                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                  >
-                    물결선 (~ ~ ~)
-                  </button>
+                    {/* 최근 사용 구분선 */}
+                    {recentDividers.length > 0 && (
+                      <>
+                        <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">최근 구분선</div>
+                        {recentDividers.map((div: any) => (
+                          <button
+                            key={div.id}
+                            onClick={() => handleInsertDividerWithRecent(div.name, div.html)}
+                            className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                            title={div.name}
+                          >
+                            <span className="truncate block w-full">{div.name}</span>
+                          </button>
+                        ))}
+                        <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+                      </>
+                    )}
 
-                  {/* 저장된 커스텀 구분선 */}
-                  {customDividers.length > 0 && (
-                    <>
-                      <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
-                      <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">마이 커스텀 구분선</div>
-                      {customDividers.map((div: any) => (
-                        <button
-                          key={div.id}
-                          onClick={() => handleInsertDividerWithRecent(div.name, div.html)}
-                          className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                          title={div.name}
-                        >
-                          <span className="truncate block w-full">{div.name}</span>
-                        </button>
-                      ))}
-                    </>
-                  )}
+                    {/* 기본 구분선 */}
+                    <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">기본 구분선</div>
+                    <button
+                      onClick={() => openDividerConfigModal({ type: 'line', style: 'dashed', defaultName: '점선 구분선' })}
+                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                    >
+                      점선 구분선 (설정 후 삽입)
+                    </button>
+                    <button
+                      onClick={() => openDividerConfigModal({ type: 'line', style: 'solid', defaultName: '실선 구분선' })}
+                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                    >
+                      실선 구분선 (설정 후 삽입)
+                    </button>
+                    <button
+                      onClick={() => openDividerConfigModal({ type: 'line', style: 'double', defaultName: '이중선 구분선' })}
+                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                    >
+                      이중선 구분선 (설정 후 삽입)
+                    </button>
+                    <button
+                      onClick={() => openDividerConfigModal({ type: 'text', symbol: '★ ★ ★', defaultName: '별 장식선' })}
+                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                    >
+                      별 장식선 (★ ★ ★)
+                    </button>
+                    <button
+                      onClick={() => openDividerConfigModal({ type: 'text', symbol: '~ ~ ~', defaultName: '물결선' })}
+                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                    >
+                      물결선 (~ ~ ~)
+                    </button>
 
-                  {/* 커스텀 구분선 만들기 (가장 하단) */}
-                  <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
-                  <button
-                    onClick={() => {
-                      setShowDividerDropdown(false);
-                      setShowCreateDividerModal(true);
-                    }}
-                    className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-bold text-[#5E6AD2] hover:bg-[#5E6AD2]/10 transition-colors h-8 flex items-center leading-normal"
-                  >
-                    ➕ 커스텀 구분선 만들기
-                  </button>
-                </div>
-              )}
-            </div>
-            <button
-              onClick={handleToggleBlockquote}
-              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="인용구 블록 설정/해제"
-            >
-              <BookOpen className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={openTableInsertModal}
-              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="표 삽입"
-            >
-              <Grid className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={openLinkInsertModal}
-              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="링크 삽입"
-            >
-              <Link className="w-3.5 h-3.5" />
-            </button>
+                    {/* 저장된 커스텀 구분선 */}
+                    {customDividers.length > 0 && (
+                      <>
+                        <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+                        <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">마이 커스텀 구분선</div>
+                        {customDividers.map((div: any) => (
+                          <button
+                            key={div.id}
+                            onClick={() => handleInsertDividerWithRecent(div.name, div.html)}
+                            className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
+                            title={div.name}
+                          >
+                            <span className="truncate block w-full">{div.name}</span>
+                          </button>
+                        ))}
+                      </>
+                    )}
 
-            <div className="relative flex items-center shrink-0" ref={exportDropdownRef}>
+                    {/* 커스텀 구분선 만들기 (가장 하단) */}
+                    <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+                    <button
+                      onClick={() => {
+                        setShowDividerDropdown(false);
+                        setShowCreateDividerModal(true);
+                      }}
+                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-bold text-[#5E6AD2] hover:bg-[#5E6AD2]/10 transition-colors h-8 flex items-center leading-normal"
+                    >
+                      ➕ 커스텀 구분선 만들기
+                    </button>
+                  </div>
+                )}
+              </div>
               <button
-                onClick={() => setShowExportDropdown(!showExportDropdown)}
-                className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'} flex items-center gap-1`}
-                title="원고 내보내기"
+                onClick={handleToggleBlockquote}
+                className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                title="인용구 블록 설정/해제"
               >
-                <Download className="w-3.5 h-3.5" />
-                <span className="text-[10px] font-semibold">내보내기</span>
+                <BookOpen className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={openTableInsertModal}
+                className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                title="표 삽입"
+              >
+                <Grid className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={openLinkInsertModal}
+                className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                title="링크 삽입"
+              >
+                <Link className="w-3.5 h-3.5" />
               </button>
 
-              {showExportDropdown && (
-                <div className={`absolute right-0 top-7 z-30 w-32 py-1 rounded-lg border shadow-xl text-xs flex flex-col ${
-                  isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'
-                }`}>
-                  <button
-                    onClick={() => handleExportDocument('txt')}
-                    className={`w-full text-left px-3.5 py-2 transition-colors ${
-                      isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.04]'
+              <div className="relative flex items-center shrink-0" ref={exportDropdownRef}>
+                <button
+                  onClick={() => {
+                    if (!showExportDropdown && exportDropdownRef.current) {
+                      const rect = exportDropdownRef.current.getBoundingClientRect();
+                      setExportDropdownCoords({
+                        top: rect.bottom + 4,
+                        left: rect.left
+                      });
+                    }
+                    setShowExportDropdown(!showExportDropdown);
+                  }}
+                  className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'} flex items-center gap-1`}
+                  title="원고 내보내기"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span className="text-[10px] font-semibold">내보내기</span>
+                </button>
+
+                {showExportDropdown && (
+                  <div
+                    style={exportDropdownCoords ? { top: `${exportDropdownCoords.top}px`, left: `${exportDropdownCoords.left}px` } : undefined}
+                    className={`fixed z-50 w-32 py-1 rounded-lg border shadow-xl text-xs flex flex-col backdrop-blur-md ${
+                      isDark ? 'bg-[#1E1F22]/95 border-white/[0.08] text-gray-200 shadow-black/80' : 'bg-white/95 border-black/[0.08] text-gray-800 shadow-black/10'
                     }`}
                   >
-                    TXT 파일
-                  </button>
-                  <button
-                    onClick={() => handleExportDocument('md')}
-                    className={`w-full text-left px-3.5 py-2 transition-colors ${
-                      isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.04]'
+                    <button
+                      onClick={() => {
+                        setShowExportDropdown(false);
+                        handleExportDocument('txt');
+                      }}
+                      className={`w-full text-left px-3.5 py-2 transition-colors ${
+                        isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.04]'
+                      }`}
+                    >
+                      TXT 파일
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExportDropdown(false);
+                        handleExportDocument('md');
+                      }}
+                      className={`w-full text-left px-3.5 py-2 transition-colors ${
+                        isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.04]'
+                      }`}
+                    >
+                      Markdown
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExportDropdown(false);
+                        handleExportDocument('docx');
+                      }}
+                      className={`w-full text-left px-3.5 py-2 transition-colors ${
+                        isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.04]'
+                      }`}
+                    >
+                      MS Word
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 복선 관리 드롭다운 */}
+              <div className="relative flex items-center shrink-0" ref={foreshadowingDropdownRef}>
+                <button
+                  onClick={() => {
+                    if (!showForeshadowingDropdown && foreshadowingDropdownRef.current) {
+                      const rect = foreshadowingDropdownRef.current.getBoundingClientRect();
+                      setForeshadowingDropdownCoords({
+                        top: rect.bottom + 4,
+                        left: rect.left
+                      });
+                    }
+                    setShowForeshadowingDropdown(!showForeshadowingDropdown);
+                  }}
+                  className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${
+                    isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'
+                  } flex items-center gap-1.5 transition-colors relative`}
+                  title={hasDueForeshadowing ? "회수 시점이 도달한 복선이 있습니다! 클릭하여 복선 회수" : "복선 관리 (설치 및 회수)"}
+                >
+                  <div className="relative flex items-center">
+                    <GitCommit className="w-3.5 h-3.5 text-[#7480E2]" />
+                    {hasDueForeshadowing && (
+                      <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-semibold">복선 관리</span>
+                  <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+                </button>
+
+                {showForeshadowingDropdown && (
+                  <div
+                    style={foreshadowingDropdownCoords ? { top: `${foreshadowingDropdownCoords.top}px`, left: `${foreshadowingDropdownCoords.left}px` } : undefined}
+                    className={`fixed z-50 w-36 py-1 rounded-xl border shadow-xl text-xs flex flex-col gap-0.5 backdrop-blur-md ${
+                      isDark ? 'bg-[#1E1F22]/95 border-white/[0.08] text-gray-200 shadow-black/80' : 'bg-white/95 border-black/[0.08] text-gray-800 shadow-black/10'
                     }`}
+                    onMouseLeave={() => setShowForeshadowingDropdown(false)}
                   >
-                    Markdown
-                  </button>
-                  <button
-                    onClick={() => handleExportDocument('docx')}
-                    className={`w-full text-left px-3.5 py-2 transition-colors ${
-                      isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-black/[0.04]'
+                    <button
+                      onClick={() => {
+                        setShowForeshadowingDropdown(false);
+                        setShowPlantModal(true);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center gap-2 leading-normal ${
+                        isDark ? 'text-gray-200' : 'text-gray-800'
+                      }`}
+                    >
+                      <GitCommit className="w-3.5 h-3.5 text-[#7480E2]" />
+                      <span>복선 설치</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowForeshadowingDropdown(false);
+                        setShowResolveModal(true);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center gap-2 leading-normal ${
+                        isDark ? 'text-gray-200' : 'text-gray-800'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>복선 회수</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 줄간격, 문단간격, 타이프라이터, 스냅샷, 이력 */}
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-500 font-medium">줄간격</span>
+                <select
+                  value={lineHeight}
+                  onChange={e => setLineHeight(e.target.value)}
+                  className={`px-2 py-0.5 rounded text-[10px] border outline-none cursor-pointer ${themeStyles.input}`}
+                >
+                  <option value="1.2">1.2</option>
+                  <option value="1.5">1.5</option>
+                  <option value="1.8">1.8 (표준)</option>
+                  <option value="2.0">2.0</option>
+                  <option value="2.5">2.5</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-500 font-medium">문단간격</span>
+                <select
+                  value={paragraphSpacing}
+                  onChange={e => setParagraphSpacing(parseInt(e.target.value))}
+                  className={`px-2 py-0.5 rounded text-[10px] border outline-none cursor-pointer ${themeStyles.input}`}
+                >
+                  <option value="0">0px</option>
+                  <option value="4">4px</option>
+                  <option value="8">8px (기본)</option>
+                  <option value="12">12px</option>
+                  <option value="16">16px</option>
+                  <option value="20">20px</option>
+                </select>
+              </div>
+
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={firstLineIndent}
+                  onChange={e => setFirstLineIndent(e.target.checked)}
+                  className="rounded border-gray-300 text-[#5E6AD2] focus:ring-[#5E6AD2] w-3.5 h-3.5"
+                />
+                <span className="text-[10px] text-gray-500 font-semibold">첫줄 들여쓰기</span>
+              </label>
+
+              <div className={`w-[1px] h-3 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+
+              <label className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={typewriterMode}
+                  onChange={e => setTypewriterMode(e.target.checked)}
+                  className="rounded border-gray-300 text-[#5E6AD2] focus:ring-[#5E6AD2] w-3.5 h-3.5"
+                />
+                <span className="text-[10px] text-gray-500 font-semibold">타이프라이터 모드</span>
+              </label>
+
+              <div className={`w-[1px] h-3 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+
+              <div className="relative" ref={snapshotDropdownRef}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!showSnapshotDropdown && snapshotDropdownRef.current) {
+                      const rect = snapshotDropdownRef.current.getBoundingClientRect();
+                      setSnapshotDropdownCoords({
+                        top: rect.bottom + 4,
+                        left: rect.left
+                      });
+                    }
+                    setShowSnapshotDropdown(!showSnapshotDropdown);
+                  }}
+                  className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-700'}`}
+                  title="스냅샷 관리"
+                >
+                  버전 스냅샷
+                </button>
+
+                {showSnapshotDropdown && (
+                  <div
+                    style={snapshotDropdownCoords ? { top: `${snapshotDropdownCoords.top}px`, left: `${snapshotDropdownCoords.left}px` } : undefined}
+                    className={`fixed z-50 py-1 w-32 rounded-xl border shadow-2xl flex flex-col gap-0.5 backdrop-blur-md ${
+                      isDark ? 'bg-[#1E1F22]/95 border-white/[0.08] text-gray-200 shadow-black/80' : 'bg-white/95 border-black/[0.08] text-gray-800 shadow-black/10'
                     }`}
+                    onMouseLeave={() => setShowSnapshotDropdown(false)}
                   >
-                    MS Word
-                  </button>
-                </div>
+                    <button
+                      onClick={() => {
+                        setShowSnapshotDropdown(false);
+                        handleCreateSnapshot();
+                      }}
+                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal ${isDark ? 'text-gray-200' : 'text-gray-800'}`}
+                    >
+                      💾 수동 저장
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowSnapshotDropdown(false);
+                        handleOpenAutoSaveModal();
+                      }}
+                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal ${isDark ? 'text-gray-200' : 'text-gray-800'}`}
+                    >
+                      ⚙️ 자동 저장 설정
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {historySnapshotsCount > 0 && (
+                <button
+                  onClick={() => setShowHistoryModal(true)}
+                  className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#5E6AD2]/10 text-[#7480E2] hover:bg-[#5E6AD2]/20 shrink-0"
+                  title="버전 기록 목록 열기"
+                >
+                  이력 ({historySnapshotsCount})
+                </button>
               )}
             </div>
           </div>
 
-          {/* 줄간격, 문단간격, 타이프라이터, 스냅샷, 이력 */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="flex items-center gap-1.5">
-              <span className="text-gray-500 font-medium">줄간격</span>
-              <select
-                value={lineHeight}
-                onChange={e => setLineHeight(e.target.value)}
-                className={`px-2 py-0.5 rounded text-[10px] border outline-none cursor-pointer ${themeStyles.input}`}
-              >
-                <option value="1.2">1.2</option>
-                <option value="1.5">1.5</option>
-                <option value="1.8">1.8 (표준)</option>
-                <option value="2.0">2.0</option>
-                <option value="2.5">2.5</option>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-1.5">
-              <span className="text-gray-500 font-medium">문단간격</span>
-              <select
-                value={paragraphSpacing}
-                onChange={e => setParagraphSpacing(parseInt(e.target.value))}
-                className={`px-2 py-0.5 rounded text-[10px] border outline-none cursor-pointer ${themeStyles.input}`}
-              >
-                <option value="0">0px</option>
-                <option value="4">4px</option>
-                <option value="8">8px (기본)</option>
-                <option value="12">12px</option>
-                <option value="16">16px</option>
-                <option value="20">20px</option>
-              </select>
-            </div>
-
-
-
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={firstLineIndent}
-                onChange={e => setFirstLineIndent(e.target.checked)}
-                className="rounded border-gray-300 text-[#5E6AD2] focus:ring-[#5E6AD2] w-3.5 h-3.5"
-              />
-              <span className="text-[10px] text-gray-500 font-semibold">첫줄 들여쓰기</span>
-            </label>
-
-            <div className={`w-[1px] h-3 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
-
-            <label className="flex items-center gap-1.5 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={typewriterMode}
-                onChange={e => setTypewriterMode(e.target.checked)}
-                className="rounded border-gray-300 text-[#5E6AD2] focus:ring-[#5E6AD2] w-3.5 h-3.5"
-              />
-              <span className="text-[10px] text-gray-500 font-semibold">타이프라이터 모드</span>
-            </label>
-
-            <div className={`w-[1px] h-3 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
-
-            <div className="relative" ref={snapshotDropdownRef}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!showSnapshotDropdown && snapshotDropdownRef.current) {
-                    const rect = snapshotDropdownRef.current.getBoundingClientRect();
-                    setSnapshotDropdownCoords({
-                      top: rect.bottom + 4,
-                      left: rect.left
-                    });
-                  }
-                  setShowSnapshotDropdown(!showSnapshotDropdown);
-                }}
-                className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors ${isDark ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-300' : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-700'}`}
-                title="스냅샷 관리"
-              >
-                버전 스냅샷
-              </button>
-
-              {showSnapshotDropdown && (
-                <div
-                  style={snapshotDropdownCoords ? { top: `${snapshotDropdownCoords.top}px`, left: `${snapshotDropdownCoords.left}px` } : undefined}
-                  className={`fixed z-50 py-1 w-32 rounded-xl border shadow-2xl flex flex-col gap-0.5 backdrop-blur-md ${
-                    isDark ? 'bg-[#1E1F22]/95 border-white/[0.08] text-gray-200 shadow-black/80' : 'bg-white/95 border-black/[0.08] text-gray-800 shadow-black/10'
-                  }`}
-                  onMouseLeave={() => setShowSnapshotDropdown(false)}
-                >
-                  <button
-                    onClick={() => {
-                      setShowSnapshotDropdown(false);
-                      handleCreateSnapshot();
-                    }}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal ${isDark ? 'text-gray-200' : 'text-gray-800'}`}
-                  >
-                    💾 수동 저장
-                  </button>
-                  <button
-                    onClick={() => {
-                      setShowSnapshotDropdown(false);
-                      handleOpenAutoSaveModal();
-                    }}
-                    className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal ${isDark ? 'text-gray-200' : 'text-gray-800'}`}
-                  >
-                    ⚙️ 자동 저장 설정
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {historySnapshotsCount > 0 && (
-              <button
-                onClick={() => setShowHistoryModal(true)}
-                className="px-2 py-0.5 rounded text-[10px] font-bold bg-[#5E6AD2]/10 text-[#7480E2] hover:bg-[#5E6AD2]/20"
-                title="버전 기록 목록 열기"
-              >
-                이력 ({historySnapshotsCount})
-              </button>
-            )}
-
-
-          </div>
+          {/* 우측 슬라이드 이동 버튼 */}
+          {showRightScroll && (
+            <button
+              onClick={() => handleScrollSecondaryToolbar('right')}
+              className={`absolute right-0 z-20 h-full px-1 flex items-center justify-center backdrop-blur-md transition-opacity ${
+                isDark ? 'bg-[#161719]/90 text-gray-300 hover:text-white' : 'bg-white/90 text-gray-600 hover:text-black'
+              }`}
+              title="오른쪽으로 슬라이드"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          )}
         </div>
       )}
 
@@ -1397,6 +1588,47 @@ export default function EditorToolbar(props: EditorToolbarProps) {
         linkNewTab={linkNewTab}
         setLinkNewTab={setLinkNewTab}
         executeInsertLink={executeInsertLink}
+      />
+
+      {/* 복선 설치 모달 */}
+      <PlantForeshadowingModal
+        isDark={isDark}
+        isOpen={showPlantModal}
+        onClose={() => setShowPlantModal(false)}
+        episodes={episodes}
+        selectedEpisodeId={selectedEpisodeId}
+        onPlant={(title, description, createdChapter, targetChapter, plantedEpisodeId, plantedEpisodeTitle) => {
+          if (!setForeshadowings) return;
+          const newFs: Foreshadowing = {
+            id: `fs-${Date.now()}`,
+            projectId: selectedProjectId || foreshadowings?.[0]?.projectId || '',
+            title,
+            description,
+            createdChapter,
+            targetChapter,
+            createdEpisodeId: plantedEpisodeId,
+            createdEpisodeTitle: plantedEpisodeTitle,
+            isResolved: false,
+            createdAt: new Date().toISOString()
+          };
+          setForeshadowings(prev => [...prev, newFs]);
+          showAlert(`복선 "${title}"이(가) [${createdChapter}화] 문서에 설치되었습니다.`);
+        }}
+      />
+
+      {/* 복선 회수 모달 */}
+      <ResolveForeshadowingModal
+        isDark={isDark}
+        isOpen={showResolveModal}
+        onClose={() => setShowResolveModal(false)}
+        foreshadowings={foreshadowings || []}
+        onResolve={(id) => {
+          if (!setForeshadowings) return;
+          setForeshadowings(prev =>
+            prev.map(f => (f.id === id ? { ...f, isResolved: true } : f))
+          );
+          showAlert('복선이 회수 처리되었습니다.');
+        }}
       />
     </div>
   );

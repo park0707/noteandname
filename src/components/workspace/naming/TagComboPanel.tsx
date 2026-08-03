@@ -21,7 +21,7 @@ interface TagComboPanelProps {
   onChangeGender: (gender: 'all' | 'male' | 'female') => void;
 }
 
-export const TagComboPanel: React.FC<TagComboPanelProps> = ({
+export const TagComboPanel: React.FC<TagComboPanelProps> = React.memo(({
   selectedCategory,
   selectedSubtype,
   tagWeights,
@@ -615,4 +615,4 @@ export const TagComboPanel: React.FC<TagComboPanelProps> = ({
       )}
     </div>
   );
-};
+});

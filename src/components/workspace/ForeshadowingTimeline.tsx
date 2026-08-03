@@ -178,15 +178,19 @@ export default function ForeshadowingTimeline({
                 key={fs.id}
                 className={`group p-5 rounded-2xl border transition-all duration-300 flex items-start justify-between ${
                   isResolved
-                    ? isDark ? 'bg-white/[0.01] border-white/[0.03] opacity-60' : 'bg-black/[0.01] border-black/[0.03] opacity-65'
-                    : isDark ? 'bg-[#0D0E11] border-white/[0.06] hover:border-white/[0.12] hover:shadow-xl' : 'bg-white border-black/[0.06] hover:border-black/[0.12] hover:shadow-md'
+                    ? isDark
+                      ? 'bg-emerald-500/[0.04] border-emerald-500/25 opacity-80'
+                      : 'bg-emerald-50/70 border-emerald-300/60 opacity-90'
+                    : isDark
+                      ? 'bg-[#0D0E11] border-white/[0.08] hover:border-[#5E6AD2]/40 hover:shadow-xl'
+                      : 'bg-white border-black/[0.08] hover:border-[#5E6AD2]/40 hover:shadow-md'
                 }`}
               >
                 <div className="flex items-start gap-3.5 flex-1 min-w-0">
                   <button
                     onClick={() => handleToggleResolve(fs.id)}
                     className={`mt-1 transition-colors ${
-                      isResolved ? 'text-[#2ECC71]' : isDark ? 'text-gray-600 hover:text-white' : 'text-gray-400 hover:text-black'
+                      isResolved ? 'text-emerald-400 hover:text-emerald-300' : isDark ? 'text-amber-400 hover:text-amber-300' : 'text-amber-500 hover:text-amber-600'
                     }`}
                     title={isResolved ? '복선 미회수로 돌리기' : '복선 회수 완료 처리'}
                   >
@@ -194,29 +198,33 @@ export default function ForeshadowingTimeline({
                   </button>
 
                   <div className="flex-1 min-w-0 flex flex-col gap-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <h3 className={`text-sm font-bold truncate leading-none ${
                         isResolved
-                          ? 'line-through text-gray-500'
+                          ? isDark ? 'line-through text-emerald-400/70' : 'line-through text-emerald-700/70'
                           : isDark ? 'text-white' : 'text-[#121316]'
                       }`}>
                         {fs.title}
                       </h3>
                       {isResolved ? (
-                        <span className="px-1.5 py-0.5 bg-[#2ECC71]/15 text-[#2ECC71] text-[9px] font-bold rounded-md">회수완료</span>
+                        <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-bold rounded-lg flex items-center gap-1 shadow-xs">
+                          ✨ 회수 완료
+                        </span>
                       ) : (
-                        <span className={`px-1.5 py-0.5 text-[9px] font-bold rounded-md ${
+                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-lg border flex items-center gap-1 ${
                           remaining > 10
-                            ? 'bg-[#5E6AD2]/15 text-[#7480E2]'
-                            : 'bg-red-400/15 text-red-400'
+                            ? 'bg-[#5E6AD2]/15 text-[#7480E2] border-[#5E6AD2]/30'
+                            : 'bg-red-400/15 text-red-400 border-red-400/30'
                         }`}>
-                          {remaining > 0 ? `회수 대비화수: ${remaining}화 남음` : '회수 시점 도달'}
+                          📌 미회수 ({remaining > 0 ? `${remaining}화 남음` : '회수 시점 도달'})
                         </span>
                       )}
                     </div>
                     {fs.description && (
                       <p className={`text-xs mt-1 leading-relaxed whitespace-pre-wrap break-all ${
-                        isResolved ? 'text-gray-500' : isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'
+                        isResolved
+                          ? isDark ? 'text-emerald-300/50' : 'text-emerald-900/60'
+                          : isDark ? 'text-[#A1A1AA]' : 'text-[#55555A]'
                       }`}>
                         {fs.description}
                       </p>

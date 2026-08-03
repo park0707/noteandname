@@ -10,7 +10,7 @@ interface NameResultListProps {
   onAddToArchive: (candidate: NameCandidate, category: ArchiveCategory) => void;
 }
 
-export const NameResultList: React.FC<NameResultListProps> = ({
+export const NameResultList: React.FC<NameResultListProps> = React.memo(({
   candidates,
   batchCount,
   onChangeBatchCount,
@@ -38,12 +38,12 @@ export const NameResultList: React.FC<NameResultListProps> = ({
   };
 
   return (
-    <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 backdrop-blur-md space-y-4">
+    <div className="bg-[#121318]/90 border border-slate-800 rounded-2xl p-4 backdrop-blur-md space-y-4">
       {/* 리스트 헤더 & 일괄 배치 생성 수량 조절 */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
         <div className="flex items-center space-x-2">
-          <Sparkles className="w-5 h-5 text-indigo-400" />
-          <h3 className="text-sm font-semibold text-slate-200">
+          <Sparkles className="w-5 h-5 text-[#5E6AD2]" />
+          <h3 className="text-sm font-bold text-slate-100">
             생성 결과 목록 (Name Results) - {candidates.length}건
           </h3>
         </div>
@@ -53,7 +53,7 @@ export const NameResultList: React.FC<NameResultListProps> = ({
           <select
             value={batchCount}
             onChange={(e) => onChangeBatchCount(parseInt(e.target.value))}
-            className="bg-slate-800 border border-slate-700 text-xs text-slate-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-indigo-500 font-medium"
+            className="bg-slate-900 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-1.5 focus:outline-none focus:border-[#5E6AD2] font-medium"
           >
             <option value={5}>5개 (기본)</option>
             <option value={10}>10개</option>
@@ -64,7 +64,7 @@ export const NameResultList: React.FC<NameResultListProps> = ({
       </div>
 
       {candidates.length === 0 ? (
-        <div className="text-center py-10 text-xs text-slate-500 bg-slate-950/30 rounded-xl border border-dashed border-slate-800">
+        <div className="text-center py-12 text-xs text-slate-500 bg-slate-950/40 rounded-xl border border-dashed border-slate-800">
           태그를 조합하거나 버튼을 눌러 새로운 이름을 생성해보세요.
         </div>
       ) : (
@@ -77,10 +77,10 @@ export const NameResultList: React.FC<NameResultListProps> = ({
             return (
               <div
                 key={cand.id || cand.name}
-                className={`relative bg-slate-950/70 border rounded-xl p-3 flex flex-col justify-between transition-all hover:shadow-lg ${
+                className={`relative bg-slate-900/90 border rounded-2xl p-3.5 flex flex-col justify-between transition-all hover:shadow-lg ${
                   isHighSimilarity
                     ? 'border-amber-500/60 bg-amber-950/10'
-                    : 'border-slate-800 hover:border-indigo-500/50'
+                    : 'border-slate-800/80 hover:border-[#5E6AD2]/50'
                 }`}
               >
                 {/* 실시간 자모 유사도 경고 배지 */}
@@ -120,16 +120,16 @@ export const NameResultList: React.FC<NameResultListProps> = ({
                       )}
                     </button>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-snug">
+                  <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
                     {cand.meaning}
                   </p>
                 </div>
 
                 {/* 태그 목록 */}
                 {cand.tags && cand.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
+                  <div className="flex flex-wrap gap-1 mt-2.5">
                     {cand.tags.map(t => (
-                      <span key={t} className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400">
+                      <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 font-medium">
                         #{t}
                       </span>
                     ))}
@@ -137,22 +137,22 @@ export const NameResultList: React.FC<NameResultListProps> = ({
                 )}
 
                 {/* 하단 액션 버튼 */}
-                <div className="grid grid-cols-2 gap-1.5 mt-3 pt-2 border-t border-slate-800/60">
+                <div className="grid grid-cols-2 gap-1.5 mt-3 pt-2.5 border-t border-slate-800/80">
                   <button
                     onClick={() => handleSave(cand)}
                     disabled={isSaved}
-                    className="flex items-center justify-center space-x-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] rounded-lg border border-slate-700 transition-colors disabled:opacity-50"
+                    className="flex items-center justify-center space-x-1 py-1.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold rounded-xl border border-slate-700/80 transition-colors disabled:opacity-50"
                   >
-                    <Bookmark className="w-3 h-3 text-indigo-400" />
+                    <Bookmark className="w-3 h-3 text-[#5E6AD2]" />
                     <span>{isSaved ? '보관됨' : '보관'}</span>
                   </button>
 
                   <button
                     onClick={() => handleArchive(cand)}
                     disabled={isArchived}
-                    className="flex items-center justify-center space-x-1 py-1.5 px-2 bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-200 text-[11px] rounded-lg border border-indigo-800/60 transition-colors disabled:opacity-50"
+                    className="flex items-center justify-center space-x-1 py-1.5 px-2 bg-violet-950/40 hover:bg-violet-900/60 text-violet-200 text-[11px] font-semibold rounded-xl border border-violet-800/40 transition-colors disabled:opacity-50"
                   >
-                    <PlusCircle className="w-3 h-3 text-indigo-400" />
+                    <PlusCircle className="w-3 h-3 text-violet-400" />
                     <span>{isArchived ? '등록됨' : '아카이브'}</span>
                   </button>
                 </div>
@@ -163,4 +163,4 @@ export const NameResultList: React.FC<NameResultListProps> = ({
       )}
     </div>
   );
-};
+});

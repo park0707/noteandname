@@ -8,9 +8,11 @@ import {
   Folder,
   FileText,
   MoreVertical,
-  ChevronRight
+  ChevronRight,
+  GitCommit
 } from 'lucide-react';
-import type { Episode } from '../types';
+import type { Episode, Foreshadowing } from '../types';
+import { getOrderedDocumentList } from '../utils';
 import LocalImportModal from './Modals/LocalImportModal';
 import type { FileEntry } from './Modals/LocalImportModal';
 import { useAlertConfirm } from '../../../context/AlertConfirmContext';
@@ -37,6 +39,7 @@ interface EpisodeSidebarProps {
   handleMoveToTrash: (id: string) => void;
   setShowTrashModal: (show: boolean) => void;
   trashCount: number;
+  foreshadowings?: Foreshadowing[];
 }
 
 export default function EpisodeSidebar(props: EpisodeSidebarProps) {
@@ -61,6 +64,7 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
     handleMoveToTrash,
     setShowTrashModal,
     trashCount,
+    foreshadowings = [],
   } = props;
 
   const { showAlert } = useAlertConfirm();
@@ -176,7 +180,7 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
     showAlert(`로컬 가져오기 완료: 총 ${files.length}개의 파일이 성공적으로 임포트되었습니다!`);
   };
 
-
+  const orderedDocs = getOrderedDocumentList(episodes);
 
   const renderTree = (parentId: string | null = null, depth: number = 0) => {
     const currentItems = episodes.filter(ep => {
@@ -196,6 +200,11 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
     return sortedItems.map(ep => {
       const isExpanded = expandedFolderIds.includes(ep.id);
       const isRenaming = renamingId === ep.id;
+
+      const docIndex = !ep.isFolder ? orderedDocs.findIndex((d: Episode) => d.id === ep.id) + 1 : -1;
+      const dueCount = (!ep.isFolder && foreshadowings && docIndex > 0)
+        ? foreshadowings.filter(f => !f.isResolved && f.targetChapter === docIndex).length
+        : 0;
 
       return (
         <div key={ep.id} className="flex flex-col">
@@ -243,6 +252,16 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
                 />
               ) : (
                 <span className="text-xs truncate">{ep.title}</span>
+              )}
+
+              {dueCount > 0 && (
+                <span
+                  className="px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/30 flex items-center gap-0.5 shrink-0 animate-pulse"
+                  title={`이 문서에서 회수해야 할 복선 ${dueCount}건`}
+                >
+                  <GitCommit className="w-2.5 h-2.5 text-red-400" />
+                  <span>복선회수</span>
+                </span>
               )}
             </div>
 

@@ -5,7 +5,6 @@ import MyPageModal from './MyPageModal';
 import {
   LayoutDashboard,
   Sparkles,
-  Scale,
   Network,
   GitCommit,
   BookOpen,
@@ -52,7 +51,6 @@ export default function Sidebar({
     { id: 'editor', icon: FileText, label: '집필실', badge: selectedProject ? undefined : '선택 필요' },
     { id: 'archive', icon: Archive, label: '아카이브', badge: selectedProject ? undefined : '선택 필요' },
     { id: 'naming', icon: Sparkles, label: 'AI 작명 엔진', badge: selectedProject ? undefined : '선택 필요' },
-    { id: 'jamo', icon: Scale, label: '자모 유사도 필터', badge: selectedProject ? undefined : '선택 필요' },
     { id: 'relations', icon: Network, label: '인물 관계도', badge: selectedProject ? undefined : '선택 필요' },
     { id: 'timeline', icon: GitCommit, label: '복선 타임라인', badge: selectedProject ? undefined : '선택 필요' },
     { id: 'history', icon: BookOpen, label: '캐릭터 히스토리', badge: selectedProject ? undefined : '선택 필요' },

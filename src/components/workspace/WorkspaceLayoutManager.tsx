@@ -190,8 +190,6 @@ function PanelRenderer(props: PanelRendererProps) {
         return '아카이브';
       case 'naming':
         return 'AI 작명 엔진';
-      case 'jamo':
-        return '자모 유사도 필터';
       case 'relations':
         return '인물 관계도';
       case 'timeline':
@@ -414,6 +412,8 @@ function PanelRenderer(props: PanelRendererProps) {
             relationNodes={relationNodes}
             isDark={isDark}
             targetWordCount={targetWordCount}
+            foreshadowings={foreshadowings}
+            setForeshadowings={setForeshadowings}
           />
         )}
         {panel.activeFeature === 'archive' && (
@@ -422,25 +422,11 @@ function PanelRenderer(props: PanelRendererProps) {
             archiveItems={archiveItems}
             setArchiveItems={setArchiveItems}
             projectId={selectedProject.id}
+            relationNodes={relationNodes}
+            setRelationNodes={setRelationNodes}
           />
         )}
         {panel.activeFeature === 'naming' && (
-          <NamingEngineHub
-            isDark={isDark}
-            projectId={selectedProject.id}
-            archiveItems={archiveItems}
-            onAddArchiveItem={(newItem) => {
-              const fullItem: ArchiveItem = {
-                ...newItem,
-                id: `arch-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-              };
-              setArchiveItems(prev => [fullItem, ...prev]);
-            }}
-          />
-        )}
-        {panel.activeFeature === 'jamo' && (
           <NamingEngineHub
             isDark={isDark}
             projectId={selectedProject.id}
@@ -461,6 +447,8 @@ function PanelRenderer(props: PanelRendererProps) {
             isDark={isDark}
             relationNodes={relationNodes}
             setRelationNodes={setRelationNodes}
+            archiveItems={archiveItems}
+            setArchiveItems={setArchiveItems}
           />
         )}
         {panel.activeFeature === 'timeline' && (

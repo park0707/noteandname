@@ -1655,6 +1655,7 @@ export default function WorldMap({
   // --- 지도 요소 마우스 다운 (이동 드래그 시작) ---
   const handleElementMouseDown = (e: React.MouseEvent, el: MapElement) => {
     e.stopPropagation();
+    e.preventDefault();
     
     if (editMode !== 'select') return;
     if (isElementLocked(el.type)) return;
@@ -1706,9 +1707,9 @@ export default function WorldMap({
       }> = {};
       members.forEach(item => {
         if (item.type === 'pin' || item.type === 'character') {
-          initialCoords[item.id] = { x: item.x || item.bx || 0, y: item.y || item.by || 0, w: item.bw || 64, h: item.bh || 64 };
+          initialCoords[item.id] = { x: item.x ?? item.bx ?? 0, y: item.y ?? item.by ?? 0, w: item.bw || 64, h: item.bh || 64 };
         } else if (item.type === 'border_rect' || item.type === 'border_circle' || item.type === 'image') {
-          initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0, w: item.bw || 0, h: item.bh || 0 };
+          initialCoords[item.id] = { x: item.bx ?? 0, y: item.by ?? 0, w: item.bw || 0, h: item.bh || 0 };
         } else if (item.type === 'brush' || item.brushStrokes || item.brushStrokeObjects) {
           initialCoords[item.id] = {
             x: 0,
@@ -1767,9 +1768,9 @@ export default function WorldMap({
     }> = {};
     members.forEach(item => {
       if (item.type === 'pin' || item.type === 'character') {
-        initialCoords[item.id] = { x: item.x || item.bx || 0, y: item.y || item.by || 0, w: item.bw || 64, h: item.bh || 64 };
+        initialCoords[item.id] = { x: item.x ?? item.bx ?? 0, y: item.y ?? item.by ?? 0, w: item.bw || 64, h: item.bh || 64 };
       } else if (item.type === 'border_rect' || item.type === 'border_circle' || item.type === 'image') {
-        initialCoords[item.id] = { x: item.bx || 0, y: item.by || 0, w: item.bw || 0, h: item.bh || 0 };
+        initialCoords[item.id] = { x: item.bx ?? 0, y: item.by ?? 0, w: item.bw || 0, h: item.bh || 0 };
       } else if (item.type === 'brush' || item.brushStrokes || item.brushStrokeObjects) {
         initialCoords[item.id] = {
           x: 0,
@@ -1860,6 +1861,9 @@ export default function WorldMap({
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
       return;
     }
+
+    // 빈 공간 마우스 클릭 시 기본 브라우저 텍스트 선택/스크롤 동작 방지
+    e.preventDefault();
 
     const canvasClickCoords = getCanvasCoords(e.clientX, e.clientY);
     const snapped = applySnapping(canvasClickCoords);
@@ -2452,6 +2456,35 @@ export default function WorldMap({
     setActiveAnchorPointIdx(null);
   };
 
+  const mouseMoveRef = useRef(handleCanvasMouseMove);
+  const mouseUpRef = useRef(handleCanvasMouseUp);
+  useEffect(() => {
+    mouseMoveRef.current = handleCanvasMouseMove;
+    mouseUpRef.current = handleCanvasMouseUp;
+  });
+
+  // --- 글로벌 윈도우 마우스 이동 및 마우스 업 캡처 핸들러 (y축 넘침/캔버스 이탈 시 드래그 먹통 현상 방지) ---
+  useEffect(() => {
+    const isAnyDragging = isPanning || isDraggingElements || activeBorderResizeDirection !== null || isDrawingBrush || borderDragStart !== null || selectionBoxStart !== null || activeAnchorPointIdx !== null;
+    if (!isAnyDragging) return;
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      mouseMoveRef.current(e as unknown as React.MouseEvent);
+    };
+
+    const handleWindowMouseUp = (e: MouseEvent) => {
+      mouseUpRef.current(e as unknown as React.MouseEvent);
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+    };
+  }, [isPanning, isDraggingElements, activeBorderResizeDirection, isDrawingBrush, borderDragStart, selectionBoxStart, activeAnchorPointIdx]);
+
   // --- 붓 드로잉 빌드 완성 ---
   const finalizeBrush = () => {
     if (tempBrushStrokes.length === 0) {
@@ -2883,6 +2916,18 @@ export default function WorldMap({
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
+
+    // Y축 스크롤 영역 오버플로우 자동 스크롤
+    const scrollContainer = (e.currentTarget as HTMLElement).closest('.overflow-y-auto');
+    if (scrollContainer) {
+      const rect = scrollContainer.getBoundingClientRect();
+      if (e.clientY < rect.top + 40) {
+        scrollContainer.scrollTop -= 10;
+      } else if (e.clientY > rect.bottom - 40) {
+        scrollContainer.scrollTop += 10;
+      }
+    }
+
     if (sidebarDropTargetId !== id) {
       setSidebarDropTargetId(id);
     }
@@ -7665,6 +7710,15 @@ export default function WorldMap({
                       }}
                       onDragOver={(e) => {
                         e.preventDefault();
+                        const scrollContainer = (e.currentTarget as HTMLElement).closest('.overflow-y-auto');
+                        if (scrollContainer) {
+                          const rect = scrollContainer.getBoundingClientRect();
+                          if (e.clientY < rect.top + 40) {
+                            scrollContainer.scrollTop -= 10;
+                          } else if (e.clientY > rect.bottom - 40) {
+                            scrollContainer.scrollTop += 10;
+                          }
+                        }
                         if (draggedLayerId !== el.id) {
                           setDragOverLayerId(el.id);
                         }

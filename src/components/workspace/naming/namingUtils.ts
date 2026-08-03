@@ -26,16 +26,17 @@ const CATEGORY_WORD_POOLS: Record<ArchiveCategory, {
       '동양': ['청운', '소룡', '백운', '서진', '도윤', '해원', '승하', '유화', '무영', '하진', '설아', '단우', '혜성', '담율'],
       '북유럽': ['에릭', '토르스', '비요른', '시구르', '헬가', '아스트리드', '프레이', '라그나', '스벤', '발드', '울프', '브륀힐트'],
       '켈트': ['아서', '랜슬롯', '가웨인', '모드레드', '트리스탄', '이졸데', '브리짓', '코맥', '피온', '메이브', '그라니아', '핀발'],
-      '아랍/중동': ['하산', '타리크', '라이라', '자인', '파티마', '오마르', '세림', '라시드', '야스민', '사밀', '카림', '나지르'],
+      '아랍': ['하산', '타리크', '라이라', '자인', '파티마', '오마르', '세림', '라시드', '야스민', '사밀', '카림', '나지르'],
+      '중동': ['하산', '타리크', '라이라', '자인', '파티마', '오마르', '세림', '라시드', '야스민', '사밀', '카림', '나지르'],
       '그리스로마': ['아킬레스', '카시우스', '오리온', '세르펜트', '아그라이아', '테세우스', '헤르메스', '헬레네', '옥타비아', '클라우디우스'],
-      '메소포타미아/바빌로니아': ['길가메시', '엔키두', '이슈타르', '마르두크', '우투', '샤마슈', '닌후르사그', '타무즈']
+      '메소포타미아': ['길가메시', '엔키두', '이슈타르', '마르두크', '우투', '샤마슈', '닌후르사그', '타무즈']
     },
     bodies: {
       '판타지': ['도르', '리온', '스타', '베인', '하르트', '실바', '가드', '미르', '펠', '시아', '엘라', '노아', '르난'],
       '무협': ['풍', '검', '무', '혁', '룡', '학', '천', '강', '영', '설', '혈', '귀', '극', '혼'],
       'SF': ['크로노', '사이언', '넥서스', '제론', '볼트', '사이퍼', '노바', '코어', '레이', '하이브', '벡터', '시그마'],
       '현대': ['준', '민', '우', '현', '아', '은', '서', '율', '하', '진', '도', '연'],
-      '성좌물/신격체': ['아스테르', '셀레스', '크로노스', '아이온', '에테르', '솔라리스', '루멘', '오리온']
+      '성좌물': ['아스테르', '셀레스', '크로노스', '아이온', '에테르', '솔라리스', '루멘', '오리온']
     },
     suffixes: {
       '주인공': ['스', '엘', '아', '온', '린', '인', '원', '율', '란', '휘'],
@@ -112,58 +113,77 @@ const CATEGORY_WORD_POOLS: Record<ArchiveCategory, {
 // 2. 태그 조합 기반 이름 생성 함수 (세부유형 & 상충 검사 지원)
 // ============================================================================
 
-import { CATEGORY_SUBTYPES } from '../../../data/tag_taxonomy_seeds';
+import { DYNAMIC_ERA_REGIONS } from '../../../data/tag_taxonomy_seeds';
 
 export function generateNamesByCombo(
   params: GenerateNameParams,
   archiveItems: ArchiveItem[] = []
 ): NameCandidate[] {
-  const { targetCategory, subtype, tagWeights, keywords, constraints, count = 10 } = params;
+  const {
+    targetCategory,
+    customCategory,
+    era = '중세',
+    subRegion,
+    socialClass = '귀족/양반',
+    worldbuildingRuleTags = [],
+    activeRuleTagIds = [],
+    keywords,
+    constraints,
+    count = 10
+  } = params;
 
-  // 1) 선택된 세부유형 객체 가져오기
-  const currentSubtypeObj = subtype
-    ? (CATEGORY_SUBTYPES[targetCategory] || []).find(s => s.id === subtype)
-    : undefined;
+  // 1) 시대별 동적 지역 무작위 선택 처리
+  const availableEraGroups = DYNAMIC_ERA_REGIONS[era] || DYNAMIC_ERA_REGIONS['중세'];
+  let resolvedSub = subRegion;
 
-  // 2) 태그 그룹별 추출
-  let genreTag = '판타지';
-  let cultureTag = '서양';
-  let traitTag = '주인공';
-  let moodTag = '신비로운';
-  let phoneticTag = '';
+  if (!resolvedSub) {
+    const randomGroup = availableEraGroups[Math.floor(Math.random() * availableEraGroups.length)];
+    resolvedSub = randomGroup.subRegions[Math.floor(Math.random() * randomGroup.subRegions.length)];
+  }
 
-  tagWeights.forEach(tw => {
-    if (tw.groupKey === 'genre') genreTag = tw.label;
-    if (tw.groupKey === 'culture') cultureTag = tw.label;
-    if (tw.groupKey === 'trait' || tw.groupKey === 'social_status') traitTag = tw.label;
-    if (tw.groupKey === 'mood') moodTag = tw.label;
-    if (tw.groupKey === 'phonetic') phoneticTag = tw.label;
+  // 2) 활성화된 세계관 규칙 태그 시드 및 제약 합산
+  const activeRuleTags = worldbuildingRuleTags.filter(t => activeRuleTagIds.includes(t.id));
+  const worldbuildingSeeds: string[] = [];
+  const extraRequiredSyllables: string[] = [];
+  const extraForbiddenSyllables: string[] = [];
+
+  activeRuleTags.forEach(ruleTag => {
+    if (ruleTag.name) {
+      worldbuildingSeeds.push(ruleTag.name.replace(/^🏷️\s*/, ''));
+    }
+    if (ruleTag.customRulesPrompt) {
+      const tokens = ruleTag.customRulesPrompt.split(/[\s,.;:'"()]+/).filter(t => t.length >= 2);
+      worldbuildingSeeds.push(...tokens);
+    }
+    if (ruleTag.requiredSyllables) extraRequiredSyllables.push(...ruleTag.requiredSyllables);
+    if (ruleTag.forbiddenSyllables) extraForbiddenSyllables.push(...ruleTag.forbiddenSyllables);
   });
 
-  // 3) 상충(Conflict) 조합 여부 체크
-  let isConflict = false;
-  let conflictReason = '';
+  const mergedRequired = Array.from(new Set([...(constraints?.requiredSyllables || []), ...extraRequiredSyllables]));
+  const mergedForbidden = Array.from(new Set([...(constraints?.forbiddenSyllables || []), ...extraForbiddenSyllables]));
 
-  if (currentSubtypeObj && currentSubtypeObj.conflictTags) {
-    const matchedConflict = tagWeights.find(t => currentSubtypeObj.conflictTags?.includes(t.label));
-    if (matchedConflict) {
-      isConflict = true;
-      conflictReason = `⚠️ ${currentSubtypeObj.name}류 계열에는 '${matchedConflict.label}' 태그가 다소 어색할 수 있습니다.`;
-    }
-  }
-
+  // 3) 워드 풀 설정
   const pool = CATEGORY_WORD_POOLS[targetCategory] || CATEGORY_WORD_POOLS.character;
 
-  const prefixList = pool.prefixes[cultureTag] || pool.prefixes['서양'] || pool.prefixes['전설'] || pool.prefixes['조직'] || ['신비한'];
-
-  // 세부유형 예시가 있을 경우 워드 풀에 결합
-  let bodyList = pool.bodies[genreTag] || pool.bodies['판타지'] || pool.bodies['무기'] || pool.bodies['공격'] || pool.bodies['단체'] || ['영혼'];
-  if (currentSubtypeObj && currentSubtypeObj.examples) {
-    const subtypeExamples = currentSubtypeObj.examples.split(',').map(e => e.trim());
-    bodyList = [...subtypeExamples, ...bodyList];
+  let cultureKey = '서양';
+  if (resolvedSub?.includes('한국') || resolvedSub?.includes('조선') || resolvedSub?.includes('고려') || resolvedSub?.includes('신라')) {
+    cultureKey = '동양';
+  } else if (resolvedSub?.includes('중국') || resolvedSub?.includes('무협') || resolvedSub?.includes('한나라')) {
+    cultureKey = '동양';
   }
 
-  const suffixList = pool.suffixes[traitTag] || pool.suffixes['주인공'] || pool.suffixes['기타'] || pool.suffixes['특성'] || [''];
+  const prefixList = pool.prefixes[cultureKey] || pool.prefixes['서양'] || pool.prefixes['전설'] || ['신비한'];
+  let bodyList = pool.bodies['판타지'] || pool.bodies['무기'] || pool.bodies['공격'] || ['영혼'];
+
+  if (customCategory) {
+    const rawTokens = customCategory.trim().split(/[\s,]+/).filter(Boolean);
+    bodyList = [...rawTokens, ...bodyList];
+  }
+  if (worldbuildingSeeds.length > 0) {
+    bodyList = [...worldbuildingSeeds, ...bodyList];
+  }
+
+  const suffixList = pool.suffixes['주인공'] || pool.suffixes['기타'] || [''];
 
   const generatedList: NameCandidate[] = [];
   const generatedNamesSet = new Set<string>();
@@ -172,25 +192,49 @@ export function generateNamesByCombo(
   while (generatedList.length < count && attempts < count * 25) {
     attempts++;
 
-    const p = prefixList[Math.floor(Math.random() * prefixList.length)];
-    const b = bodyList[Math.floor(Math.random() * bodyList.length)];
+    let p = prefixList[Math.floor(Math.random() * prefixList.length)];
+    let b = bodyList[Math.floor(Math.random() * bodyList.length)];
     const s = suffixList[Math.floor(Math.random() * suffixList.length)];
+
+    // 세계관 규칙 태그가 있으면 50% 확률로 직접 적용
+    if (worldbuildingSeeds.length > 0 && Math.random() < 0.5) {
+      b = worldbuildingSeeds[Math.floor(Math.random() * worldbuildingSeeds.length)];
+    }
 
     let candidateName = '';
 
     if (targetCategory === 'character') {
-      if (cultureTag === '동양' || genreTag === '무협' || genreTag === '사극') {
-        const surname = ['강', '류', '백', '서', '설', '송', '윤', '이', '진', '한'][Math.floor(Math.random() * 10)];
-        candidateName = `${surname}${b}${s}`.trim();
+      if (cultureKey === '동양') {
+        if (socialClass === '평민') {
+          // 성 없음 / 1~2자 단순 이름
+          const plainNames = ['돌쇠', '막동', '갑돌', '삼돌', '길동', '칠복', '덕배', '마름', '쇠똥', '바위', '달래'];
+          candidateName = plainNames[Math.floor(Math.random() * plainNames.length)];
+        } else if (socialClass === '선비/학자') {
+          // 호 / 자 / 별호 명칭
+          const titles = ['청운', '동방', '매화', '우암', '퇴계', '율곡', '담헌', '백운', '단정', '송암'];
+          const suffixes = ['선생', '거사', '학인', '처사', '산인', '재'];
+          candidateName = `${titles[Math.floor(Math.random() * titles.length)]} ${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
+        } else {
+          // 귀족/양반: 성 + 이름
+          const surnames = ['남궁', '황보', '제갈', '독고', '사공', '이', '김', '박', '최', '정', '강', '윤'];
+          const surname = surnames[Math.floor(Math.random() * surnames.length)];
+          candidateName = `${surname}${b}${s}`.trim();
+        }
       } else {
-        candidateName = `${p} ${b}${s}`.trim();
-        if (Math.random() > 0.5) candidateName = `${p}${s}`.trim();
+        if (socialClass === '평민') {
+          candidateName = `${b}`.trim();
+        } else if (socialClass === '선비/학자') {
+          candidateName = `${p} ${b} (Scholarly)`.trim();
+        } else {
+          candidateName = `${p} ${b}${s}`.trim();
+          if (Math.random() > 0.5) candidateName = `${p}${s}`.trim();
+        }
       }
     } else {
       candidateName = `${p} ${b}${s}`.trim();
     }
 
-    // 자유 키워드가 포함되는 경우
+    // 자유 키워드 반영
     if (keywords && Math.random() > 0.6) {
       const kw = keywords.trim().split(/\s+/)[0];
       if (kw && !candidateName.includes(kw)) {
@@ -202,22 +246,22 @@ export function generateNamesByCombo(
     if (constraints) {
       if (constraints.minLength && candidateName.length < constraints.minLength) continue;
       if (constraints.maxLength && candidateName.length > constraints.maxLength) continue;
+    }
 
-      if (constraints.forbiddenSyllables && constraints.forbiddenSyllables.length > 0) {
-        const hasForbidden = constraints.forbiddenSyllables.some(syl => syl && candidateName.includes(syl));
-        if (hasForbidden) continue;
-      }
+    if (mergedForbidden.length > 0) {
+      const hasForbidden = mergedForbidden.some(syl => syl && candidateName.includes(syl));
+      if (hasForbidden) continue;
+    }
 
-      if (constraints.requiredSyllables && constraints.requiredSyllables.length > 0) {
-        const hasRequired = constraints.requiredSyllables.some(syl => syl && candidateName.includes(syl));
-        if (!hasRequired) continue;
-      }
+    if (mergedRequired.length > 0) {
+      const hasRequired = mergedRequired.some(syl => syl && candidateName.includes(syl));
+      if (!hasRequired) continue;
     }
 
     if (generatedNamesSet.has(candidateName)) continue;
     generatedNamesSet.add(candidateName);
 
-    // 기존 ArchiveItem들과 자모 유사도 계산 (75% 이상 경고)
+    // 기존 ArchiveItem 자모 유사도 계산
     let maxSimilarity = 0;
     let matchItemName = '';
 
@@ -229,7 +273,8 @@ export function generateNamesByCombo(
       }
     }
 
-    const meaningDesc = `${genreTag}/${cultureTag} 어감의 ${currentSubtypeObj ? currentSubtypeObj.name : targetCategory + ' 명칭'}`;
+    const activeSubtypeName = customCategory || `${era} ${resolvedSub}`;
+    const meaningDesc = `${era} [${resolvedSub}] (${socialClass}) 어감의 고유 명칭`;
 
     generatedList.push({
       id: `gen-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -238,10 +283,8 @@ export function generateNamesByCombo(
       similarity: maxSimilarity,
       matchItem: maxSimilarity >= 75 ? matchItemName : undefined,
       category: targetCategory,
-      subtype: currentSubtypeObj?.name,
-      isConflict,
-      conflictReason: isConflict ? conflictReason : undefined,
-      tags: [genreTag, cultureTag, traitTag, moodTag, phoneticTag].filter(Boolean)
+      subtype: activeSubtypeName,
+      tags: [era, resolvedSub, socialClass].filter(Boolean) as string[]
     });
   }
 

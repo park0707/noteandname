@@ -25,6 +25,14 @@ export interface ParsedNarrativeContext {
 export interface ResolvedNamingContext {
   targetCategory: string;
   subtypeName?: string;
+  era?: string;
+  majorRegion?: string;
+  subRegion?: string;
+  socialClass?: string;
+  worldbuildingRules?: string[];
+  mythologyStoryTitle?: string;
+  mythologyCharacterName?: string;
+  enabledSections?: { tag: boolean; mythology: boolean; naturalLanguage: boolean };
   cleanTagWeights: TagWeight[];
   symbolicTokens: string[];
   phoneticRules: string[];
@@ -35,6 +43,8 @@ export interface ResolvedNamingContext {
 // 1. [Step 1] 자연어 서사 해석기 (Narrative Parser)
 // ============================================================================
 
+const SYMBOL_PATTERN = /용|드래곤|화염|불꽃|불사|검|마법|칠흑|어둠|빛|성스러운|저주|빙결|바람|뇌전|벼락|거인|괴수|용병|기사|마왕|엘프|하이엘프|다크엘프|드워프|하프링|수인|마족|천사|신족|흡혈귀|뱀파이어|언데드|리치|네크로맨서|성좌|헌터|아카데미|스트리머|인방|셰프|수전노|얀데레|츤데레|후회|집착|피폐|TS|선협|무협|악녀|빙의/g;
+
 export function parseNarrativePrompt(keywords: string): ParsedNarrativeContext {
   if (!keywords || !keywords.trim()) {
     return { symbolicTokens: [], emotionalMood: [], characterArchetype: '기본' };
@@ -44,25 +54,21 @@ export function parseNarrativePrompt(keywords: string): ParsedNarrativeContext {
   const tokens: string[] = [];
   const moods: string[] = [];
 
-  // 핵심 상징어 키워드 매칭 정규식 패턴
-  const symbolPatterns = [
-    /용|드래곤|화염|불꽃|불사|검|마법|칠흑|어둠|빛|성스러운|저주|빙결|바람|뇌전|벼락|거인|괴수|용병|기사|마왕/g
-  ];
+  // 핵심 상징어 키워드 매칭
+  const matches = text.match(SYMBOL_PATTERN);
+  if (matches) {
+    matches.forEach(m => {
+      if (!tokens.includes(m)) tokens.push(m);
+    });
+  }
 
-  symbolPatterns.forEach(pattern => {
-    const matches = text.match(pattern);
-    if (matches) {
-      matches.forEach(m => {
-        if (!tokens.includes(m)) tokens.push(m);
-      });
-    }
-  });
-
-  // 정서/무드 추출 패턴
+  // 정서/무드 추출 패턴 (웹소설 정서 확장)
   if (/비운|괴로움|슬픔|비극|잔혹|냉혹/i.test(text)) moods.push('비운/냉혹');
   if (/신성|성스러운|고귀|우아/i.test(text)) moods.push('신성/고귀');
   if (/파괴|광기|분노|강렬/i.test(text)) moods.push('파괴/광기');
   if (/음산|음침|저주|다크/i.test(text)) moods.push('다크/음산');
+  if (/얀데레|집착|후회|피폐/i.test(text)) moods.push('집착/피폐/후회');
+  if (/유쾌|사이다|코미디|착각/i.test(text)) moods.push('유쾌/사이다');
 
   return {
     symbolicTokens: tokens.length > 0 ? tokens : [text.slice(0, 10)],
@@ -79,7 +85,21 @@ export function resolveTaxonomyAndPhonetics(
   params: GenerateNameParams,
   parsedContext: ParsedNarrativeContext
 ): ResolvedNamingContext {
-  const { targetCategory, subtype, tagWeights, constraints } = params;
+  const {
+    targetCategory,
+    subtype,
+    customCategory,
+    era = '중세',
+    majorRegion,
+    subRegion,
+    socialClass = '귀족/양반',
+    worldbuildingRuleTags = [],
+    activeRuleTagIds = [],
+    selectedMythologyEntry,
+    enabledSections,
+    tagWeights,
+    constraints
+  } = params;
 
   const subtypeObj = subtype
     ? (CATEGORY_SUBTYPES[targetCategory] || []).find(s => s.id === subtype)
@@ -99,9 +119,30 @@ export function resolveTaxonomyAndPhonetics(
     phoneticRules.push(`길이범위: ${constraints?.minLength || 2}~${constraints?.maxLength || 6}자`);
   }
 
+  // customCategory가 있으면 세부유형(subtypeName)으로 취급, targetCategory는 원래 값 유지
+  const resolvedSubtypeName = customCategory
+    ? customCategory
+    : subtypeObj?.name;
+
+  const wbRules: string[] = [];
+  const activeRuleTags = worldbuildingRuleTags.filter(t => activeRuleTagIds.includes(t.id));
+  activeRuleTags.forEach(tag => {
+    let ruleDesc = `규칙태그 [${tag.name}]`;
+    if (tag.customRulesPrompt) ruleDesc += `: ${tag.customRulesPrompt}`;
+    wbRules.push(ruleDesc);
+  });
+
   return {
     targetCategory,
-    subtypeName: subtypeObj?.name,
+    subtypeName: resolvedSubtypeName,
+    era,
+    majorRegion,
+    subRegion,
+    socialClass,
+    worldbuildingRules: wbRules,
+    mythologyStoryTitle: selectedMythologyEntry?.storyTitle,
+    mythologyCharacterName: selectedMythologyEntry?.characterName,
+    enabledSections,
     cleanTagWeights,
     symbolicTokens: parsedContext.symbolicTokens,
     phoneticRules,
@@ -117,24 +158,54 @@ function buildPipelinePrompt(
   resolvedContext: ResolvedNamingContext,
   count: number = 10
 ): string {
-  const { targetCategory, subtypeName, cleanTagWeights, symbolicTokens, phoneticRules, narrativeSummary } = resolvedContext;
+  const {
+    targetCategory,
+    subtypeName,
+    era,
+    majorRegion,
+    subRegion,
+    socialClass,
+    worldbuildingRules,
+    mythologyStoryTitle,
+    mythologyCharacterName,
+    enabledSections,
+    symbolicTokens,
+    phoneticRules,
+    narrativeSummary
+  } = resolvedContext;
 
-  const tagSummary = cleanTagWeights.map(t => `${t.label}(가중치:${t.weight})`).join(', ');
+  const sectionsList: string[] = [];
+  if (!enabledSections || enabledSections.tag) {
+    sectionsList.push(`- 시대/지역/신분: 시대=[${era || '중세'}], 문화권/지역=[${subRegion || majorRegion || '무작위'}], 신분=[${socialClass || '귀족'}]`);
+    if (subtypeName) sectionsList.push(`- 세부유형: ${subtypeName}`);
+    if (worldbuildingRules && worldbuildingRules.length > 0) {
+      sectionsList.push(`- 사용자 세계관 규칙 태그: ${worldbuildingRules.join(' | ')}`);
+    }
+  }
+
+  if (enabledSections?.mythology && (mythologyStoryTitle || mythologyCharacterName)) {
+    sectionsList.push(`- 설화/민담 원전: 출처=[${mythologyStoryTitle || '신화'}], 인물/존재=[${mythologyCharacterName || '원전'}] 기반 파생 이름`);
+  }
+
+  if (!enabledSections || enabledSections.naturalLanguage) {
+    if (symbolicTokens.length > 0) sectionsList.push(`- 추출된 핵심 상징어: ${symbolicTokens.join(', ')}`);
+    if (narrativeSummary) sectionsList.push(`- 서사 정서/무드: ${narrativeSummary}`);
+  }
+
+  if (phoneticRules.length > 0) {
+    sectionsList.push(`- 음성 및 음절 제약: ${phoneticRules.join(' | ')}`);
+  }
 
   return `
 당신은 대한민국 최고의 웹소설/판타지/무협 전문 AI 작명가입니다.
-앞 단계에서 정제된 [카테고리], [세부유형], [상징 토큰], 그리고 [발음 제약]을 충실히 반영하여 **총 ${count}개**의 독창적이고 매력적인 이름을 생성하세요.
+사용자가 선택한 [시대], [지역/문화권], [신분/명명 형태], [세계관 고유 규칙 태그], [설화/민담], [자연어 서사]의 조건만을 완벽히 결합하여 **총 ${count}개**의 독창적인 이름을 생성하세요.
 
-[정제된 구조화 데이터]
-- 대상 카테고리: ${targetCategory}
-- 세부유형: ${subtypeName || '없음'}
-- 추출된 핵심 상징어: ${symbolicTokens.join(', ') || '없음'}
-- 정서/무드: ${narrativeSummary || '기본'}
-- 선택된 태그 조합: ${tagSummary || '기본'}
-- 음성 및 음절 제약: ${phoneticRules.join(' | ') || '없음'}
+[활성화된 작명 입력 데이터]
+- 대상 분야 카테고리: ${targetCategory}
+${sectionsList.join('\n')}
 
 [출력 지침]
-1. 베스트 고유명사 10개를 창작하세요 (단순 유명 베끼기 베제).
+1. 베스트 고유명사 ${count}개를 창작하세요 (단순 유명 인물 베끼기 배제).
 2. 각 후보마다 이름(name), 어원/한자풀이/서사적 의미(meaning), 1문장 서사 힌트(storySnippet), 연관 태그(tags)를 응답하세요.
 3. 반드시 JSON Array 형식으로만 반환해야 합니다.
 `;
