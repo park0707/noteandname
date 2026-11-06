@@ -34,13 +34,9 @@ import { useAlertConfirm } from '../../../context/AlertConfirmContext';
 
 // Import modularized components and utils
 import { 
-  getLineText, 
-  convertDividerHtmlToText, 
   convertHtmlToMarkdown 
 } from './editorUtils';
 import LinkInsertModal from './Modals/LinkInsertModal';
-import DividerConfigModal from './Modals/DividerConfigModal';
-import CreateCustomDividerModal from './Modals/CreateCustomDividerModal';
 import PlantForeshadowingModal from './Modals/PlantForeshadowingModal';
 import ResolveForeshadowingModal from './Modals/ResolveForeshadowingModal';
 
@@ -155,17 +151,14 @@ export default function EditorToolbar(props: EditorToolbarProps) {
   } = props;
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
   const statsDropdownRef = useRef<HTMLDivElement>(null);
   const fontDropdownRef = useRef<HTMLDivElement>(null);
   const exportDropdownRef = useRef<HTMLDivElement>(null);
   const snapshotDropdownRef = useRef<HTMLDivElement>(null);
   const foreshadowingDropdownRef = useRef<HTMLDivElement>(null);
-  const [showDividerDropdown, setShowDividerDropdown] = useState(false);
   const [showExportDropdown, setShowExportDropdown] = useState(false);
   const [showSnapshotDropdown, setShowSnapshotDropdown] = useState(false);
   const [showForeshadowingDropdown, setShowForeshadowingDropdown] = useState(false);
-  const [dropdownCoords, setDropdownCoords] = useState<{ top: number; left: number } | null>(null);
   const [fontDropdownCoords, setFontDropdownCoords] = useState<{ top: number; left: number } | null>(null);
   const [snapshotDropdownCoords, setSnapshotDropdownCoords] = useState<{ top: number; left: number } | null>(null);
   const [exportDropdownCoords, setExportDropdownCoords] = useState<{ top: number; left: number } | null>(null);
@@ -251,37 +244,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showExportDropdown, showStatsDropdown, showFontDropdown, showSnapshotDropdown, showForeshadowingDropdown, setShowFontDropdown, setShowStatsDropdown]);
-
-  const [showCreateDividerModal, setShowCreateDividerModal] = useState(false);
-
-  // 모달 입력 필드 상태
-  const [newDividerName, setNewDividerName] = useState('');
-  const [newDividerType, setNewDividerType] = useState<'line' | 'text'>('line');
-  const [newDividerStyle, setNewDividerStyle] = useState('dashed'); // solid, dashed, double
-  const [newDividerSymbol, setNewDividerSymbol] = useState('◆ ◆ ◆');
-  const [newDividerSize, setNewDividerSize] = useState('16'); // font-size or thickness
-
-  // 통합 구분선 설정 모달 상태
-  const [activeDividerConfig, setActiveDividerConfig] = useState<any | null>(null);
-  const [dividerAlign, setDividerAlign] = useState<'left' | 'center' | 'right'>('center');
-  const [dividerWidth, setDividerWidth] = useState('100'); // 100, 80, 50, 30
-  const [dividerSize, setDividerSize] = useState('2'); // default 2px (or 16px for text)
-
-  const [recentDividers, setRecentDividers] = useState<any[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('novelflow_recent_dividers') || '[]');
-    } catch {
-      return [];
-    }
-  });
-
-  const [customDividers, setCustomDividers] = useState<any[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('novelflow_custom_dividers') || '[]');
-    } catch {
-      return [];
-    }
-  });
 
   // 링크 삽입 모달 상태
   const [showLinkModal, setShowLinkModal] = useState(false);
@@ -393,120 +355,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     downloadLink.click();
     document.body.removeChild(downloadLink);
     setShowExportDropdown(false);
-  };
-
-  const toggleDividerDropdown = () => {
-    if (!showDividerDropdown && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      setDropdownCoords({
-        top: rect.bottom + 4,
-        left: rect.left
-      });
-    }
-    setShowDividerDropdown(!showDividerDropdown);
-  };
-
-  const openDividerConfigModal = (config: any) => {
-    setActiveDividerConfig(config);
-    setDividerAlign('center');
-    setDividerWidth('100');
-    setDividerSize(config.type === 'line' ? '2' : '16');
-    setShowDividerDropdown(false);
-  };
-
-  const addToRecentDividers = (divider: any) => {
-    setRecentDividers(prev => {
-      const filtered = prev.filter(d => d.html !== divider.html);
-      const updated = [divider, ...filtered].slice(0, 3);
-      localStorage.setItem('novelflow_recent_dividers', JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const handleInsertDividerWithRecent = (name: string, html: string) => {
-    const textHtml = convertDividerHtmlToText(html);
-    execFormat('insertHTML', textHtml);
-    setShowDividerDropdown(false);
-    
-    const tempDivider = {
-      id: `temp_${Date.now()}`,
-      name,
-      html: textHtml
-    };
-    addToRecentDividers(tempDivider);
-  };
-
-  const handleInsertConfiguredDivider = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!activeDividerConfig) return;
-
-    let marginStyle = 'margin: 24px auto;'; // center
-    if (dividerAlign === 'left') {
-      marginStyle = 'margin: 24px auto 24px 0;';
-    } else if (dividerAlign === 'right') {
-      marginStyle = 'margin: 24px 0 24px auto;';
-    }
-
-    let html = '';
-    const styleOrSymbol = activeDividerConfig.type === 'line' 
-      ? activeDividerConfig.style 
-      : activeDividerConfig.symbol;
-
-    if (activeDividerConfig.type === 'line') {
-      const lineText = getLineText(styleOrSymbol);
-      html = `<p class="novela-divider-text" style="text-align: ${dividerAlign}; ${marginStyle} color: #888888; font-size: ${dividerSize === '2' ? '16' : dividerSize}px; font-weight: bold; letter-spacing: 2px; overflow: hidden; white-space: nowrap; width: ${dividerWidth}%; display: block;">${lineText}</p>`;
-    } else {
-      html = `<p class="novela-divider-text" style="text-align: ${dividerAlign}; ${marginStyle} color: #888888; font-size: ${dividerSize}px; letter-spacing: 6px; font-weight: bold; font-family: sans-serif; display: block;">${styleOrSymbol}</p>`;
-    }
-
-    const typeLabel = activeDividerConfig.type === 'line' 
-      ? (styleOrSymbol === 'dashed' ? '점선' : styleOrSymbol === 'solid' ? '실선' : '이중선')
-      : (styleOrSymbol === '★ ★ ★' ? '별장식' : styleOrSymbol === '~ ~ ~' ? '물결선' : '기호선');
-    const comboName = `${dividerSize}px ${typeLabel} (${dividerWidth}%, ${dividerAlign})`;
-
-    const newCombo = {
-      id: `combo_${Date.now()}`,
-      name: comboName,
-      html
-    };
-
-    execFormat('insertHTML', html);
-    addToRecentDividers(newCombo);
-    
-    setActiveDividerConfig(null);
-  };
-
-  const handleCreateCustomDivider = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newDividerName.trim()) return;
-
-    let html = '';
-    if (newDividerType === 'line') {
-      const lineText = getLineText(newDividerStyle);
-      html = `<p class="novela-divider-text" style="text-align: center; margin: 24px auto; color: #888888; font-size: ${newDividerSize === '2' ? '16' : newDividerSize}px; font-weight: bold; letter-spacing: 2px; overflow: hidden; white-space: nowrap; width: 100%; display: block;">${lineText}</p>`;
-    } else {
-      html = `<p class="novela-divider-text" style="text-align: center; margin: 24px auto; color: #888888; font-size: ${newDividerSize}px; letter-spacing: 6px; font-weight: bold; display: block;">${newDividerSymbol}</p>`;
-    }
-
-    const newDivider = {
-      id: `div_${Date.now()}`,
-      name: newDividerName.trim(),
-      type: newDividerType,
-      styleOrSymbol: newDividerType === 'line' ? newDividerStyle : newDividerSymbol,
-      color: '#888888',
-      sizeOrThickness: newDividerSize,
-      html
-    };
-
-    const updatedCustom = [newDivider, ...customDividers];
-    setCustomDividers(updatedCustom);
-    localStorage.setItem('novelflow_custom_dividers', JSON.stringify(updatedCustom));
-
-    execFormat('insertHTML', html);
-    addToRecentDividers(newDivider);
-    
-    setNewDividerName('');
-    setShowCreateDividerModal(false);
   };
 
   return (
@@ -1054,114 +902,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
               <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
-              <div className="relative shrink-0">
-                <button
-                  ref={buttonRef}
-                  onClick={toggleDividerDropdown}
-                  className={`px-1.5 py-1 rounded text-[10px] font-bold border transition-colors flex items-center gap-1 shrink-0 ${
-                    isDark
-                      ? 'border-white/[0.08] hover:bg-white/[0.04] text-gray-400'
-                      : 'border-black/[0.08] hover:bg-black/[0.04] text-gray-600'
-                  }`}
-                  title="장면 전환용 구분선 종류 선택"
-                >
-                  <span>구분선</span>
-                  <span className="text-[8px] opacity-60">▼</span>
-                </button>
 
-                {showDividerDropdown && (
-                  <div
-                    onMouseLeave={() => setShowDividerDropdown(false)}
-                    style={dropdownCoords ? { top: `${dropdownCoords.top}px`, left: `${dropdownCoords.left}px` } : undefined}
-                    className={`fixed w-72 rounded-xl border p-1.5 shadow-2xl z-50 flex flex-col gap-0.5 max-h-80 overflow-y-auto backdrop-blur-md ${
-                      isDark
-                        ? 'bg-[#1E1F22]/95 border-white/[0.08] text-gray-200 shadow-black/80'
-                        : 'bg-white/95 border-black/[0.08] text-gray-800 shadow-black/10'
-                    }`}
-                  >
-                    {/* 최근 사용 구분선 */}
-                    {recentDividers.length > 0 && (
-                      <>
-                        <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">최근 구분선</div>
-                        {recentDividers.map((div: any) => (
-                          <button
-                            key={div.id}
-                            onClick={() => handleInsertDividerWithRecent(div.name, div.html)}
-                            className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                            title={div.name}
-                          >
-                            <span className="truncate block w-full">{div.name}</span>
-                          </button>
-                        ))}
-                        <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
-                      </>
-                    )}
-
-                    {/* 기본 구분선 */}
-                    <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">기본 구분선</div>
-                    <button
-                      onClick={() => openDividerConfigModal({ type: 'line', style: 'dashed', defaultName: '점선 구분선' })}
-                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                    >
-                      점선 구분선 (설정 후 삽입)
-                    </button>
-                    <button
-                      onClick={() => openDividerConfigModal({ type: 'line', style: 'solid', defaultName: '실선 구분선' })}
-                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                    >
-                      실선 구분선 (설정 후 삽입)
-                    </button>
-                    <button
-                      onClick={() => openDividerConfigModal({ type: 'line', style: 'double', defaultName: '이중선 구분선' })}
-                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                    >
-                      이중선 구분선 (설정 후 삽입)
-                    </button>
-                    <button
-                      onClick={() => openDividerConfigModal({ type: 'text', symbol: '★ ★ ★', defaultName: '별 장식선' })}
-                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                    >
-                      별 장식선 (★ ★ ★)
-                    </button>
-                    <button
-                      onClick={() => openDividerConfigModal({ type: 'text', symbol: '~ ~ ~', defaultName: '물결선' })}
-                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                    >
-                      물결선 (~ ~ ~)
-                    </button>
-
-                    {/* 저장된 커스텀 구분선 */}
-                    {customDividers.length > 0 && (
-                      <>
-                        <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
-                        <div className="text-[10px] font-bold text-gray-500 px-3.5 py-1.5 leading-none">마이 커스텀 구분선</div>
-                        {customDividers.map((div: any) => (
-                          <button
-                            key={div.id}
-                            onClick={() => handleInsertDividerWithRecent(div.name, div.html)}
-                            className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center leading-normal"
-                            title={div.name}
-                          >
-                            <span className="truncate block w-full">{div.name}</span>
-                          </button>
-                        ))}
-                      </>
-                    )}
-
-                    {/* 커스텀 구분선 만들기 (가장 하단) */}
-                    <div className={`h-[1px] my-1 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
-                    <button
-                      onClick={() => {
-                        setShowDividerDropdown(false);
-                        setShowCreateDividerModal(true);
-                      }}
-                      className="w-full text-left px-3.5 py-1.5 rounded-lg text-xs font-bold text-[#5E6AD2] hover:bg-[#5E6AD2]/10 transition-colors h-8 flex items-center leading-normal"
-                    >
-                      ➕ 커스텀 구분선 만들기
-                    </button>
-                  </div>
-                )}
-              </div>
               <button
                 onClick={openLinkInsertModal}
                 className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
@@ -1409,37 +1150,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
       )}
 
 
-      {/* 구분선 스타일 설정 모달 */}
-      <DividerConfigModal
-        isDark={isDark}
-        activeDividerConfig={activeDividerConfig}
-        setActiveDividerConfig={setActiveDividerConfig}
-        dividerAlign={dividerAlign}
-        setDividerAlign={setDividerAlign}
-        dividerWidth={dividerWidth}
-        setDividerWidth={setDividerWidth}
-        dividerSize={dividerSize}
-        setDividerSize={setDividerSize}
-        handleInsertConfiguredDivider={handleInsertConfiguredDivider}
-      />
 
-      {/* 커스텀 구분선 만들기 모달 */}
-      <CreateCustomDividerModal
-        isDark={isDark}
-        showCreateDividerModal={showCreateDividerModal}
-        setShowCreateDividerModal={setShowCreateDividerModal}
-        newDividerName={newDividerName}
-        setNewDividerName={setNewDividerName}
-        newDividerType={newDividerType}
-        setNewDividerType={setNewDividerType}
-        newDividerStyle={newDividerStyle}
-        setNewDividerStyle={setNewDividerStyle}
-        newDividerSymbol={newDividerSymbol}
-        setNewDividerSymbol={setNewDividerSymbol}
-        newDividerSize={newDividerSize}
-        setNewDividerSize={setNewDividerSize}
-        handleCreateCustomDivider={handleCreateCustomDivider}
-      />
 
       {/* 링크 삽입 모달 */}
       <LinkInsertModal
