@@ -49,9 +49,9 @@ export default function MainEditorCanvas(props: MainEditorCanvasProps) {
           fontFamily: editorFontFamily,
           fontSize: '16px',
           lineHeight: lineHeight,
-          paddingTop: typewriterMode ? 'calc(50vh - 3rem)' : '1rem',
+          paddingTop: '1rem',
           paddingBottom: typewriterMode ? 'calc(50vh - 3rem)' : '3rem',
-          transition: 'padding-top 0.2s ease-out, padding-bottom 0.2s ease-out'
+          transition: 'padding-bottom 0.2s ease-out'
         }}
       >
         <div className="px-4 pb-4">

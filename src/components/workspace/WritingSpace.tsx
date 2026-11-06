@@ -584,10 +584,13 @@ export default function WritingSpace(props: WritingSpaceProps) {
 
         const diff = caretY - containerCenterY;
 
-        // 허용 오차: 8px 이상 벗어났을 때만 즉각 스크롤하여 동일 행 타이핑 시 불필요한 흔들림 방지
-        if (Math.abs(diff) > 8) {
-          scrollContainer.scrollBy({
-            top: diff,
+        // 목표 스크롤 위치 (상단 0 이하 음수 스크롤 방어)
+        const targetScrollTop = Math.max(0, scrollContainer.scrollTop + diff);
+
+        // 허용 오차: 8px 이상 벗어나고 실제 스크롤 이동이 필요할 때만 즉각 스크롤
+        if (Math.abs(diff) > 8 && Math.abs(scrollContainer.scrollTop - targetScrollTop) > 2) {
+          scrollContainer.scrollTo({
+            top: targetScrollTop,
             behavior: 'instant'
           });
         }
