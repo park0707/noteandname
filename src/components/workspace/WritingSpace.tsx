@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { FileText } from 'lucide-react';
 import type { Project, Episode, Node, Snapshot, Foreshadowing } from './types';
@@ -167,6 +167,15 @@ export default function WritingSpace(props: WritingSpaceProps) {
   const lastContentChangedTimeRef = useRef<number>(Date.now());
   const lastTimeSavedContentRef = useRef<string>('');
   const lastTimeSavedEpisodeIdRef = useRef<string | null>(null);
+  const typewriterRafIdRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (typewriterRafIdRef.current) {
+        cancelAnimationFrame(typewriterRafIdRef.current);
+      }
+    };
+  }, []);
 
   // Snapshot visual comparison states
   const [isDiffMode, setIsDiffMode] = useState(false);
@@ -537,53 +546,64 @@ export default function WritingSpace(props: WritingSpaceProps) {
     showAlert('일괄 교체가 완료되었습니다.');
   };
 
-  const centerTypewriterCaret = () => {
+  const centerTypewriterCaret = useCallback(() => {
     if (!typewriterMode) return;
-    setTimeout(() => {
+
+    if (typewriterRafIdRef.current) {
+      cancelAnimationFrame(typewriterRafIdRef.current);
+    }
+
+    typewriterRafIdRef.current = requestAnimationFrame(() => {
+      typewriterRafIdRef.current = null;
       const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        let rect = range.getBoundingClientRect();
+      if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return;
 
-        // If range is collapsed and returned zero/empty rect, insert a temporary span to get coordinates
-        if (range.collapsed && (!rect || rect.top === 0 || rect.height === 0)) {
-          const tempSpan = document.createElement('span');
-          tempSpan.appendChild(document.createTextNode('\u200B'));
-          try {
-            const clone = range.cloneRange();
-            clone.insertNode(tempSpan);
-            rect = tempSpan.getBoundingClientRect();
+      const range = selection.getRangeAt(0);
+      if (!editorRef.current || !editorRef.current.contains(range.commonAncestorContainer)) return;
 
-            const parent = tempSpan.parentNode;
-            if (parent) {
-              parent.removeChild(tempSpan);
-            }
-
-            // Restore selection range
-            selection.removeAllRanges();
-            selection.addRange(range);
-          } catch (e) {
-            console.error('Failed to get typewriter position:', e);
-          }
-        }
-
-        if (rect && rect.top !== 0) {
-          const scrollContainer = editorRef.current?.closest('.editor-scroll-container');
-          if (scrollContainer) {
-            const containerRect = scrollContainer.getBoundingClientRect();
-            const caretRelativeY = rect.top - containerRect.top;
-            const centerY = containerRect.height / 2;
-
-            const targetScrollTop = scrollContainer.scrollTop + (caretRelativeY - centerY);
-            scrollContainer.scrollTo({
-              top: targetScrollTop,
-              behavior: 'auto'
-            });
-          }
+      let rect: DOMRect | null = null;
+      const clientRects = range.getClientRects();
+      if (clientRects.length > 0) {
+        rect = clientRects[0];
+      } else {
+        const node = range.startContainer.nodeType === Node.TEXT_NODE
+          ? range.startContainer.parentElement
+          : (range.startContainer as HTMLElement);
+        if (node) {
+          rect = node.getBoundingClientRect();
         }
       }
-    }, 10);
-  };
+
+      if (!rect || (rect.top === 0 && rect.bottom === 0)) return;
+
+      const scrollContainer = editorRef.current.closest('.editor-scroll-container');
+      if (scrollContainer) {
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const containerCenterY = containerRect.top + containerRect.height / 2;
+        const caretY = rect.top + (rect.height ? rect.height / 2 : 12);
+
+        const diff = caretY - containerCenterY;
+
+        // 허용 오차: 8px 이상 벗어났을 때만 즉각 스크롤하여 동일 행 타이핑 시 불필요한 흔들림 방지
+        if (Math.abs(diff) > 8) {
+          scrollContainer.scrollBy({
+            top: diff,
+            behavior: 'instant'
+          });
+        }
+      }
+    });
+  }, [typewriterMode, editorRef]);
+
+  // 타이프라이터 모드 활성화 시 현재 커서 위치로 즉시 중앙 정렬
+  useEffect(() => {
+    if (typewriterMode) {
+      const timer = setTimeout(() => {
+        centerTypewriterCaret();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [typewriterMode, centerTypewriterCaret]);
 
   const saveAutoSaveConfig = (wordsOn: boolean, threshold: number, timeOn: boolean, interval: number) => {
     setAutoSaveWordsEnabled(wordsOn);
