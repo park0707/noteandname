@@ -73,7 +73,7 @@ interface EditorToolbarProps {
   editorSaveStatus: 'saved' | 'saving';
   charCountWithSpaces: number;
   charCountWithoutSpaces: number;
-  manuscriptPages: number;
+  manuscriptPages?: number;
   targetWordCount: number;
   progressPercent: number;
   themeStyles: any;
@@ -134,7 +134,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     editorSaveStatus,
     charCountWithSpaces,
     charCountWithoutSpaces,
-    manuscriptPages,
     targetWordCount,
     progressPercent,
     themeStyles,
@@ -818,9 +817,8 @@ export default function EditorToolbar(props: EditorToolbarProps) {
               <div
                 className={`absolute right-0 mt-2 z-40 p-4 rounded-xl border shadow-2xl w-60 flex flex-col gap-3 ${isDark ? 'bg-[#1E1F22] border-white/[0.08] text-gray-200' : 'bg-white border-black/[0.08] text-gray-800'}`}
               >
-                <h4 className="text-xs font-bold border-b pb-1.5 flex justify-between items-center">
+                <h4 className="text-xs font-bold border-b pb-1.5">
                   상세 자수 통계
-                  <span className="text-[10px] text-gray-500 font-normal">200자 원고지 기준</span>
                 </h4>
 
                 <div className="flex flex-col gap-1.5 text-xs">
@@ -831,10 +829,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
                   <div className="flex justify-between">
                     <span className="text-gray-500">공백 제외 글자수</span>
                     <span className="font-bold">{charCountWithoutSpaces.toLocaleString()}자</span>
-                  </div>
-                  <div className="flex justify-between border-t pt-1.5 mt-1 border-gray-500/10">
-                    <span className="text-gray-500 font-medium">원고지 환산 매수</span>
-                    <span className="text-[#5E6AD2] font-bold">{manuscriptPages} 장</span>
                   </div>
 
                   <div className="border-t pt-2 mt-1">
