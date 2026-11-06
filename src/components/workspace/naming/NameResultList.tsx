@@ -4,18 +4,22 @@ import { Sparkles, AlertTriangle, Bookmark, PlusCircle, Check, Copy } from 'luci
 
 interface NameResultListProps {
   candidates: NameCandidate[];
-  batchCount: number;
-  onChangeBatchCount: (count: number) => void;
+  batchCount?: number;
+  isGenerating?: boolean;
+  onChangeBatchCount?: (count: number) => void;
   onSaveToBank: (candidate: NameCandidate) => void;
-  onAddToArchive: (candidate: NameCandidate, category: ArchiveCategory) => void;
+  onAddToArchive?: (candidate: Partial<NameCandidate>, category?: ArchiveCategory) => void;
+  savedNames?: Set<string>;
 }
 
 export const NameResultList: React.FC<NameResultListProps> = React.memo(({
   candidates,
-  batchCount,
+  batchCount = 10,
+  isGenerating: _isGenerating = false,
   onChangeBatchCount,
   onSaveToBank,
-  onAddToArchive
+  onAddToArchive,
+  savedNames
 }) => {
   const [savedSet, setSavedSet] = useState<Set<string>>(new Set());
   const [addedArchiveSet, setAddedArchiveSet] = useState<Set<string>>(new Set());
@@ -27,7 +31,9 @@ export const NameResultList: React.FC<NameResultListProps> = React.memo(({
   };
 
   const handleArchive = (candidate: NameCandidate) => {
-    onAddToArchive(candidate, candidate.category || 'character');
+    if (onAddToArchive) {
+      onAddToArchive(candidate, candidate.category || 'character');
+    }
     setAddedArchiveSet(prev => new Set(prev).add(candidate.name));
   };
 
@@ -44,34 +50,33 @@ export const NameResultList: React.FC<NameResultListProps> = React.memo(({
         <div className="flex items-center space-x-2">
           <Sparkles className="w-5 h-5 text-[#5E6AD2]" />
           <h3 className="text-sm font-bold text-slate-100">
-            생성 결과 목록 (Name Results) - {candidates.length}건
+            생성 결과 목록 - {candidates.length}건
           </h3>
         </div>
 
         <div className="flex items-center space-x-2">
-          <span className="text-xs text-slate-400 font-medium">일괄 생성 수량:</span>
+          <span className="text-xs text-slate-400 font-medium">생성 수량:</span>
           <select
             value={batchCount}
-            onChange={(e) => onChangeBatchCount(parseInt(e.target.value))}
+            onChange={(e) => onChangeBatchCount?.(Math.min(10, Math.max(1, parseInt(e.target.value, 10))))}
             className="bg-slate-900 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-1.5 focus:outline-none focus:border-[#5E6AD2] font-medium"
           >
-            <option value={5}>5개 (기본)</option>
-            <option value={10}>10개</option>
-            <option value={20}>20개 (대량)</option>
-            <option value={50}>50개 (배치 엑스트라)</option>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+              <option key={n} value={n}>{n}개</option>
+            ))}
           </select>
         </div>
       </div>
 
       {candidates.length === 0 ? (
         <div className="text-center py-12 text-xs text-slate-500 bg-slate-950/40 rounded-xl border border-dashed border-slate-800">
-          태그를 조합하거나 버튼을 눌러 새로운 이름을 생성해보세요.
+          서사 묘사문을 입력하고 버튼을 눌러 새로운 이름을 생성해보세요.
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {candidates.map((cand) => {
             const isHighSimilarity = cand.similarity >= 75;
-            const isSaved = savedSet.has(cand.name);
+            const isSaved = savedSet.has(cand.name) || (savedNames ? savedNames.has(cand.name) : false);
             const isArchived = addedArchiveSet.has(cand.name);
 
             return (
@@ -124,17 +129,6 @@ export const NameResultList: React.FC<NameResultListProps> = React.memo(({
                     {cand.meaning}
                   </p>
                 </div>
-
-                {/* 태그 목록 */}
-                {cand.tags && cand.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2.5">
-                    {cand.tags.map(t => (
-                      <span key={t} className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 font-medium">
-                        #{t}
-                      </span>
-                    ))}
-                  </div>
-                )}
 
                 {/* 하단 액션 버튼 */}
                 <div className="grid grid-cols-2 gap-1.5 mt-3 pt-2.5 border-t border-slate-800/80">

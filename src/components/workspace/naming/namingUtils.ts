@@ -162,7 +162,41 @@ export function generateNamesByCombo(
   const mergedRequired = Array.from(new Set([...(constraints?.requiredSyllables || []), ...extraRequiredSyllables]));
   const mergedForbidden = Array.from(new Set([...(constraints?.forbiddenSyllables || []), ...extraForbiddenSyllables]));
 
-  // 3) 워드 풀 설정
+  // 3) 자연어 키워드 어휘 토큰 분석 & 워드 풀 설정
+  const hasKeywords = Boolean(keywords && keywords.trim());
+  const keywordClean = keywords ? keywords.trim() : '';
+
+  let naturalStems: string[] = [];
+  let naturalPrefixes: string[] = [];
+  let naturalBodies: string[] = [];
+
+  if (hasKeywords) {
+    const rawTokens = keywordClean.split(/[\s,.;:'"()!?~]+/).filter(w => w.length >= 1);
+    const stopSuffixes = /(들의|에서|과의|적인|으로|부터|하고|있는|처럼|같이|에게|[은는이가을를의과와])$/;
+
+    rawTokens.forEach(t => {
+      const stripped = t.replace(stopSuffixes, '');
+      if (stripped.length >= 1) naturalStems.push(stripped);
+      if (t.length >= 1 && t !== stripped) naturalStems.push(t);
+    });
+
+    naturalStems = Array.from(new Set(naturalStems)).filter(Boolean);
+
+    const phoneticSuffixes = ['스', '르', '카', '도르', '론', '투', '기르', '아', '온', '린', '시아', '엘', '로스', '하', '율', '민', '간', '칸', '라', '드', '왕', '제', '신', '존', '검'];
+    naturalStems.forEach(stem => {
+      naturalPrefixes.push(stem);
+      naturalBodies.push(stem);
+      if (stem.length >= 1 && stem.length <= 4) {
+        phoneticSuffixes.forEach(syl => {
+          const combined = stem + syl;
+          if (combined.length <= 7) {
+            naturalBodies.push(combined);
+          }
+        });
+      }
+    });
+  }
+
   const pool = CATEGORY_WORD_POOLS[targetCategory] || CATEGORY_WORD_POOLS.character;
 
   let cultureKey = '서양';
@@ -172,8 +206,13 @@ export function generateNamesByCombo(
     cultureKey = '동양';
   }
 
-  const prefixList = pool.prefixes[cultureKey] || pool.prefixes['서양'] || pool.prefixes['전설'] || ['신비한'];
-  let bodyList = pool.bodies['판타지'] || pool.bodies['무기'] || pool.bodies['공격'] || ['영혼'];
+  const prefixList = hasKeywords && naturalPrefixes.length > 0
+    ? naturalPrefixes
+    : (pool.prefixes[cultureKey] || pool.prefixes['서양'] || pool.prefixes['전설'] || ['신비한']);
+
+  let bodyList = hasKeywords && naturalBodies.length > 0
+    ? naturalBodies
+    : (pool.bodies['판타지'] || pool.bodies['무기'] || pool.bodies['공격'] || ['영혼']);
 
   if (customCategory) {
     const rawTokens = customCategory.trim().split(/[\s,]+/).filter(Boolean);
@@ -189,33 +228,34 @@ export function generateNamesByCombo(
   const generatedNamesSet = new Set<string>();
 
   let attempts = 0;
-  while (generatedList.length < count && attempts < count * 25) {
+  while (generatedList.length < count && attempts < count * 35) {
     attempts++;
 
     let p = prefixList[Math.floor(Math.random() * prefixList.length)];
     let b = bodyList[Math.floor(Math.random() * bodyList.length)];
     const s = suffixList[Math.floor(Math.random() * suffixList.length)];
 
-    // 세계관 규칙 태그가 있으면 50% 확률로 직접 적용
-    if (worldbuildingSeeds.length > 0 && Math.random() < 0.5) {
-      b = worldbuildingSeeds[Math.floor(Math.random() * worldbuildingSeeds.length)];
-    }
-
     let candidateName = '';
 
-    if (targetCategory === 'character') {
+    if (hasKeywords) {
+      // 자연어 키워드가 있는 경우 자연어 어휘 조합 우선 생성
+      if (p === b) {
+        candidateName = p;
+      } else {
+        candidateName = Math.random() > 0.4 ? `${p} ${b}`.trim() : `${p}${b}`.trim();
+      }
+      // 고유 명사 괄호 및 불필요 공백 정리
+      candidateName = candidateName.replace(/\s+/g, ' ');
+    } else if (targetCategory === 'character') {
       if (cultureKey === '동양') {
         if (socialClass === '평민') {
-          // 성 없음 / 1~2자 단순 이름
           const plainNames = ['돌쇠', '막동', '갑돌', '삼돌', '길동', '칠복', '덕배', '마름', '쇠똥', '바위', '달래'];
           candidateName = plainNames[Math.floor(Math.random() * plainNames.length)];
         } else if (socialClass === '선비/학자') {
-          // 호 / 자 / 별호 명칭
           const titles = ['청운', '동방', '매화', '우암', '퇴계', '율곡', '담헌', '백운', '단정', '송암'];
           const suffixes = ['선생', '거사', '학인', '처사', '산인', '재'];
           candidateName = `${titles[Math.floor(Math.random() * titles.length)]} ${suffixes[Math.floor(Math.random() * suffixes.length)]}`;
         } else {
-          // 귀족/양반: 성 + 이름
           const surnames = ['남궁', '황보', '제갈', '독고', '사공', '이', '김', '박', '최', '정', '강', '윤'];
           const surname = surnames[Math.floor(Math.random() * surnames.length)];
           candidateName = `${surname}${b}${s}`.trim();
@@ -224,7 +264,7 @@ export function generateNamesByCombo(
         if (socialClass === '평민') {
           candidateName = `${b}`.trim();
         } else if (socialClass === '선비/학자') {
-          candidateName = `${p} ${b} (Scholarly)`.trim();
+          candidateName = `${p} ${b} (학인)`.trim();
         } else {
           candidateName = `${p} ${b}${s}`.trim();
           if (Math.random() > 0.5) candidateName = `${p}${s}`.trim();
@@ -234,11 +274,10 @@ export function generateNamesByCombo(
       candidateName = `${p} ${b}${s}`.trim();
     }
 
-    // 자유 키워드 반영
-    if (keywords && Math.random() > 0.6) {
-      const kw = keywords.trim().split(/\s+/)[0];
-      if (kw && !candidateName.includes(kw)) {
-        candidateName = `${kw} ${candidateName}`;
+    const isEnglishExplicitlyRequested = /영어|알파벳|english|latin|로마자|영문/i.test(keywords || '');
+    if (!isEnglishExplicitlyRequested) {
+      if (/[가-힣]/.test(candidateName) && /[a-zA-Z]/.test(candidateName)) {
+        candidateName = candidateName.replace(/[a-zA-Z]/g, '').trim();
       }
     }
 
@@ -273,8 +312,19 @@ export function generateNamesByCombo(
       }
     }
 
-    const activeSubtypeName = customCategory || `${era} ${resolvedSub}`;
-    const meaningDesc = `${era} [${resolvedSub}] (${socialClass}) 어감의 고유 명칭`;
+    const activeSubtypeName = customCategory || (hasKeywords ? '자연어 서사 모드' : `${era} ${resolvedSub}`);
+    const meaningDesc = hasKeywords
+      ? `'${keywordClean.slice(0, 24)}${keywordClean.length > 24 ? '...' : ''}' 서사 묘사에서 유래한 ${
+          targetCategory === 'character' ? '인물 고유명' :
+          targetCategory === 'location' ? '지명/장소명' :
+          targetCategory === 'equipment' ? '장비/아이템명' :
+          targetCategory === 'skill' ? '기술/마법명' : '고유 명칭'
+        }`
+      : `${era} [${resolvedSub}] (${socialClass}) 어감의 고유 명칭`;
+
+    const candidateTags = hasKeywords
+      ? Array.from(new Set([keywordClean.slice(0, 15), ...naturalStems.slice(0, 3)]))
+      : [era, resolvedSub, socialClass].filter(Boolean) as string[];
 
     generatedList.push({
       id: `gen-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -284,7 +334,7 @@ export function generateNamesByCombo(
       matchItem: maxSimilarity >= 75 ? matchItemName : undefined,
       category: targetCategory,
       subtype: activeSubtypeName,
-      tags: [era, resolvedSub, socialClass].filter(Boolean) as string[]
+      tags: candidateTags
     });
   }
 

@@ -74,6 +74,123 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
   // External Import States
   const [showLocalImportModal, setShowLocalImportModal] = useState(false);
 
+  // Drag and Drop States
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
+  const [dropPosition, setDropPosition] = useState<'inside' | 'before' | 'after' | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, item: Episode) => {
+    e.stopPropagation();
+    setDraggedId(item.id);
+    e.dataTransfer.setData('text/plain', item.id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, item: Episode) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedId || draggedId === item.id) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetY = e.clientY - rect.top;
+    const height = rect.height;
+
+    let pos: 'before' | 'after' | 'inside' = 'after';
+    if (item.isFolder && offsetY > height * 0.25 && offsetY < height * 0.75) {
+      pos = 'inside';
+    } else if (offsetY < height / 2) {
+      pos = 'before';
+    } else {
+      pos = 'after';
+    }
+
+    setDragOverId(item.id);
+    setDropPosition(pos);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.stopPropagation();
+    setDragOverId(null);
+    setDropPosition(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetItem: Episode) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!draggedId || draggedId === targetItem.id) {
+      setDraggedId(null);
+      setDragOverId(null);
+      setDropPosition(null);
+      return;
+    }
+
+    const draggedItem = episodes.find(ep => ep.id === draggedId);
+    if (!draggedItem) return;
+
+    let updated = [...episodes];
+
+    if (dropPosition === 'inside' && targetItem.isFolder) {
+      updated = updated.map(ep => {
+        if (ep.id === draggedId) {
+          return { ...ep, parentId: targetItem.id, updatedAt: new Date().toISOString() };
+        }
+        return ep;
+      });
+      setExpandedFolderIds(prev => prev.includes(targetItem.id) ? prev : [...prev, targetItem.id]);
+    } else {
+      const targetParentId = targetItem.parentId || null;
+      const sameLevelItems = updated
+        .filter(ep => (targetParentId === null ? !ep.parentId : ep.parentId === targetParentId))
+        .sort((a, b) => {
+          if (a.isFolder && !b.isFolder) return -1;
+          if (!a.isFolder && b.isFolder) return 1;
+          if (a.orderIndex !== undefined && b.orderIndex !== undefined && a.orderIndex !== b.orderIndex) {
+            return a.orderIndex - b.orderIndex;
+          }
+          return a.title.localeCompare(b.title, 'ko', { numeric: true, sensitivity: 'base' });
+        });
+
+      const filteredLevelItems = sameLevelItems.filter(ep => ep.id !== draggedId);
+      const targetIdx = filteredLevelItems.findIndex(ep => ep.id === targetItem.id);
+      const insertIdx = dropPosition === 'before' ? targetIdx : targetIdx + 1;
+
+      const newLevelItems = [
+        ...filteredLevelItems.slice(0, Math.max(0, insertIdx)),
+        { ...draggedItem, parentId: targetParentId, updatedAt: new Date().toISOString() },
+        ...filteredLevelItems.slice(Math.max(0, insertIdx))
+      ];
+
+      const orderMap = new Map<string, number>();
+      newLevelItems.forEach((item, index) => {
+        orderMap.set(item.id, index);
+      });
+
+      updated = updated.map(ep => {
+        if (orderMap.has(ep.id)) {
+          return {
+            ...ep,
+            parentId: targetParentId,
+            orderIndex: orderMap.get(ep.id),
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return ep;
+      });
+    }
+
+    props.setEpisodes(updated);
+    setDraggedId(null);
+    setDragOverId(null);
+    setDropPosition(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedId(null);
+    setDragOverId(null);
+    setDropPosition(null);
+  };
+
   // Plain Text를 에디터용 HTML 단락 구조로 이스케이프 및 안전 변환하는 헬퍼
   const convertPlainTextToHtml = (text: string): string => {
     const escaped = text
@@ -193,7 +310,9 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
     const sortedItems = [...currentItems].sort((a, b) => {
       if (a.isFolder && !b.isFolder) return -1;
       if (!a.isFolder && b.isFolder) return 1;
-      // 자연 정렬: 제목 내의 숫자를 수치로 비교 (1화 < 2화 < 10화 보장)
+      if (a.orderIndex !== undefined && b.orderIndex !== undefined && a.orderIndex !== b.orderIndex) {
+        return a.orderIndex - b.orderIndex;
+      }
       return a.title.localeCompare(b.title, 'ko', { numeric: true, sensitivity: 'base' });
     });
 
@@ -206,10 +325,28 @@ export default function EpisodeSidebar(props: EpisodeSidebarProps) {
         ? foreshadowings.filter(f => !f.isResolved && f.targetChapter === docIndex).length
         : 0;
 
+      const isDragged = draggedId === ep.id;
+      const isDragOver = dragOverId === ep.id;
+
+      let dragBorderClass = '';
+      if (isDragOver) {
+        if (dropPosition === 'before') dragBorderClass = 'border-t-2 border-[#5E6AD2]';
+        else if (dropPosition === 'after') dragBorderClass = 'border-b-2 border-[#5E6AD2]';
+        else if (dropPosition === 'inside') dragBorderClass = 'bg-[#5E6AD2]/20 border border-[#5E6AD2]/60';
+      }
+
       return (
         <div key={ep.id} className="flex flex-col">
           <div
-            className={`group relative flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer transition-all ${selectedEpisodeId === ep.id && !ep.isFolder
+            draggable={!isRenaming}
+            onDragStart={e => handleDragStart(e, ep)}
+            onDragOver={e => handleDragOver(e, ep)}
+            onDragLeave={handleDragLeave}
+            onDrop={e => handleDrop(e, ep)}
+            onDragEnd={handleDragEnd}
+            className={`group relative flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer transition-all ${
+              isDragged ? 'opacity-40 scale-[0.98]' : ''
+            } ${dragBorderClass} ${selectedEpisodeId === ep.id && !ep.isFolder
               ? isDark ? 'bg-[#5E6AD2]/15 text-[#7480E2] font-semibold' : 'bg-[#5E6AD2]/10 text-[#5E6AD2] font-semibold'
               : isDark ? 'text-gray-400 hover:bg-white/[0.02] hover:text-white' : 'text-gray-600 hover:bg-black/[0.02] hover:text-black'
               }`}

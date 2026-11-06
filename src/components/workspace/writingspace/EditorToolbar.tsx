@@ -1,5 +1,5 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Undo,
   Redo,
@@ -217,14 +217,20 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     };
   }, [isFocusMode]);
 
-  const orderedDocs = getOrderedDocumentList(episodes);
-  const currentDocIndex = selectedEpisodeId
-    ? orderedDocs.findIndex((d: Episode) => d.id === selectedEpisodeId) + 1
-    : activeEpisodeIndex;
+  const orderedDocs = useMemo(() => getOrderedDocumentList(episodes), [episodes]);
 
-  const hasDueForeshadowing = foreshadowings
-    ? foreshadowings.some(f => !f.isResolved && f.targetChapter <= (currentDocIndex > 0 ? currentDocIndex : 1))
-    : false;
+  const currentDocIndex = useMemo(() => {
+    if (selectedEpisodeId && orderedDocs.length > 0) {
+      const idx = orderedDocs.findIndex((d: Episode) => d.id === selectedEpisodeId);
+      if (idx >= 0) return idx + 1;
+    }
+    return activeEpisodeIndex > 0 ? activeEpisodeIndex : 1;
+  }, [orderedDocs, selectedEpisodeId, activeEpisodeIndex]);
+
+  const hasDueForeshadowing = useMemo(() => {
+    if (!foreshadowings || foreshadowings.length === 0) return false;
+    return foreshadowings.some(f => !f.isResolved && f.targetChapter <= currentDocIndex);
+  }, [foreshadowings, currentDocIndex]);
 
   const [fontSizeInput, setFontSizeInput] = useState(
     currentFontSize === 'mixed' ? '' : currentFontSize.toString()
@@ -1600,7 +1606,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
         onPlant={(title, description, createdChapter, targetChapter, plantedEpisodeId, plantedEpisodeTitle) => {
           if (!setForeshadowings) return;
           const newFs: Foreshadowing = {
-            id: `fs-${Date.now()}`,
+            id: crypto.randomUUID(),
             projectId: selectedProjectId || foreshadowings?.[0]?.projectId || '',
             title,
             description,
@@ -1622,6 +1628,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
         isOpen={showResolveModal}
         onClose={() => setShowResolveModal(false)}
         foreshadowings={foreshadowings || []}
+        currentChapterNumber={currentDocIndex}
         onResolve={(id) => {
           if (!setForeshadowings) return;
           setForeshadowings(prev =>

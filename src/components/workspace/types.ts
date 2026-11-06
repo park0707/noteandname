@@ -16,6 +16,7 @@ export interface Episode {
   isFolder?: boolean;
   parentId?: string | null;
   deletedAt?: string;
+  orderIndex?: number;
 }
 
 export interface Node {

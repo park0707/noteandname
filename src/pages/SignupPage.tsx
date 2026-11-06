@@ -54,6 +54,10 @@ export default function SignupPage({ themeMode }: AuthPageProps) {
       provider,
       options: {
         redirectTo: window.location.origin,
+        queryParams: {
+          prompt: 'select_account',
+          access_type: 'offline',
+        },
       },
     });
     setSocialLoading(null);

@@ -24,6 +24,7 @@ import AutoSaveModal from './writingspace/Modals/AutoSaveModal';
 
 // Import shared editor utilities
 import { formatSnapshotTimestamp } from './writingspace/editorUtils';
+import { getOrderedDocumentList } from './utils';
 
 interface WritingSpaceProps {
   selectedProject: Project;
@@ -59,7 +60,9 @@ export default function WritingSpace(props: WritingSpaceProps) {
   const { showAlert } = useAlertConfirm();
 
   const activeEpisode = episodes.find(ep => ep.id === selectedEpisodeId) || null;
-  const activeEpisodeIndex = episodes.findIndex(ep => ep.id === selectedEpisodeId) + 1 || 1;
+  const orderedDocs = getOrderedDocumentList(episodes);
+  const foundDocIdx = selectedEpisodeId ? orderedDocs.findIndex(ep => ep.id === selectedEpisodeId) : -1;
+  const activeEpisodeIndex = foundDocIdx >= 0 ? foundDocIdx + 1 : 1;
 
   // 1. 에피소드 및 휴지통 커스텀 훅
   const {

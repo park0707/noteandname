@@ -431,7 +431,7 @@ function PanelRenderer(props: PanelRendererProps) {
             isDark={isDark}
             projectId={selectedProject.id}
             archiveItems={archiveItems}
-            onAddArchiveItem={(newItem) => {
+            onAddArchiveItem={(newItem: Omit<ArchiveItem, 'id' | 'createdAt' | 'updatedAt'>) => {
               const fullItem: ArchiveItem = {
                 ...newItem,
                 id: `arch-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,

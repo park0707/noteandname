@@ -280,6 +280,9 @@ export function getOrderedDocumentList(episodes: Episode[]): Episode[] {
     const sorted = [...currentItems].sort((a, b) => {
       if (a.isFolder && !b.isFolder) return -1;
       if (!a.isFolder && b.isFolder) return 1;
+      if (a.orderIndex !== undefined && b.orderIndex !== undefined && a.orderIndex !== b.orderIndex) {
+        return a.orderIndex - b.orderIndex;
+      }
       return a.title.localeCompare(b.title, 'ko', { numeric: true, sensitivity: 'base' });
     });
 

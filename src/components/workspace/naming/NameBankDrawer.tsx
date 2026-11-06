@@ -8,7 +8,8 @@ interface NameBankDrawerProps {
   bankItems: NameBankItem[];
   onUpdateStatus: (itemId: string, status: 'saved' | 'used' | 'discarded') => void;
   onDeleteItem: (itemId: string) => void;
-  onRegisterArchive: (name: string, category: ArchiveCategory, meaning: string) => void;
+  onRegisterArchive?: (name: string, category: ArchiveCategory, meaning: string) => void;
+  onAddToArchive?: (candidate: Partial<{ name: string; meaning: string; category: ArchiveCategory }>, targetCat?: ArchiveCategory) => void;
   isDark?: boolean;
   archiveItems?: ArchiveItem[];
   relationNodes?: Node[];
@@ -21,6 +22,7 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
   onUpdateStatus,
   onDeleteItem,
   onRegisterArchive,
+  onAddToArchive,
   isDark: _isDark = true,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'bank' | 'jamo'>('bank');
@@ -175,7 +177,13 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
                       </span>
 
                       <button
-                        onClick={() => onRegisterArchive(item.name, item.targetCategory, item.meaning)}
+                        onClick={() => {
+                          if (onAddToArchive) {
+                            onAddToArchive({ name: item.name, meaning: item.meaning, category: item.targetCategory }, item.targetCategory);
+                          } else if (onRegisterArchive) {
+                            onRegisterArchive(item.name, item.targetCategory, item.meaning);
+                          }
+                        }}
                         className="flex items-center space-x-1 px-2.5 py-1 bg-violet-950/40 hover:bg-violet-900/60 text-violet-200 border border-violet-800/40 rounded-lg transition-colors font-semibold"
                       >
                         <PlusCircle className="w-3 h-3 text-violet-400" />

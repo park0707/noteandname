@@ -240,7 +240,7 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
         if (error) throw error;
 
         if (data && data.length > 0) {
-          const dbEpisodes: Episode[] = data.map(d => ({
+          const dbEpisodes: Episode[] = data.map((d, idx) => ({
             id: d.id,
             projectId: d.project_id,
             title: d.title,
@@ -249,6 +249,7 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
             isFolder: d.is_folder,
             parentId: d.parent_id,
             updatedAt: d.updated_at,
+            orderIndex: d.order_index ?? idx,
           }));
           setEpisodes(dbEpisodes);
           setLayoutTree(prev => {
@@ -344,7 +345,7 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
       
       if (user && user.id !== 'guest-user-id' && !selectedProject.id.startsWith('mock-')) {
         try {
-          const upsertData = episodes.map(ep => ({
+          const upsertData = episodes.map((ep, idx) => ({
             id: ep.id,
             project_id: selectedProject.id,
             title: ep.title,
@@ -352,6 +353,7 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
             char_count: ep.charCount || 0,
             is_folder: ep.isFolder || false,
             parent_id: ep.parentId || null,
+            order_index: ep.orderIndex !== undefined ? ep.orderIndex : idx,
             updated_at: ep.updatedAt || new Date().toISOString()
           }));
           
@@ -502,6 +504,11 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     return () => clearTimeout(timer);
   }, [relationNodes, selectedProject, user]);
 
+  const ensureUUID = (id: string) => {
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(id);
+    return isUuid ? id : crypto.randomUUID();
+  };
+
   // 복선 타임라인 데이터 로드
   useEffect(() => {
     if (!selectedProject) {
@@ -525,7 +532,7 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
           // 기본 mock 복선 데이터 1개 적재
           const initialFs: Foreshadowing[] = [
             {
-              id: 'fs-mock-1',
+              id: crypto.randomUUID(),
               projectId: selectedProject.id,
               title: '황금 열쇠의 비밀 복선',
               description: '제 10화에 등장한 황금 열쇠 복선이 설정되었습니다. 목표 회수 시점: 제 50화',
@@ -559,45 +566,48 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
             description: d.description || '',
             createdChapter: d.created_chapter,
             targetChapter: d.target_chapter,
+            createdEpisodeId: d.created_episode_id || undefined,
+            createdEpisodeTitle: d.created_episode_title || undefined,
             isResolved: d.is_resolved,
             createdAt: d.created_at
           }));
           setForeshadowings(dbFs);
           localStorage.setItem(fsKey, JSON.stringify(dbFs));
         } else {
-          // DB가 비어있는 경우 로컬스토리지 복구 또는 기본 복선 생성
+          // DB가 비어있는 경우 로컬스토리지 복구 시도
           const saved = localStorage.getItem(fsKey);
           let fsToUpsert: Foreshadowing[] = [];
           if (saved) {
-            fsToUpsert = JSON.parse(saved);
-          } else {
-            fsToUpsert = [
-              {
-                id: crypto.randomUUID(),
-                projectId: selectedProject.id,
-                title: '황금 열쇠의 비밀 복선',
-                description: '제 10화에 등장한 황금 열쇠 복선이 설정되었습니다. 목표 회수 시점: 제 50화',
-                createdChapter: 10,
-                targetChapter: 50,
-                isResolved: false,
-                createdAt: new Date().toISOString()
-              }
-            ];
+            try {
+              fsToUpsert = JSON.parse(saved);
+            } catch (e) {
+              console.error(e);
+            }
           }
-          setForeshadowings(fsToUpsert);
-          localStorage.setItem(fsKey, JSON.stringify(fsToUpsert));
+          if (fsToUpsert.length > 0) {
+            const sanitized = fsToUpsert.map(f => ({
+              ...f,
+              id: ensureUUID(f.id)
+            }));
+            setForeshadowings(sanitized);
+            localStorage.setItem(fsKey, JSON.stringify(sanitized));
 
-          const upsertData = fsToUpsert.map(f => ({
-            id: f.id.startsWith('fs-mock-') ? crypto.randomUUID() : f.id,
-            project_id: selectedProject.id,
-            title: f.title,
-            description: f.description,
-            created_chapter: f.createdChapter,
-            target_chapter: f.targetChapter,
-            is_resolved: f.isResolved,
-            created_at: f.createdAt
-          }));
-          await supabase.from('foreshadowings').upsert(upsertData);
+            const upsertData = sanitized.map(f => ({
+              id: f.id,
+              project_id: selectedProject.id,
+              title: f.title,
+              description: f.description || '',
+              created_chapter: f.createdChapter,
+              target_chapter: f.targetChapter,
+              created_episode_id: f.createdEpisodeId || null,
+              created_episode_title: f.createdEpisodeTitle || null,
+              is_resolved: f.isResolved,
+              created_at: f.createdAt || new Date().toISOString()
+            }));
+            await supabase.from('foreshadowings').upsert(upsertData);
+          } else {
+            setForeshadowings([]);
+          }
         }
       } catch (err) {
         console.error('Failed to load foreshadowings from Supabase, fallback:', err);
@@ -615,36 +625,60 @@ export default function WorkspacePage({ themeMode }: WorkspacePageProps) {
     loadForeshadowings();
   }, [selectedProject, user]);
 
-  // 복선 타임라인 데이터 변경 시 자동 저장 (디바운스)
+  // 복선 타임라인 데이터 변경 시 동기화 (로컬스토리지 즉시 동기화 및 Supabase 실시간 백엔드 연동)
   useEffect(() => {
     if (!selectedProject) return;
 
-    const timer = setTimeout(async () => {
-      const fsKey = `novelflow_foreshadowings_${selectedProject.id}`;
-      localStorage.setItem(fsKey, JSON.stringify(foreshadowings));
+    const fsKey = `novelflow_foreshadowings_${selectedProject.id}`;
+    // 1. 로컬스토리지 즉시 동기화 (Alt+Tab, 탭 전환, 화면 이탈 시 데이터 손실 완벽 방지)
+    localStorage.setItem(fsKey, JSON.stringify(foreshadowings));
 
-      const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
-      if (!isGuest && foreshadowings.length > 0) {
-        try {
+    // 2. Supabase DB 백엔드 동기화
+    const isGuest = !user || user.id === 'guest-user-id' || selectedProject.id.startsWith('mock-');
+    if (isGuest) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        if (foreshadowings.length > 0) {
           const upsertData = foreshadowings.map(f => ({
-            id: f.id.startsWith('fs-mock-') ? crypto.randomUUID() : f.id,
+            id: ensureUUID(f.id),
             project_id: selectedProject.id,
             title: f.title,
-            description: f.description,
+            description: f.description || '',
             created_chapter: f.createdChapter,
             target_chapter: f.targetChapter,
+            created_episode_id: f.createdEpisodeId || null,
+            created_episode_title: f.createdEpisodeTitle || null,
             is_resolved: f.isResolved,
-            created_at: f.createdAt
+            created_at: f.createdAt || new Date().toISOString()
           }));
-          const { error } = await supabase
+
+          const { error: upsertError } = await supabase
             .from('foreshadowings')
             .upsert(upsertData);
-          if (error) throw error;
-        } catch (err) {
-          console.error('Failed to sync foreshadowings to Supabase:', err);
+          if (upsertError) throw upsertError;
+
+          // 삭제된 항목 DB 정리
+          const validIds = upsertData.map(u => u.id);
+          const { data: dbItems } = await supabase
+            .from('foreshadowings')
+            .select('id')
+            .eq('project_id', selectedProject.id);
+
+          if (dbItems) {
+            const idsToDelete = dbItems.filter(item => !validIds.includes(item.id)).map(item => item.id);
+            if (idsToDelete.length > 0) {
+              await supabase.from('foreshadowings').delete().in('id', idsToDelete);
+            }
+          }
+        } else {
+          // 전량 삭제 처리
+          await supabase.from('foreshadowings').delete().eq('project_id', selectedProject.id);
         }
+      } catch (err) {
+        console.error('Failed to sync foreshadowings to Supabase:', err);
       }
-    }, 1500);
+    }, 400);
 
     return () => clearTimeout(timer);
   }, [foreshadowings, selectedProject, user]);

@@ -7,6 +7,7 @@ import type {
 } from '../components/workspace/types';
 import { generateNamesByCombo } from '../components/workspace/naming/namingUtils';
 import { CATEGORY_SUBTYPES } from '../data/tag_taxonomy_seeds';
+import { executeMultiAiChain } from './multiAiService';
 
 export type AIProvider = 'gemini' | 'openai' | 'groq' | 'local';
 
@@ -62,18 +63,28 @@ export function parseNarrativePrompt(keywords: string): ParsedNarrativeContext {
     });
   }
 
+  // 매칭 패턴 외의 사용자 자유 입력 어휘 토큰 추출 (조사 제거)
+  const rawWords = text.split(/[\s,.;:'"()!?~]+/).filter(w => w.length >= 1);
+  const stopSuffixes = /(들의|에서|과의|적인|으로|부터|하고|있는|처럼|같이|에게|[은는이가을를의과와])$/;
+  rawWords.forEach(w => {
+    const stripped = w.replace(stopSuffixes, '');
+    if (stripped.length >= 1 && !tokens.includes(stripped)) {
+      tokens.push(stripped);
+    }
+  });
+
   // 정서/무드 추출 패턴 (웹소설 정서 확장)
   if (/비운|괴로움|슬픔|비극|잔혹|냉혹/i.test(text)) moods.push('비운/냉혹');
-  if (/신성|성스러운|고귀|우아/i.test(text)) moods.push('신성/고귀');
-  if (/파괴|광기|분노|강렬/i.test(text)) moods.push('파괴/광기');
+  if (/신성|성스러운|고귀|우아|신력|신격|신/i.test(text)) moods.push('신성/고귀/신격');
+  if (/파괴|광기|분노|강렬|야만|원시|족장/i.test(text)) moods.push('파괴/야만/강렬');
   if (/음산|음침|저주|다크/i.test(text)) moods.push('다크/음산');
   if (/얀데레|집착|후회|피폐/i.test(text)) moods.push('집착/피폐/후회');
   if (/유쾌|사이다|코미디|착각/i.test(text)) moods.push('유쾌/사이다');
 
   return {
-    symbolicTokens: tokens.length > 0 ? tokens : [text.slice(0, 10)],
-    emotionalMood: moods.length > 0 ? moods : ['기본 정서'],
-    characterArchetype: tokens.length > 0 ? tokens[0] : '기본 서사'
+    symbolicTokens: tokens.length > 0 ? tokens : [text.slice(0, 15)],
+    emotionalMood: moods.length > 0 ? moods : [text],
+    characterArchetype: tokens.length > 0 ? tokens[0] : '자연어 서사'
   };
 }
 
@@ -156,7 +167,7 @@ export function resolveTaxonomyAndPhonetics(
 
 function buildPipelinePrompt(
   resolvedContext: ResolvedNamingContext,
-  count: number = 10
+  count: number = 8
 ): string {
   const {
     targetCategory,
@@ -173,6 +184,14 @@ function buildPipelinePrompt(
     phoneticRules,
     narrativeSummary
   } = resolvedContext;
+
+  const isEnglishExplicitlyRequested = /영어|알파벳|english|latin|로마자|영문/i.test(
+    (narrativeSummary || '') + ' ' + (symbolicTokens.join(' ')) + ' ' + (subtypeName || '')
+  );
+
+  const languageGuideline = isEnglishExplicitlyRequested
+    ? `- [표기 언어 규칙]: 사용자가 영어/알파벳/로마자 표기를 요구하였으므로 영문/알파벳 표기를 반영하세요.`
+    : `- [표기 언어 엄격 규칙 (필수 준수)]: 사용자가 영어 표기를 명시적으로 요구하지 않았으므로 **이름(name)과 의미(meaning)는 100% 한글(Pure Korean)로만 작명**해야 합니다. '마르케llu스' 처럼 영문 알파벳이 섞이는 현상을 엄격히 금지합니다.`;
 
   const sectionsList: string[] = [];
   if (!enabledSections || enabledSections.tag) {
@@ -198,138 +217,23 @@ function buildPipelinePrompt(
 
   return `
 당신은 대한민국 최고의 웹소설/판타지/무협 전문 AI 작명가입니다.
-사용자가 선택한 [시대], [지역/문화권], [신분/명명 형태], [세계관 고유 규칙 태그], [설화/민담], [자연어 서사]의 조건만을 완벽히 결합하여 **총 ${count}개**의 독창적인 이름을 생성하세요.
+요구사항을 완벽히 만족하는 고품질 베스트 고유명사 **정확히 ${count}개**를 생성하세요.
 
 [활성화된 작명 입력 데이터]
 - 대상 분야 카테고리: ${targetCategory}
 ${sectionsList.join('\n')}
 
-[출력 지침]
-1. 베스트 고유명사 ${count}개를 창작하세요 (단순 유명 인물 베끼기 배제).
-2. 각 후보마다 이름(name), 어원/한자풀이/서사적 의미(meaning), 1문장 서사 힌트(storySnippet), 연관 태그(tags)를 응답하세요.
-3. 반드시 JSON Array 형식으로만 반환해야 합니다.
+${languageGuideline}
+
+[출력 지침 - 초고속 간결 응답]
+1. ${count}개의 고유명사를 창작하세요 (단순 유명 인물 베끼기 배제).
+2. 각 후보마다 name(이름), meaning(어원 및 서사적 의미, 1~2문장으로 명확히), storySnippet(서사 힌트, 1문장), tags(연관 태그 배열)를 응답하세요.
+3. 부연 설명이나 사고 과정 서술 없이, 오직 요청된 JSON Array 규격만 즉시 반환하세요.
 `;
 }
 
 // ============================================================================
-// 4. API 통신 클라이언트 (Gemini / Groq / OpenAI)
-// ============================================================================
-
-async function callGeminiAPI(
-  prompt: string,
-  apiKey: string,
-  modelName: string = 'gemini-2.0-flash'
-): Promise<{ name: string; meaning: string; tags?: string[]; storySnippet?: string }[]> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: 'ARRAY',
-          items: {
-            type: 'OBJECT',
-            properties: {
-              name: { type: 'STRING' },
-              meaning: { type: 'STRING' },
-              tags: { type: 'ARRAY', items: { type: 'STRING' } },
-              storySnippet: { type: 'STRING' }
-            },
-            required: ['name', 'meaning']
-          }
-        }
-      }
-    })
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini API Error (${response.status}) [${modelName}]: ${errText}`);
-  }
-
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error(`Gemini API [${modelName}] returned empty response.`);
-
-  return JSON.parse(text);
-}
-
-async function callGroqAPI(
-  prompt: string,
-  apiKey: string
-): Promise<{ name: string; meaning: string; tags?: string[]; storySnippet?: string }[]> {
-  const url = 'https://api.groq.com/openai/v1/chat/completions';
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: 'qwen-2.5-32b',
-      messages: [
-        { role: 'system', content: 'You are a professional AI Naming expert. Always respond with a JSON array containing objects with keys: name, meaning, tags, storySnippet.' },
-        { role: 'user', content: prompt }
-      ],
-      response_format: { type: 'json_object' }
-    })
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Groq API Error (${response.status}): ${errText}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error('Groq API returned empty response.');
-
-  const parsed = JSON.parse(content);
-  return Array.isArray(parsed) ? parsed : (parsed.names || parsed.items || []);
-}
-
-async function callOpenAIAPI(
-  prompt: string,
-  apiKey: string
-): Promise<{ name: string; meaning: string; tags?: string[]; storySnippet?: string }[]> {
-  const url = 'https://api.openai.com/v1/chat/completions';
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: 'You are a professional AI Naming expert. Always respond with a JSON array containing objects with keys: name, meaning, tags, storySnippet.' },
-        { role: 'user', content: prompt }
-      ],
-      response_format: { type: 'json_object' }
-    })
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`OpenAI API Error (${response.status}): ${errText}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) throw new Error('OpenAI API returned empty response.');
-
-  const parsed = JSON.parse(content);
-  return Array.isArray(parsed) ? parsed : (parsed.names || parsed.items || []);
-}
-
-// ============================================================================
-// 5. 3단계 마이크로 파이프라인 통합 작명 서비스 함수
+// 4. 3단계 마이크로 파이프라인 통합 작명 서비스 함수 (5단계 무제한 멀티 AI 연동)
 // ============================================================================
 
 export async function generateNamesWithAI(
@@ -339,8 +243,8 @@ export async function generateNamesWithAI(
   onStepProgress?: (step: 'step1' | 'step2' | 'step3') => void
 ): Promise<{ candidates: NameCandidate[]; isFallbackUsed: boolean; fallbackReason?: string }> {
   const { provider } = options;
-  const effectiveApiKey = options.apiKey || (import.meta.env ? (import.meta.env.VITE_GEMINI_API_KEY2 || import.meta.env.VITE_GEMINI_API_KEY) : undefined);
-  const effectiveGroqKey = options.groqApiKey || (import.meta.env ? import.meta.env.VITE_GROQ_API_KEY : undefined);
+  const effectiveApiKey = options.apiKey || (import.meta.env ? (import.meta.env.VITE_GEMINI_API_KEY2 || import.meta.env.VITE_GEMINI_API_KEY) : undefined) || localStorage.getItem('novelflow_ai_api_key') || undefined;
+  const effectiveGroqKey = options.groqApiKey || (import.meta.env ? import.meta.env.VITE_GROQ_API_KEY : undefined) || localStorage.getItem('novelflow_groq_api_key') || undefined;
 
   // --------------------------------------------------------------------------
   // [Step 1] 자연어 서사 해석 (Narrative Parsing)
@@ -359,7 +263,7 @@ export async function generateNamesWithAI(
   // --------------------------------------------------------------------------
   if (onStepProgress) onStepProgress('step3');
 
-  // 1) 로컬 엔진 모드이거나 클라우드 API Key가 없는 경우 -> 100% 무제한 로컬 조합 엔진
+  // 1) 로컬 모드이거나 클라우드 API Key가 하나도 없는 경우 -> 로컬 엔진 사용
   if (provider === 'local' || (!effectiveApiKey && !effectiveGroqKey)) {
     const localResults = generateNamesByCombo(params, archiveItems);
     return {
@@ -367,46 +271,41 @@ export async function generateNamesWithAI(
       isFallbackUsed: true,
       fallbackReason: provider === 'local'
         ? '100% 오프라인 완전 무제한 로컬 엔진으로 생성되었습니다.'
-        : 'API Key가 설정되지 않아 로컬 무제한 조합 엔진으로 생성되었습니다.'
+        : 'Google AI Studio 또는 Groq 무료 API Key를 설정하시면 무료 AI 딥 작명을 이용하실 수 있습니다.'
     };
   }
 
   try {
-    const prompt = buildPipelinePrompt(resolvedContext, params.count || 10);
-    let rawResults: { name: string; meaning: string; tags?: string[]; storySnippet?: string }[] = [];
+    const prompt = buildPipelinePrompt(resolvedContext, params.count || 8);
+    const systemInstruction = '당신은 대한민국 최고의 웹소설/판타지/무협 전문 AI 작명가입니다. 제시된 요구사항을 완벽히 이행하여 JSON 배열로 응답하세요.';
 
-    if (provider === 'groq' && effectiveGroqKey) {
-      rawResults = await callGroqAPI(prompt, effectiveGroqKey);
-    } else if (provider === 'gemini' && effectiveApiKey) {
-      try {
-        rawResults = await callGeminiAPI(prompt, effectiveApiKey, 'gemini-2.0-flash');
-      } catch (geminiError: any) {
-        if (geminiError?.message?.includes('429') || geminiError?.message?.includes('RESOURCE_EXHAUSTED')) {
-          console.warn('Gemini 2.0 Flash 429. Retrying with Gemini 1.5 Flash...');
-          try {
-            rawResults = await callGeminiAPI(prompt, effectiveApiKey, 'gemini-1.5-flash');
-          } catch (retryErr: any) {
-            console.warn('Gemini 1.5 Flash failed. Retrying with Gemini 1.5 Pro...');
-            rawResults = await callGeminiAPI(prompt, effectiveApiKey, 'gemini-1.5-pro');
-          }
-        } else {
-          throw geminiError;
+    const res = await executeMultiAiChain<{ name: string; meaning: string; tags?: string[]; storySnippet?: string }[]>(
+      prompt,
+      systemInstruction,
+      (rawText: string) => {
+        const parsed = JSON.parse(rawText);
+        return Array.isArray(parsed) ? parsed : (parsed.names || parsed.items || parsed.candidates || []);
+      }
+    );
+
+    const isEnglishExplicitlyRequested = /영어|알파벳|english|latin|로마자|영문/i.test(params.keywords || '');
+
+    const candidates: NameCandidate[] = res.data.map((item, idx) => {
+      let candidateName = (item.name || '').trim();
+      const candidateMeaning = (item.meaning || '').trim() + (item.storySnippet ? ` (서사: ${item.storySnippet})` : '');
+
+      if (!isEnglishExplicitlyRequested) {
+        // 만약 한글과 영문 알파벳이 어색하게 섞인 경우 (예: "마르케llu스") -> 알파벳 제거 후 정리
+        if (/[가-힣]/.test(candidateName) && /[a-zA-Z]/.test(candidateName)) {
+          candidateName = candidateName.replace(/[a-zA-Z]/g, '').trim();
         }
       }
-    } else if (provider === 'openai' && effectiveApiKey) {
-      rawResults = await callOpenAIAPI(prompt, effectiveApiKey);
-    } else {
-      const localResults = generateNamesByCombo(params, archiveItems);
-      return { candidates: localResults, isFallbackUsed: true, fallbackReason: '기본 로컬 모드 발동' };
-    }
 
-    // 반환된 LLM 응답을 NameCandidate 및 자모 유사도 매칭으로 변환
-    const candidates: NameCandidate[] = rawResults.map((item, idx) => {
       let maxSimilarity = 0;
       let matchItemName = '';
 
       for (const ai of archiveItems) {
-        const sim = calculateSimilarity(item.name, ai.name);
+        const sim = calculateSimilarity(candidateName, ai.name);
         if (sim > maxSimilarity) {
           maxSimilarity = sim;
           matchItemName = ai.name;
@@ -414,9 +313,9 @@ export async function generateNamesWithAI(
       }
 
       return {
-        id: `ai-${provider}-${Date.now()}-${idx}`,
-        name: item.name,
-        meaning: item.meaning + (item.storySnippet ? ` (서사: ${item.storySnippet})` : ''),
+        id: `ai-${res.providerName.toLowerCase().replace(/[^a-z0-9]/g, '')}-${Date.now()}-${idx}`,
+        name: candidateName,
+        meaning: candidateMeaning,
         similarity: maxSimilarity,
         matchItem: maxSimilarity >= 75 ? matchItemName : undefined,
         category: params.targetCategory,
@@ -425,19 +324,18 @@ export async function generateNamesWithAI(
       };
     });
 
-    return { candidates, isFallbackUsed: false };
+    return {
+      candidates,
+      isFallbackUsed: res.isFallbackUsed,
+      fallbackReason: res.isFallbackUsed ? `연동 모델: ${res.providerName}` : undefined
+    };
   } catch (error: any) {
-    console.warn('AI API Call Failed. Falling back to local engine:', error);
-    const is429 = error?.message?.includes('429') || error?.message?.includes('RESOURCE_EXHAUSTED');
-    const reasonMsg = is429
-      ? '구글 AI 무료 할당량(Quota Limit)을 초과하여 100% 오프라인 로컬 엔진으로 안전하게 전환되었습니다.'
-      : `AI 모델 통신 오류 (${error?.message || error}). 로컬 엔진으로 폴백 처리되었습니다.`;
-
+    console.warn('All AI Providers failed or exhausted. Falling back to local combo engine:', error);
     const fallbackResults = generateNamesByCombo(params, archiveItems);
     return {
       candidates: fallbackResults,
       isFallbackUsed: true,
-      fallbackReason: reasonMsg
+      fallbackReason: `AI 쿼터 소진 또는 API 연결 취소로 로컬 오프라인 엔진으로 자동 전환되었습니다. (${error?.message || error})`
     };
   }
 }

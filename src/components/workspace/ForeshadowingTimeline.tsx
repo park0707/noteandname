@@ -27,7 +27,7 @@ export default function ForeshadowingTimeline({
     if (!title.trim()) return;
 
     const newFs: Foreshadowing = {
-      id: `fs-${Date.now()}`,
+      id: crypto.randomUUID(),
       projectId: foreshadowings[0]?.projectId || '',
       title: title.trim(),
       description: description.trim(),
