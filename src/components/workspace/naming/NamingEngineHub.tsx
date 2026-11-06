@@ -178,11 +178,11 @@ export function NamingEngineHub({
         {/* 카테고리 선택 & 세부 옵션 */}
         <div className="bg-[#121318]/90 border border-slate-800 rounded-2xl p-4 space-y-4 shadow-md">
           {/* 카테고리 필터 탭 */}
-          <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-2">
+          <div className="pb-4 border-b border-slate-800/80">
+            <label className="block text-xs font-semibold text-slate-400 mb-3 pb-1">
               작명 대상 분야 카테고리 선택
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
               {CATEGORIES.map(cat => {
                 const Icon = cat.icon;
                 const isSelected = selectedCategory === cat.id;
@@ -206,11 +206,11 @@ export function NamingEngineHub({
           </div>
 
           {/* 세부 설정: 성별, 후보 개수, 보관함 열기 */}
-          <div className={`grid grid-cols-1 ${selectedCategory === 'character' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3 pt-2 border-t border-slate-800/80`}>
+          <div className={`grid grid-cols-1 ${selectedCategory === 'character' ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-3 pt-3.5`}>
             {/* 성별 선택 */}
             {selectedCategory === 'character' && (
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+                <label className="block text-xs font-semibold text-slate-400 mb-2.5 pb-1">
                   성별 어감 지정
                 </label>
                 <div className="flex rounded-xl bg-slate-900 p-1 border border-slate-800 text-xs">
@@ -219,7 +219,7 @@ export function NamingEngineHub({
                       key={g}
                       type="button"
                       onClick={() => setGender(g)}
-                      className={`flex-1 py-1.5 rounded-lg font-semibold transition-colors ${
+                      className={`flex-1 py-1 rounded-lg font-semibold transition-colors ${
                         gender === g ? 'bg-[#5E6AD2] text-white' : 'text-slate-400 hover:text-slate-200'
                       }`}
                     >
@@ -230,46 +230,25 @@ export function NamingEngineHub({
               </div>
             )}
 
-            {/* 생성 후보 군 개수 설정 (최소 1 ~ 최대 10) */}
+            {/* 생성 후보군 개수 설정 */}
             <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">
-                생성 후보 군 개수 설정 (1~10개)
+              <label className="block text-xs font-semibold text-slate-400 mb-2.5 pb-1">
+                생성 후보군 개수
               </label>
-              <div className="flex items-center space-x-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300">
-                <button
-                  type="button"
-                  onClick={() => setBatchCount(prev => Math.max(1, prev - 1))}
-                  className="w-6 h-6 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded text-slate-200 font-bold transition-colors"
-                >
-                  -
-                </button>
-                <input
-                  type="number"
-                  min={1}
-                  max={10}
-                  value={batchCount}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val)) {
-                      setBatchCount(Math.min(10, Math.max(1, val)));
-                    }
-                  }}
-                  className="w-12 bg-slate-800 border border-slate-700 text-center rounded py-0.5 text-xs text-white font-bold"
-                />
-                <span className="text-slate-400 font-semibold">개</span>
-                <button
-                  type="button"
-                  onClick={() => setBatchCount(prev => Math.min(10, prev + 1))}
-                  className="w-6 h-6 flex items-center justify-center bg-slate-800 hover:bg-slate-700 rounded text-slate-200 font-bold transition-colors"
-                >
-                  +
-                </button>
-              </div>
+              <select
+                value={batchCount}
+                onChange={(e) => setBatchCount(Math.min(10, Math.max(1, parseInt(e.target.value, 10))))}
+                className="w-full bg-slate-900 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-2 h-[34px] focus:outline-none focus:border-[#5E6AD2] font-semibold transition-colors cursor-pointer"
+              >
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                  <option key={n} value={n}>{n}개</option>
+                ))}
+              </select>
             </div>
 
             {/* 보관함 열기 버튼 */}
             <div>
-              <label className="block text-xs font-semibold text-slate-400 mb-1.5">
+              <label className="block text-xs font-semibold text-slate-400 mb-2.5 pb-1">
                 이름 보관함
               </label>
               <button
@@ -286,7 +265,7 @@ export function NamingEngineHub({
 
         {/* 자연어 서사 입력 캔버스 */}
         <div className="bg-[#121318]/90 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-md">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <FileText className="w-4.5 h-4.5 text-sky-400" />
               <h3 className="text-sm font-bold text-slate-100">자연어 서사 묘사문 입력</h3>
@@ -297,7 +276,7 @@ export function NamingEngineHub({
           </div>
 
           {/* 서사 입력 텍스트 영역 */}
-          <div>
+          <div className="pt-1">
             <textarea
               value={keywords}
               onChange={(e) => setKeywords(e.target.value)}
@@ -308,7 +287,7 @@ export function NamingEngineHub({
           </div>
 
           {/* 작명 생성 실행 버튼 */}
-          <div className="flex items-center justify-end pt-2 border-t border-slate-800">
+          <div className="flex items-center justify-end">
             <button
               type="button"
               onClick={handleGenerateAIClick}

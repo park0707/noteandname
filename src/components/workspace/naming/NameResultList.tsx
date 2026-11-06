@@ -14,9 +14,9 @@ interface NameResultListProps {
 
 export const NameResultList: React.FC<NameResultListProps> = React.memo(({
   candidates,
-  batchCount = 10,
+  batchCount: _batchCount = 10,
   isGenerating: _isGenerating = false,
-  onChangeBatchCount,
+  onChangeBatchCount: _onChangeBatchCount,
   onSaveToBank,
   onAddToArchive,
   savedNames
@@ -45,35 +45,22 @@ export const NameResultList: React.FC<NameResultListProps> = React.memo(({
 
   return (
     <div className="bg-[#121318]/90 border border-slate-800 rounded-2xl p-4 backdrop-blur-md space-y-4">
-      {/* 리스트 헤더 & 일괄 배치 생성 수량 조절 */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+      {/* 리스트 헤더 */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div className="flex items-center space-x-2">
           <Sparkles className="w-5 h-5 text-[#5E6AD2]" />
           <h3 className="text-sm font-bold text-slate-100">
             생성 결과 목록 - {candidates.length}건
           </h3>
         </div>
-
-        <div className="flex items-center space-x-2">
-          <span className="text-xs text-slate-400 font-medium">생성 수량:</span>
-          <select
-            value={batchCount}
-            onChange={(e) => onChangeBatchCount?.(Math.min(10, Math.max(1, parseInt(e.target.value, 10))))}
-            className="bg-slate-900 border border-slate-800 text-xs text-slate-200 rounded-xl px-3 py-1.5 focus:outline-none focus:border-[#5E6AD2] font-medium"
-          >
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-              <option key={n} value={n}>{n}개</option>
-            ))}
-          </select>
-        </div>
       </div>
 
       {candidates.length === 0 ? (
-        <div className="text-center py-12 text-xs text-slate-500 bg-slate-950/40 rounded-xl border border-dashed border-slate-800">
+        <div className="text-center py-12 text-xs text-slate-500 bg-slate-950/40 rounded-xl border border-dashed border-slate-800 mt-2">
           서사 묘사문을 입력하고 버튼을 눌러 새로운 이름을 생성해보세요.
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 pt-2">
           {candidates.map((cand) => {
             const isHighSimilarity = cand.similarity >= 75;
             const isSaved = savedSet.has(cand.name) || (savedNames ? savedNames.has(cand.name) : false);
