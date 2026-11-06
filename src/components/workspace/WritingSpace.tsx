@@ -106,11 +106,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
     setTypewriterMode,
     lineHeight,
     setLineHeight,
-    paragraphSpacing,
-    setParagraphSpacing,
     editorWidth,
-    firstLineIndent,
-    setFirstLineIndent,
     editorThemeOverride,
     editorRef,
     saveSelection,
@@ -477,9 +473,13 @@ export default function WritingSpace(props: WritingSpaceProps) {
         setShowFindReplace(true);
         setIsReplaceMode(true);
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        const isInputElement = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+        if (isInputElement) return;
         e.preventDefault();
         undo(handleContentInput);
       } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') {
+        const isInputElement = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
+        if (isInputElement) return;
         e.preventDefault();
         redo(handleContentInput);
       }
@@ -905,7 +905,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
               isDark={isDark}
               isFocusMode={isFocusMode}
               setIsFocusMode={setIsFocusMode}
-              execFormat={execFormat}
+              execFormat={(command, value) => execFormat(command, value, handleContentInput)}
               editorFontSize={editorFontSize}
               setEditorFontSize={setEditorFontSize}
               editorFontFamily={editorFontFamily}
@@ -923,10 +923,6 @@ export default function WritingSpace(props: WritingSpaceProps) {
               setTypewriterMode={setTypewriterMode}
               lineHeight={lineHeight}
               setLineHeight={setLineHeight}
-              paragraphSpacing={paragraphSpacing}
-              setParagraphSpacing={setParagraphSpacing}
-              firstLineIndent={firstLineIndent}
-              setFirstLineIndent={setFirstLineIndent}
               showFindReplace={showFindReplace}
               setShowFindReplace={setShowFindReplace}
               showInspector={showInspector}
@@ -1000,9 +996,7 @@ export default function WritingSpace(props: WritingSpaceProps) {
                   editorFontFamily={editorFontFamily}
                   lineHeight={lineHeight}
                   typewriterMode={typewriterMode}
-                  paragraphSpacing={paragraphSpacing}
                   editorWidth={editorWidth}
-                  firstLineIndent={firstLineIndent}
                   editorRef={editorRef}
                   handleContentInput={handleContentInput}
                   saveSelection={handleSelectionChange}

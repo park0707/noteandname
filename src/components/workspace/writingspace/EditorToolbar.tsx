@@ -14,8 +14,6 @@ import {
   Search,
   Minimize2,
   Maximize2,
-  BookOpen,
-  Grid,
   Link,
   AlignLeft,
   AlignCenter,
@@ -24,7 +22,6 @@ import {
   Download,
   Indent,
   Outdent,
-  Eraser,
   Sparkles,
   GitCommit,
   CheckCircle2
@@ -41,7 +38,6 @@ import {
   convertDividerHtmlToText, 
   convertHtmlToMarkdown 
 } from './editorUtils';
-import TableInsertModal from './Modals/TableInsertModal';
 import LinkInsertModal from './Modals/LinkInsertModal';
 import DividerConfigModal from './Modals/DividerConfigModal';
 import CreateCustomDividerModal from './Modals/CreateCustomDividerModal';
@@ -70,8 +66,6 @@ interface EditorToolbarProps {
   setTypewriterMode: (v: boolean) => void;
   lineHeight: string;
   setLineHeight: (lh: string) => void;
-  paragraphSpacing: number;
-  setParagraphSpacing: (ps: number) => void;
   showFindReplace: boolean;
   setShowFindReplace: (show: boolean) => void;
   handleCreateSnapshot: () => void;
@@ -97,8 +91,6 @@ interface EditorToolbarProps {
   setBgColorPickerPos: (pos: { top: number; left: number } | null) => void;
   saveSelection: () => void;
   restoreSelection: () => void;
-  firstLineIndent: boolean;
-  setFirstLineIndent: (v: boolean) => void;
   foreshadowings?: Foreshadowing[];
   setForeshadowings?: Dispatch<SetStateAction<Foreshadowing[]>>;
   selectedProjectId?: string;
@@ -135,8 +127,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     setTypewriterMode,
     lineHeight,
     setLineHeight,
-    paragraphSpacing,
-    setParagraphSpacing,
     showFindReplace,
     setShowFindReplace,
     handleCreateSnapshot,
@@ -162,8 +152,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     setBgColorPickerPos,
     saveSelection,
     restoreSelection,
-    firstLineIndent,
-    setFirstLineIndent,
   } = props;
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -295,27 +283,11 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     }
   });
 
-  // 표 삽입 모달 상태
-  const [showTableModal, setShowTableModal] = useState(false);
-  const [tableRows, setTableRows] = useState(3);
-  const [tableCols, setTableCols] = useState(3);
-  const [tableWidth, setTableWidth] = useState(100);
-  const [tableHasHeader, setTableHasHeader] = useState(true);
-
   // 링크 삽입 모달 상태
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkText, setLinkText] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [linkNewTab, setLinkNewTab] = useState(true);
-
-  const openTableInsertModal = () => {
-    saveSelection();
-    setTableRows(3);
-    setTableCols(3);
-    setTableWidth(100);
-    setTableHasHeader(true);
-    setShowTableModal(true);
-  };
 
   const openLinkInsertModal = () => {
     saveSelection();
@@ -324,36 +296,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     setLinkUrl('');
     setLinkNewTab(true);
     setShowLinkModal(true);
-  };
-
-  const executeInsertTable = (e: React.FormEvent) => {
-    e.preventDefault();
-    restoreSelection();
-    
-    const rows = Number(tableRows);
-    const cols = Number(tableCols);
-    if (isNaN(rows) || rows < 1 || rows > 20 || isNaN(cols) || cols < 1 || cols > 20) {
-      showAlert('행과 열 개수는 1에서 20 사이의 숫자여야 합니다.');
-      return;
-    }
-    
-    let tableHtml = `<table style="border-collapse: collapse; width: ${tableWidth}%; margin: 16px 0; display: table;">`;
-    
-    for (let r = 0; r < rows; r++) {
-      tableHtml += '<tr>';
-      for (let c = 0; c < cols; c++) {
-        if (r === 0 && tableHasHeader) {
-          tableHtml += `<th style="border: 1px solid rgba(128,128,128,0.3); padding: 8px; min-width: 50px; font-weight: bold; background-color: rgba(94,106,210,0.1);">&nbsp;</th>`;
-        } else {
-          tableHtml += `<td style="border: 1px solid rgba(128,128,128,0.2); padding: 8px; min-width: 50px;">&nbsp;</td>`;
-        }
-      }
-      tableHtml += '</tr>';
-    }
-    tableHtml += '</table>';
-    
-    execFormat('insertHTML', tableHtml);
-    setShowTableModal(false);
   };
 
   const executeInsertLink = (e: React.FormEvent) => {
@@ -451,25 +393,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     downloadLink.click();
     document.body.removeChild(downloadLink);
     setShowExportDropdown(false);
-  };
-
-  const handleToggleBlockquote = () => {
-    saveSelection();
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    const range = sel.getRangeAt(0);
-    
-    let container = range.startContainer as HTMLElement;
-    if (container.nodeType === Node.TEXT_NODE) {
-      container = container.parentElement as HTMLElement;
-    }
-    
-    const blockquote = container.closest('blockquote');
-    if (blockquote) {
-      execFormat('formatBlock', '<p>');
-    } else {
-      execFormat('formatBlock', '<blockquote>');
-    }
   };
 
   const toggleDividerDropdown = () => {
@@ -591,27 +514,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
       {/* 1. 에디터 툴바 */}
       <div className={`px-4 py-2 border-b flex items-center justify-between gap-3 shrink-0 ${themeStyles.toolbar}`}>
         <div className="flex items-center gap-2 overflow-x-auto flex-nowrap min-w-0 flex-1 pr-2">
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={() => execFormat('undo')}
-              onMouseDown={e => e.preventDefault()}
-              className={`p-1.5 rounded hover:bg-white/[0.04] transition-colors ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="실행 취소 (Ctrl+Z)"
-            >
-              <Undo className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => execFormat('redo')}
-              onMouseDown={e => e.preventDefault()}
-              className={`p-1.5 rounded hover:bg-white/[0.04] transition-colors ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="다시 실행 (Ctrl+Y)"
-            >
-              <Redo className="w-3.5 h-3.5" />
-            </button>
-          </div>
-
-          <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
-
           {/* 커스텀 폰트 선택 드롭다운 */}
           <div className="relative shrink-0 font-sans" ref={fontDropdownRef}>
             <button
@@ -877,7 +779,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
           <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
-          {/* 들여쓰기/내어쓰기 및 서식 지우기 그룹 */}
+          {/* 들여쓰기/내어쓰기 그룹 */}
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => execFormat('indent')}
@@ -894,14 +796,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
               title="내어쓰기 적용"
             >
               <Outdent className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => execFormat('clearFormat')}
-              onMouseDown={e => e.preventDefault()}
-              className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-              title="서식 지우기 (초기화)"
-            >
-              <Eraser className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -1138,7 +1032,28 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             className="px-6 py-2 flex items-center justify-between gap-6 text-xs overflow-x-auto flex-nowrap min-w-0 w-full scrollbar-none select-none"
           >
             {/* 특수 편집 도구 */}
-            <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  onClick={() => execFormat('undo')}
+                  onMouseDown={e => e.preventDefault()}
+                  className={`p-1.5 rounded hover:bg-white/[0.04] transition-colors ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                  title="실행 취소 (Ctrl+Z)"
+                >
+                  <Undo className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => execFormat('redo')}
+                  onMouseDown={e => e.preventDefault()}
+                  className={`p-1.5 rounded hover:bg-white/[0.04] transition-colors ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
+                  title="다시 실행 (Ctrl+Y)"
+                >
+                  <Redo className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
+
               <div className="relative shrink-0">
                 <button
                   ref={buttonRef}
@@ -1247,20 +1162,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
                   </div>
                 )}
               </div>
-              <button
-                onClick={handleToggleBlockquote}
-                className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-                title="인용구 블록 설정/해제"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={openTableInsertModal}
-                className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-                title="표 삽입"
-              >
-                <Grid className="w-3.5 h-3.5" />
-              </button>
               <button
                 onClick={openLinkInsertModal}
                 className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
@@ -1400,7 +1301,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
               </div>
             </div>
 
-            {/* 줄간격, 문단간격, 타이프라이터, 스냅샷, 이력 */}
+            {/* 줄간격, 타이프라이터, 스냅샷, 이력 */}
             <div className="flex items-center gap-3 shrink-0">
               <div className="flex items-center gap-1.5">
                 <span className="text-gray-500 font-medium">줄간격</span>
@@ -1416,32 +1317,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
                   <option value="2.5">2.5</option>
                 </select>
               </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="text-gray-500 font-medium">문단간격</span>
-                <select
-                  value={paragraphSpacing}
-                  onChange={e => setParagraphSpacing(parseInt(e.target.value))}
-                  className={`px-2 py-0.5 rounded text-[10px] border outline-none cursor-pointer ${themeStyles.input}`}
-                >
-                  <option value="0">0px</option>
-                  <option value="4">4px</option>
-                  <option value="8">8px (기본)</option>
-                  <option value="12">12px</option>
-                  <option value="16">16px</option>
-                  <option value="20">20px</option>
-                </select>
-              </div>
-
-              <label className="flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={firstLineIndent}
-                  onChange={e => setFirstLineIndent(e.target.checked)}
-                  className="rounded border-gray-300 text-[#5E6AD2] focus:ring-[#5E6AD2] w-3.5 h-3.5"
-                />
-                <span className="text-[10px] text-gray-500 font-semibold">첫줄 들여쓰기</span>
-              </label>
 
               <div className={`w-[1px] h-3 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
@@ -1564,22 +1439,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
         newDividerSize={newDividerSize}
         setNewDividerSize={setNewDividerSize}
         handleCreateCustomDivider={handleCreateCustomDivider}
-      />
-
-      {/* 표 삽입 모달 */}
-      <TableInsertModal
-        isDark={isDark}
-        showTableModal={showTableModal}
-        setShowTableModal={setShowTableModal}
-        tableRows={tableRows}
-        setTableRows={setTableRows}
-        tableCols={tableCols}
-        setTableCols={setTableCols}
-        tableWidth={tableWidth}
-        setTableWidth={setTableWidth}
-        tableHasHeader={tableHasHeader}
-        setTableHasHeader={setTableHasHeader}
-        executeInsertTable={executeInsertTable}
       />
 
       {/* 링크 삽입 모달 */}

@@ -7,9 +7,7 @@ interface MainEditorCanvasProps {
   editorFontFamily: string;
   lineHeight: string;
   typewriterMode: boolean;
-  paragraphSpacing: number;
   editorWidth: 'narrow' | 'normal' | 'wide';
-  firstLineIndent: boolean;
   editorRef: RefObject<HTMLDivElement | null>;
   handleContentInput: () => void;
   saveSelection: () => void;
@@ -23,9 +21,7 @@ export default function MainEditorCanvas(props: MainEditorCanvasProps) {
     editorFontFamily,
     lineHeight,
     typewriterMode,
-    paragraphSpacing,
     editorWidth,
-    firstLineIndent,
     editorRef,
     handleContentInput,
     saveSelection,
@@ -70,8 +66,7 @@ export default function MainEditorCanvas(props: MainEditorCanvasProps) {
         <div className="flex-1 px-4 pb-12 h-auto">
           <style>{`
             .novela-editor-content p, .novela-editor-content div {
-              margin-bottom: ${paragraphSpacing}px;
-              ${firstLineIndent ? 'text-indent: 1.5em;' : ''}
+              margin-bottom: 0;
             }
             .novela-editor-content p:last-child, .novela-editor-content div:last-child {
               margin-bottom: 0;

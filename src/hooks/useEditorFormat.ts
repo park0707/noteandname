@@ -21,20 +21,9 @@ export function useEditorFormat() {
     return localStorage.getItem('novelflow_editor_lineheight') || '1.8';
   });
 
-  // 4. 문단간격 (localStorage 연동)
-  const [paragraphSpacing, setParagraphSpacing] = useState<number>(() => {
-    const saved = localStorage.getItem('novelflow_editor_paragraphspacing');
-    return saved ? parseInt(saved, 10) : 8;
-  });
-
   // 5. 폭 (localStorage 연동)
   const [editorWidth, setEditorWidth] = useState<'narrow' | 'normal' | 'wide'>(() => {
     return (localStorage.getItem('novelflow_editor_width') as any) || 'normal';
-  });
-
-  // 6. 첫줄 들여쓰기 (localStorage 연동)
-  const [firstLineIndent, setFirstLineIndent] = useState<boolean>(() => {
-    return localStorage.getItem('novelflow_editor_firstlineindent') === 'true';
   });
 
   // 7. 에디터 전용 테마 오버라이드 (localStorage 연동)
@@ -65,7 +54,6 @@ export function useEditorFormat() {
 
   const editorRef = useRef<HTMLDivElement | null>(null);
   const savedRangeRef = useRef<Range | null>(null);
-  const historyRef = useRef<{ past: string[]; future: string[] }>({ past: [], future: [] });
 
   const saveSelection = () => {
     const sel = window.getSelection();
@@ -85,25 +73,25 @@ export function useEditorFormat() {
   };
 
   const pushHistory = () => {
-    if (!editorRef.current) return;
-    historyRef.current.past.push(editorRef.current.innerHTML);
-    historyRef.current.future = [];
+    // 브라우저 네이티브 Undo/Redo 엔진을 사용하므로 수동 innerHTML 스택 복사는 불필요 (인터페이스 호환 유지)
   };
 
   const undo = (handleContentInput?: () => void) => {
-    const { past, future } = historyRef.current;
-    if (past.length === 0 || !editorRef.current) return;
-    future.push(editorRef.current.innerHTML);
-    editorRef.current.innerHTML = past.pop()!;
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    restoreSelection();
+    document.execCommand('undo', false, undefined);
     if (handleContentInput) handleContentInput();
+    saveSelection();
   };
 
   const redo = (handleContentInput?: () => void) => {
-    const { past, future } = historyRef.current;
-    if (future.length === 0 || !editorRef.current) return;
-    past.push(editorRef.current.innerHTML);
-    editorRef.current.innerHTML = future.pop()!;
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    restoreSelection();
+    document.execCommand('redo', false, undefined);
     if (handleContentInput) handleContentInput();
+    saveSelection();
   };
 
   const getSelectionFontState = (): string | 'mixed' | null => {
@@ -227,16 +215,8 @@ export function useEditorFormat() {
   }, [lineHeight]);
 
   useEffect(() => {
-    localStorage.setItem('novelflow_editor_paragraphspacing', paragraphSpacing.toString());
-  }, [paragraphSpacing]);
-
-  useEffect(() => {
     localStorage.setItem('novelflow_editor_width', editorWidth);
   }, [editorWidth]);
-
-  useEffect(() => {
-    localStorage.setItem('novelflow_editor_firstlineindent', firstLineIndent.toString());
-  }, [firstLineIndent]);
 
   useEffect(() => {
     localStorage.setItem('novelflow_editor_themeoverride', editorThemeOverride);
@@ -442,12 +422,8 @@ export function useEditorFormat() {
     setEditorFontFamily,
     lineHeight,
     setLineHeight,
-    paragraphSpacing,
-    setParagraphSpacing,
     editorWidth,
     setEditorWidth,
-    firstLineIndent,
-    setFirstLineIndent,
     editorThemeOverride,
     setEditorThemeOverride,
     typewriterMode,
