@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { X, Scale, AlertTriangle, CheckCircle, Search, Sliders, ArrowRight } from 'lucide-react';
+import { X, Scale, AlertTriangle, CheckCircle, Search, Sliders, ArrowRight, BellOff, Bell } from 'lucide-react';
 import type { ArchiveItem } from '../types';
 import { decomposeHangeul, calculateSimilarity } from '../utils';
 
@@ -8,6 +8,8 @@ interface JamoSimilarityReportModalProps {
   archiveItems: ArchiveItem[];
   onClose: () => void;
   onSelectItem: (item: ArchiveItem) => void;
+  ignoredPairs?: string[];
+  onToggleIgnorePair?: (pairKey: string) => void;
 }
 
 export default function JamoSimilarityReportModal({
@@ -15,6 +17,8 @@ export default function JamoSimilarityReportModal({
   archiveItems,
   onClose,
   onSelectItem,
+  ignoredPairs,
+  onToggleIgnorePair,
 }: JamoSimilarityReportModalProps) {
   const [activeTab, setActiveTab] = useState<'report' | 'test'>('report');
   
@@ -166,10 +170,16 @@ export default function JamoSimilarityReportModal({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3">
-                  {similarPairs.map((pair, idx) => (
+                  {similarPairs.map((pair, idx) => {
+                    const pairKey = [pair.itemA.id, pair.itemB.id].sort().join('__');
+                    const isIgnored = !!ignoredPairs?.includes(pairKey);
+
+                    return (
                     <div
                       key={idx}
                       className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all hover:border-[#5E6AD2]/50 ${
+                        isIgnored ? 'opacity-60' : ''
+                      } ${
                         isDark ? 'bg-white/[0.02] border-white/[0.08]' : 'bg-gray-50 border-black/[0.08]'
                       }`}
                     >
@@ -230,20 +240,40 @@ export default function JamoSimilarityReportModal({
                         </button>
                       </div>
 
-                      {/* 유사도 백분율 및 경고 배지 */}
+                      {/* 유사도 백분율 및 경고 배지 + 알림 끄기 버튼 */}
                       <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
                         <div className="text-right">
-                          <span className="text-base font-extrabold text-amber-400">
+                          <span className={`text-base font-extrabold ${isIgnored ? 'text-gray-400' : 'text-amber-400'}`}>
                             {pair.similarity}% 유사
                           </span>
-                          <span className="block text-[10px] text-amber-500 font-semibold">
-                            발음 유사성 경고
+                          <span className={`block text-[10px] font-semibold ${isIgnored ? 'text-gray-500' : 'text-amber-500'}`}>
+                            {isIgnored ? '알림 꺼짐 (무시됨)' : '발음 유사성 경고'}
                           </span>
                         </div>
+
+                        {onToggleIgnorePair && (
+                          <button
+                            type="button"
+                            onClick={() => onToggleIgnorePair(pairKey)}
+                            className={`p-2 rounded-xl border text-xs font-semibold flex items-center gap-1 transition-all ${
+                              isIgnored
+                                ? 'bg-amber-500/10 text-amber-500 border-amber-500/30 hover:bg-amber-500/20'
+                                : isDark
+                                  ? 'border-white/[0.08] hover:bg-white/[0.08] text-gray-400 hover:text-white'
+                                  : 'border-black/[0.08] hover:bg-black/[0.05] text-gray-500 hover:text-black'
+                            }`}
+                            title={isIgnored ? '알림 끄기 해제' : '의도된 유사성 (카드 경고 알림 끄기)'}
+                          >
+                            {isIgnored ? <BellOff className="w-3.5 h-3.5" /> : <Bell className="w-3.5 h-3.5" />}
+                            <span className="hidden sm:inline text-[11px]">{isIgnored ? '알림 끔' : '알림 끄기'}</span>
+                          </button>
+                        )}
+
                         <ArrowRight className="w-4 h-4 text-gray-500" />
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               )}
             </div>

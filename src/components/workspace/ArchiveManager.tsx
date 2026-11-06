@@ -17,10 +17,12 @@ import {
   Filter,
   Check,
   ChevronDown,
-  Scale
+  Scale,
+  AlertTriangle
 } from 'lucide-react';
 import type { ArchiveItem, ArchiveCategory, ArchiveAttribute, Node } from './types';
 import { useAlertConfirm } from '../../context/AlertConfirmContext';
+import { calculateSimilarity } from './utils';
 import JamoSimilarityReportModal from './archive/JamoSimilarityReportModal';
 
 interface ArchiveManagerProps {
@@ -82,6 +84,72 @@ export default function ArchiveManager({
     const tagKey = `novelflow_custom_tags_${projectId}`;
     localStorage.setItem(tagKey, JSON.stringify(customTags));
   }, [customTags, projectId]);
+
+  // 의도된 유사성 무시 쌍 (로컬스토리지 동기화)
+  const [ignoredSimilarityPairs, setIgnoredSimilarityPairs] = useState<string[]>(() => {
+    if (!projectId) return [];
+    try {
+      return JSON.parse(localStorage.getItem(`novelflow_ignored_similarity_${projectId}`) || '[]');
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    if (!projectId) return;
+    try {
+      const saved = localStorage.getItem(`novelflow_ignored_similarity_${projectId}`);
+      setIgnoredSimilarityPairs(saved ? JSON.parse(saved) : []);
+    } catch (e) {
+      console.error(e);
+    }
+  }, [projectId]);
+
+  const handleToggleIgnorePair = (pairKey: string) => {
+    setIgnoredSimilarityPairs(prev => {
+      const updated = prev.includes(pairKey) ? prev.filter(k => k !== pairKey) : [...prev, pairKey];
+      if (projectId) {
+        localStorage.setItem(`novelflow_ignored_similarity_${projectId}`, JSON.stringify(updated));
+      }
+      return updated;
+    });
+  };
+
+  // O(1) 조회를 위한 아카이브 항목별 최고 유사도 매핑 및 경고 쌍 건수 연산
+  const { itemSimilarityMap, warningPairCount } = useMemo(() => {
+    const map = new Map<string, { targetName: string; targetId: string; similarity: number; pairKey: string }>();
+    let pairCount = 0;
+
+    for (let i = 0; i < archiveItems.length; i++) {
+      for (let j = i + 1; j < archiveItems.length; j++) {
+        const itemA = archiveItems[i];
+        const itemB = archiveItems[j];
+        const nameA = itemA.name.trim();
+        const nameB = itemB.name.trim();
+        if (!nameA || !nameB) continue;
+
+        const pairKey = [itemA.id, itemB.id].sort().join('__');
+        const isIgnored = ignoredSimilarityPairs.includes(pairKey);
+
+        const sim = calculateSimilarity(nameA, nameB);
+        if (sim >= 75) {
+          if (!isIgnored) {
+            pairCount++;
+            const existingA = map.get(itemA.id);
+            if (!existingA || sim > existingA.similarity) {
+              map.set(itemA.id, { targetName: itemB.name, targetId: itemB.id, similarity: sim, pairKey });
+            }
+            const existingB = map.get(itemB.id);
+            if (!existingB || sim > existingB.similarity) {
+              map.set(itemB.id, { targetName: itemA.name, targetId: itemA.id, similarity: sim, pairKey });
+            }
+          }
+        }
+      }
+    }
+
+    return { itemSimilarityMap: map, warningPairCount: pairCount };
+  }, [archiveItems, ignoredSimilarityPairs]);
 
   // 상세 뷰 및 수정/생성 상태
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
@@ -231,7 +299,7 @@ export default function ArchiveManager({
       };
       setArchiveItems(prev => [newItem, ...prev]);
       showAlert('신규 항목이 저장되었습니다.');
-      setSelectedItemId(newItem.id);
+      setSelectedItemId(null);
       setIsCreating(false);
     } else if (selectedItem) {
       // 기존 수정
@@ -706,13 +774,22 @@ export default function ArchiveManager({
           <button
             onClick={() => setIsJamoModalOpen(true)}
             className={`px-3.5 py-2 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition-all ${
-              isDark
-                ? 'border-white/[0.1] bg-white/[0.04] text-[#EDEDEF] hover:bg-white/[0.08]'
-                : 'border-black/[0.1] bg-black/[0.03] text-[#121316] hover:bg-black/[0.06]'
+              warningPairCount > 0
+                ? isDark
+                  ? 'border-amber-500/30 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
+                  : 'border-amber-500/30 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                : isDark
+                  ? 'border-white/[0.1] bg-white/[0.04] text-[#EDEDEF] hover:bg-white/[0.08]'
+                  : 'border-black/[0.1] bg-black/[0.03] text-[#121316] hover:bg-black/[0.06]'
             }`}
           >
-            <Scale className="w-4 h-4 text-[#5E6AD2]" />
+            <Scale className={`w-4 h-4 ${warningPairCount > 0 ? 'text-amber-500' : 'text-[#5E6AD2]'}`} />
             <span>유사도 필터링</span>
+            {warningPairCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-amber-500 text-black dark:text-gray-900 leading-normal ml-0.5" title={`${warningPairCount}쌍의 발음 유사 경고 감지`}>
+                {warningPairCount}
+              </span>
+            )}
           </button>
 
           <button
@@ -864,25 +941,82 @@ export default function ArchiveManager({
             {filteredItems.map(item => {
               const catConfig = CATEGORY_MAP[item.category] || CATEGORY_MAP.etc;
               const CategoryIcon = catConfig.icon;
+              const simInfo = itemSimilarityMap.get(item.id);
+              const hasSimilarityWarning = !!simInfo;
 
               return (
                 <div
                   key={item.id}
                   onClick={() => handleOpenDetail(item)}
                   className={`group relative p-4 rounded-2xl border transition-all duration-200 cursor-pointer flex flex-col justify-between hover:scale-[1.01] hover:shadow-lg ${
-                    isDark
-                      ? 'bg-[#111216] border-white/[0.06] hover:border-[#5E6AD2]/50 hover:bg-[#15171D]'
-                      : 'bg-white border-black/[0.06] hover:border-[#5E6AD2]/50 hover:bg-gray-50/80 shadow-sm'
+                    hasSimilarityWarning
+                      ? isDark
+                        ? 'bg-[#111216] border-amber-500/40 hover:border-amber-500/80 hover:shadow-amber-500/10 hover:bg-[#15171D]'
+                        : 'bg-white border-amber-500/40 hover:border-amber-500/80 hover:shadow-amber-500/10 hover:bg-amber-50/20 shadow-sm'
+                      : isDark
+                        ? 'bg-[#111216] border-white/[0.06] hover:border-[#5E6AD2]/50 hover:bg-[#15171D]'
+                        : 'bg-white border-black/[0.06] hover:border-[#5E6AD2]/50 hover:bg-gray-50/80 shadow-sm'
                   }`}
                 >
                   <div>
-                    {/* 카드 상단 카테고리 배지 (Lucide SVG 아이콘 단일화) & 수정 아이콘 */}
+                    {/* 카드 상단 카테고리 배지 & 유사도 주의 뱃지 & 수정 아이콘 */}
                     <div className="flex items-center justify-between mb-2">
                       <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full border flex items-center gap-1 ${catConfig.bgColor} ${catConfig.color}`}>
                         <CategoryIcon className="w-3 h-3" />
                         <span>{catConfig.label}</span>
                       </span>
-                      <Edit3 className="w-3.5 h-3.5 opacity-0 group-hover:opacity-60 transition-opacity text-[#5E6AD2]" />
+
+                      <div className="flex items-center gap-1.5">
+                        {hasSimilarityWarning && simInfo && (
+                          <div className="relative group/sim">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsJamoModalOpen(true);
+                              }}
+                              className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-500 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1 hover:bg-amber-500/25 transition-all shadow-xs"
+                              title="유사도 분석 리포트 열기"
+                            >
+                              <AlertTriangle className="w-2.5 h-2.5" />
+                              <span>유사 {simInfo.similarity}%</span>
+                            </button>
+
+                            {/* 스마트 툴팁 */}
+                            <div className="absolute right-0 top-full mt-1.5 hidden group-hover/sim:flex flex-col z-30 w-52 p-2.5 rounded-xl border shadow-xl text-left backdrop-blur-md bg-white/95 dark:bg-[#1E1F22]/95 border-amber-500/30 text-gray-800 dark:text-gray-200 text-[11px] pointer-events-auto">
+                              <p className="font-semibold text-amber-500 flex items-center gap-1">
+                                <AlertTriangle className="w-3 h-3 shrink-0" />
+                                <span>발음 유사성 경고</span>
+                              </p>
+                              <p className="mt-1 text-gray-600 dark:text-gray-300 leading-snug">
+                                ‘<strong className="text-gray-900 dark:text-white">{simInfo.targetName}</strong>’ 항목과 발음이 <strong className="text-amber-500">{simInfo.similarity}%</strong> 유사합니다.
+                              </p>
+                              <div className="mt-2 pt-2 border-t border-gray-200 dark:border-white/10 flex items-center justify-between">
+                                <span 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsJamoModalOpen(true);
+                                  }}
+                                  className="text-[10px] text-[#5E6AD2] hover:underline cursor-pointer font-semibold"
+                                >
+                                  리포트 보기 →
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleToggleIgnorePair(simInfo.pairKey);
+                                  }}
+                                  className="text-[10px] text-gray-400 hover:text-gray-200 underline"
+                                >
+                                  알림 끄기
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        <Edit3 className="w-3.5 h-3.5 opacity-0 group-hover:opacity-60 transition-opacity text-[#5E6AD2]" />
+                      </div>
                     </div>
 
                     {/* 이름 (프로젝트 목록 스타일) */}
@@ -1098,6 +1232,8 @@ export default function ArchiveManager({
           archiveItems={archiveItems}
           onClose={() => setIsJamoModalOpen(false)}
           onSelectItem={(item) => handleOpenDetail(item)}
+          ignoredPairs={ignoredSimilarityPairs}
+          onToggleIgnorePair={handleToggleIgnorePair}
         />
       )}
     </div>
