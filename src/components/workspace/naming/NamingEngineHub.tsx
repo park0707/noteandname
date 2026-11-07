@@ -179,6 +179,13 @@ export function NamingEngineHub({
       tags: [],
       attributes: []
     });
+
+    // 아카이브 등록 시 보관함에 동일한 이름이 있다면 자동으로 보관함에서 제거
+    const targetInBank = bankItems.find(item => item.name === candidate.name);
+    if (targetInBank) {
+      const updated = deleteNameBankItem(projectId, targetInBank.id);
+      setBankItems(updated);
+    }
   };
 
   return (

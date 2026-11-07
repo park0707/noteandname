@@ -1,12 +1,14 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import type { ArchiveCategory, ArchiveItem, NameBankItem, Node } from '../types';
-import { Bookmark, Trash2, PlusCircle, CheckCircle, Search, ShieldCheck } from 'lucide-react';
+import { Bookmark, Trash2, PlusCircle, Search, ShieldCheck } from 'lucide-react';
+
+export type NameBankSortOption = 'latest' | 'oldest' | 'nameAsc' | 'nameDesc';
 
 interface NameBankDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   bankItems: NameBankItem[];
-  onUpdateStatus: (itemId: string, status: 'saved' | 'used' | 'discarded') => void;
+  onUpdateStatus?: (itemId: string, status: 'saved' | 'used' | 'discarded') => void;
   onDeleteItem: (itemId: string) => void;
   onRegisterArchive?: (name: string, category: ArchiveCategory, meaning: string) => void;
   onAddToArchive?: (candidate: Partial<{ name: string; meaning: string; category: ArchiveCategory }>, targetCat?: ArchiveCategory) => void;
@@ -19,7 +21,7 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
   isOpen,
   onClose,
   bankItems,
-  onUpdateStatus,
+  onUpdateStatus: _onUpdateStatus,
   onDeleteItem,
   onRegisterArchive,
   onAddToArchive,
@@ -27,17 +29,32 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'bank' | 'jamo'>('bank');
   const [filterCategory, setFilterCategory] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<NameBankSortOption>('latest');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
   const filteredItems = useMemo(() => {
-    return bankItems.filter(item => {
+    const list = bankItems.filter(item => {
       if (filterCategory !== 'all' && item.targetCategory !== filterCategory) return false;
-      if (filterStatus !== 'all' && item.status !== filterStatus) return false;
       if (searchTerm && !item.name.toLowerCase().includes(searchTerm.toLowerCase())) return false;
       return true;
     });
-  }, [bankItems, filterCategory, filterStatus, searchTerm]);
+
+    return list.sort((a, b) => {
+      if (sortBy === 'latest') {
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      }
+      if (sortBy === 'oldest') {
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      }
+      if (sortBy === 'nameAsc') {
+        return a.name.localeCompare(b.name, 'ko');
+      }
+      if (sortBy === 'nameDesc') {
+        return b.name.localeCompare(a.name, 'ko');
+      }
+      return 0;
+    });
+  }, [bankItems, filterCategory, searchTerm, sortBy]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -134,14 +151,14 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
                 </select>
 
                 <select
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as NameBankSortOption)}
                   className="flex-1 bg-slate-900 border border-slate-800 text-slate-300 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-[#5E6AD2]"
                 >
-                  <option value="all">모든 상태</option>
-                  <option value="saved">보관됨 (saved)</option>
-                  <option value="used">사용함 (used)</option>
-                  <option value="discarded">제외됨 (discarded)</option>
+                  <option value="latest">최신 등록순</option>
+                  <option value="oldest">예전 등록순</option>
+                  <option value="nameAsc">이름 가나다순 (오름)</option>
+                  <option value="nameDesc">이름 가나다 역순 (내림)</option>
                 </select>
               </div>
             </div>
@@ -166,24 +183,13 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
                         </span>
                       </div>
 
-                      <div className="flex items-center space-x-1">
-                        <button
-                          onClick={() => onUpdateStatus(item.id, item.status === 'used' ? 'saved' : 'used')}
-                          title="사용 완료 상태 토글"
-                          className={`p-1 rounded-lg transition-colors ${
-                            item.status === 'used' ? 'text-emerald-400 bg-emerald-950/40' : 'text-slate-500 hover:text-slate-300'
-                          }`}
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => onDeleteItem(item.id)}
-                          title="삭제"
-                          className="p-1 text-slate-500 hover:text-rose-400 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => onDeleteItem(item.id)}
+                        title="보관함에서 삭제"
+                        className="p-1.5 text-slate-500 hover:text-rose-400 hover:bg-rose-950/20 rounded-lg transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
 
                     <p className="text-[11px] text-slate-400 leading-relaxed">
@@ -202,6 +208,8 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
                           } else if (onRegisterArchive) {
                             onRegisterArchive(item.name, item.targetCategory, item.meaning);
                           }
+                          // 아카이브 등록 시 자동으로 보관함에서 제거
+                          onDeleteItem(item.id);
                         }}
                         className="flex items-center space-x-1 px-2.5 py-1 bg-violet-950/40 hover:bg-violet-900/60 text-violet-200 border border-violet-800/40 rounded-lg transition-colors font-semibold"
                       >
