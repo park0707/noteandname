@@ -5,7 +5,6 @@ import type {
   NameCandidate,
   TagWeight
 } from '../components/workspace/types';
-import { generateNamesByCombo } from '../components/workspace/naming/namingUtils';
 import { CATEGORY_SUBTYPES } from '../data/tag_taxonomy_seeds';
 import { executeMultiAiChain } from './multiAiService';
 
@@ -242,7 +241,7 @@ export async function generateNamesWithAI(
   archiveItems: ArchiveItem[] = [],
   onStepProgress?: (step: 'step1' | 'step2' | 'step3') => void
 ): Promise<{ candidates: NameCandidate[]; isFallbackUsed: boolean; fallbackReason?: string }> {
-  const { provider } = options;
+  const { provider: _provider } = options;
   const effectiveApiKey = options.apiKey || (import.meta.env ? (import.meta.env.VITE_GEMINI_API_KEY2 || import.meta.env.VITE_GEMINI_API_KEY) : undefined) || localStorage.getItem('novelflow_ai_api_key') || undefined;
   const effectiveGroqKey = options.groqApiKey || (import.meta.env ? import.meta.env.VITE_GROQ_API_KEY : undefined) || localStorage.getItem('novelflow_groq_api_key') || undefined;
 
@@ -263,16 +262,9 @@ export async function generateNamesWithAI(
   // --------------------------------------------------------------------------
   if (onStepProgress) onStepProgress('step3');
 
-  // 1) 로컬 모드이거나 클라우드 API Key가 하나도 없는 경우 -> 로컬 엔진 사용
-  if (provider === 'local' || (!effectiveApiKey && !effectiveGroqKey)) {
-    const localResults = generateNamesByCombo(params, archiveItems);
-    return {
-      candidates: localResults,
-      isFallbackUsed: true,
-      fallbackReason: provider === 'local'
-        ? '100% 오프라인 완전 무제한 로컬 엔진으로 생성되었습니다.'
-        : 'Google AI Studio 또는 Groq 무료 API Key를 설정하시면 무료 AI 딥 작명을 이용하실 수 있습니다.'
-    };
+  // 1) 클라우드 API Key가 하나도 없는 경우 -> 에러 전달 (3순위 로컬 폴백 제거)
+  if (!effectiveApiKey && !effectiveGroqKey) {
+    throw new Error('Google AI Studio 또는 Groq API 키가 설정되지 않았습니다. API 키를 등록해 주세요.');
   }
 
   try {
@@ -330,12 +322,8 @@ export async function generateNamesWithAI(
       fallbackReason: res.isFallbackUsed ? `연동 모델: ${res.providerName}` : undefined
     };
   } catch (error: any) {
-    console.warn('All AI Providers failed or exhausted. Falling back to local combo engine:', error);
-    const fallbackResults = generateNamesByCombo(params, archiveItems);
-    return {
-      candidates: fallbackResults,
-      isFallbackUsed: true,
-      fallbackReason: `AI 쿼터 소진 또는 API 연결 취소로 로컬 오프라인 엔진으로 자동 전환되었습니다. (${error?.message || error})`
-    };
+    console.error('All AI Providers (Gemini / Groq) failed:', error);
+    // 3순위 로컬 콤보 폴백 제거: 실패 시 로컬 엔진으로 대체하지 않고 상위로 에러 전달
+    throw error;
   }
 }

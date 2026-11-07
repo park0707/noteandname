@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { ArchiveCategory, ArchiveItem, NameBankItem, Node } from '../types';
 import { Bookmark, Trash2, PlusCircle, CheckCircle, Search, ShieldCheck } from 'lucide-react';
 
@@ -39,15 +39,34 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
     });
   }, [bankItems, filterCategory, filterStatus, searchTerm]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm transition-opacity">
-      <div className="w-full max-w-xl bg-[#121318] border-l border-slate-800 h-full flex flex-col shadow-2xl">
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      className="fixed inset-0 z-50 flex justify-end bg-black/70 backdrop-blur-sm transition-opacity"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-xl bg-[#121318] border-l border-slate-800 h-full flex flex-col shadow-2xl"
+      >
         {/* 헤더 */}
         <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
           <div className="flex items-center space-x-2">
-            <Bookmark className="w-5 h-5 text-[#5E6AD2]" />
+            <Bookmark className="w-7 h-5 text-[#5E6AD2] pr-2" />
             <h2 className="text-sm font-bold text-slate-100">이름 보관함 및 자모 검사</h2>
           </div>
           <button
@@ -62,13 +81,13 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
         <div className="flex border-b border-slate-800 bg-slate-950/40 px-3 pt-2 space-x-2">
           <button
             onClick={() => setActiveSubTab('bank')}
-            className={`flex items-center space-x-1.5 px-3.5 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all ${
+            className={`flex items-center space-x-1.5 px-2.5 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all ${
               activeSubTab === 'bank'
                 ? 'bg-[#121318] border-[#5E6AD2]/60 text-slate-100 border-b-2 border-b-[#5E6AD2]'
                 : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200'
             }`}
           >
-            <Bookmark className="w-3.5 h-3.5 text-[#5E6AD2]" />
+            <Bookmark className="w-7 h-3.5 text-[#5E6AD2]" />
             <span>이름 뱅크 목록 ({bankItems.length})</span>
           </button>
 
@@ -80,7 +99,7 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
                 : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200'
             }`}
           >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <ShieldCheck className="w-7 h-3.5 text-emerald-400 pr-1" />
             <span>자모 유사도 검사</span>
           </button>
         </div>
@@ -100,7 +119,7 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
                 />
               </div>
 
-              <div className="flex gap-2 text-xs">
+              <div className="flex gap-2 text-xs pt-2">
                 <select
                   value={filterCategory}
                   onChange={(e) => setFilterCategory(e.target.value)}

@@ -9,9 +9,10 @@ import type {
 } from '../types';
 import { NameResultList } from './NameResultList';
 import { NameBankDrawer } from './NameBankDrawer';
+import { NamingErrorModal } from './NamingErrorModal';
+import { classifyNamingError, TEST_ERROR_PRESETS, type NamingErrorInfo } from './namingErrors';
 import {
   deleteNameBankItem,
-  generateNamesByCombo,
   getSavedNameBank,
   saveNameBankItem,
   updateNameBankStatus
@@ -26,7 +27,9 @@ import {
   Shield,
   MapPin,
   Zap,
-  Package
+  Package,
+  Bug,
+  ChevronDown
 } from 'lucide-react';
 
 interface NamingEngineHubProps {
@@ -64,7 +67,7 @@ export function NamingEngineHub({
   // 자연어 서사 묘사문 입력 상태
   const [keywords, setKeywords] = useState<string>('');
 
-  // 생성 후보 군 개수 (8개 고정) 및 드로어 상태
+  // 생성 후보 군 개수 및 드로어 상태
   const [batchCount, setBatchCount] = useState<number>(8);
   const [isBankOpen, setIsBankOpen] = useState<boolean>(false);
 
@@ -72,6 +75,10 @@ export function NamingEngineHub({
   const [aiProvider] = useState<AIProvider>('gemini');
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [pipelineStep, setPipelineStep] = useState<'idle' | 'step1' | 'step2' | 'step3'>('idle');
+
+  // 에러 모달 및 테스트 메뉴 상태
+  const [currentError, setCurrentError] = useState<NamingErrorInfo | null>(null);
+  const [isErrorMenuOpen, setIsErrorMenuOpen] = useState<boolean>(false);
 
   // 환경변수(.env)에서 API Key 자동 로드
   const apiKey = (import.meta.env ? (import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY2) : '') || localStorage.getItem('novelflow_ai_api_key') || '';
@@ -99,39 +106,44 @@ export function NamingEngineHub({
         minLength: 2,
         maxLength: 5
       },
-      count: overrideCount || 8,
+      count: overrideCount ?? batchCount ?? 8,
       gender,
       enabledSections,
       selectedMythologyEntry: undefined
     };
   };
 
-  // 초기 로드 & 기본 후보 생성
+  // 초기 로드: 저장된 보관함 동기화 (3순위 로컬 폴백 제거로 초기 목록은 사용자 실행 대기)
   useEffect(() => {
     const loaded = getSavedNameBank(projectId);
     setBankItems(loaded);
-    const params = buildGenerateParams();
-    const newList = generateNamesByCombo(params, archiveItems);
-    setGeneratedCandidates(newList);
+    setGeneratedCandidates([]);
   }, [projectId]);
 
-  // AI 서사 연산 작명 실행
+  // AI 서사 연산 작명 실행 (1/2순위 실패 시 3순위 로컬 폴백 없이 중앙 에러 공지 모달 호출)
   const handleGenerateAIClick = async () => {
     setIsGenerating(true);
     setPipelineStep('step1');
 
-    const params = buildGenerateParams();
+    try {
+      const params = buildGenerateParams(batchCount);
 
-    const res = await generateNamesWithAI(
-      params,
-      { provider: aiProvider, apiKey, groqApiKey },
-      archiveItems,
-      (step) => setPipelineStep(step)
-    );
+      const res = await generateNamesWithAI(
+        params,
+        { provider: aiProvider, apiKey, groqApiKey },
+        archiveItems,
+        (step) => setPipelineStep(step)
+      );
 
-    setGeneratedCandidates(res.candidates);
-    setIsGenerating(false);
-    setPipelineStep('idle');
+      setGeneratedCandidates(res.candidates);
+    } catch (err: any) {
+      console.error('AI Naming Engine Error:', err);
+      const errorInfo = classifyNamingError(err);
+      setCurrentError(errorInfo);
+    } finally {
+      setIsGenerating(false);
+      setPipelineStep('idle');
+    }
   };
 
   const handleSaveToBank = (candidate: NameCandidate) => {
@@ -286,8 +298,51 @@ export function NamingEngineHub({
             />
           </div>
 
-          {/* 작명 생성 실행 버튼 */}
-          <div className="flex items-center justify-end">
+          {/* 작명 생성 실행 및 에러 테스트 버튼 영역 */}
+          <div className="flex flex-wrap items-center justify-end gap-2.5">
+            {/* 에러 테스트 드롭다운 버튼 (종류별 에러 모달 화면 출력) */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsErrorMenuOpen(prev => !prev)}
+                className="flex items-center space-x-1.5 px-3 py-2.5 bg-slate-900/90 hover:bg-slate-800 text-rose-300 hover:text-rose-200 text-xs font-semibold rounded-xl border border-rose-900/40 hover:border-rose-700/60 transition-all shadow-sm"
+                title="에러 모달 화면 출력 테스트"
+              >
+                <Bug className="w-3.5 h-3.5 text-rose-400" />
+                <span>에러 메시지 테스트</span>
+                <ChevronDown className="w-3.5 h-3.5 ml-0.5 text-slate-400" />
+              </button>
+
+              {/* 종류별 드롭다운 팝오버 */}
+              {isErrorMenuOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-30"
+                    onClick={() => setIsErrorMenuOpen(false)}
+                  />
+                  <div className="absolute right-0 bottom-full mb-2 w-72 bg-[#161720] border border-slate-700/90 rounded-xl shadow-2xl py-1.5 z-40 text-xs animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-3.5 py-2 text-[11px] font-bold text-slate-400 border-b border-slate-800">
+                      화면 중앙에 띄울 에러 종류 선택
+                    </div>
+                    {TEST_ERROR_PRESETS.map((preset) => (
+                      <button
+                        key={preset.type}
+                        type="button"
+                        onClick={() => {
+                          setCurrentError(preset.error);
+                          setIsErrorMenuOpen(false);
+                        }}
+                        className="w-full text-left px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800/80 flex items-center justify-between transition-colors"
+                      >
+                        <span className="font-medium">{preset.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* AI 서사 딥 작명 실행 버튼 */}
             <button
               type="button"
               onClick={handleGenerateAIClick}
@@ -321,6 +376,13 @@ export function NamingEngineHub({
           onAddToArchive={handleAddToArchive}
         />
       </div>
+
+      {/* 화면 중앙 에러 알림 모달 */}
+      <NamingErrorModal
+        error={currentError}
+        onClose={() => setCurrentError(null)}
+        onRetry={handleGenerateAIClick}
+      />
 
       {/* 모달 및 드로어 레이어 */}
       <NameBankDrawer
