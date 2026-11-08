@@ -49,7 +49,7 @@ export const NameResultList: React.FC<NameResultListProps> = React.memo(({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
         <div className="flex items-center space-x-2">
           <Sparkles className="w-5 h-5 text-[#5E6AD2]" />
-          <h3 className="text-sm font-bold text-slate-100">
+          <h3 className="text-sm font-bold text-slate-100 pl-2">
             생성 결과 목록 - {candidates.length}건
           </h3>
         </div>
@@ -77,10 +77,10 @@ export const NameResultList: React.FC<NameResultListProps> = React.memo(({
               >
                 {/* 실시간 자모 유사도 경고 배지 */}
                 {isHighSimilarity && (
-                  <div className="mb-1.5 flex items-center space-x-1 text-[10px] text-amber-300 bg-amber-950/60 border border-amber-800/80 px-2 py-0.5 rounded-md">
+                  <div className="mb-1.5 flex items-center space-x-1 text-[10px] text-amber-300 bg-amber-950/60 border border-amber-800/80 px-2 py-1 rounded-md mb-1">
                     <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
-                    <span className="truncate">
-                      기존 '{cand.matchItem}'와 {cand.similarity}% 유사함
+                    <span className="truncate pl-1">
+                      기존 '{cand.matchItem}'와/과 {cand.similarity}% 유사함
                     </span>
                   </div>
                 )}
@@ -96,7 +96,7 @@ export const NameResultList: React.FC<NameResultListProps> = React.memo(({
                 )}
 
                 <div>
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between py-1">
                     <span className="text-sm font-bold text-slate-100 block tracking-tight">
                       {cand.name}
                     </span>

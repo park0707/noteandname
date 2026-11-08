@@ -4,7 +4,7 @@ export interface NamingErrorInfo {
   type: NamingErrorType;
   title: string;
   description: string;
-  troubleshooting: string[];
+  troubleshooting?: string[];
   rawMessage?: string;
 }
 

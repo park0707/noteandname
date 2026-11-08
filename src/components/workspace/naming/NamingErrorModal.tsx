@@ -1,14 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import {
   WifiOff,
   KeyRound,
   Gauge,
   ServerCrash,
   AlertTriangle,
-  X,
-  ChevronDown,
-  ChevronUp,
-  CheckCircle2
+  X
 } from 'lucide-react';
 import type { NamingErrorInfo, NamingErrorType } from './namingErrors';
 
@@ -23,8 +20,6 @@ export const NamingErrorModal: React.FC<NamingErrorModalProps> = ({
   onClose,
   onRetry
 }) => {
-  const [showDetails, setShowDetails] = useState<boolean>(false);
-
   useEffect(() => {
     if (!error) return;
 
@@ -45,43 +40,28 @@ export const NamingErrorModal: React.FC<NamingErrorModalProps> = ({
       case 'network':
         return {
           icon: WifiOff,
-          badgeColor: 'bg-sky-500/20 text-sky-400 border-sky-500/30',
-          badgeText: '네트워크 연결 오류',
-          iconColor: 'text-sky-400',
-          buttonColor: 'bg-sky-600 hover:bg-sky-500 text-white'
+          iconColor: 'text-sky-400'
         };
       case 'auth':
         return {
           icon: KeyRound,
-          badgeColor: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-          badgeText: 'API 인증 / 키 오류',
-          iconColor: 'text-amber-400',
-          buttonColor: 'bg-amber-600 hover:bg-amber-500 text-white'
+          iconColor: 'text-amber-400'
         };
       case 'quota':
         return {
           icon: Gauge,
-          badgeColor: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-          badgeText: '쿼터 / 사용량 초과',
-          iconColor: 'text-orange-400',
-          buttonColor: 'bg-orange-600 hover:bg-orange-500 text-white'
+          iconColor: 'text-orange-400'
         };
       case 'server':
         return {
           icon: ServerCrash,
-          badgeColor: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
-          badgeText: 'AI 서비스 일시 장애',
-          iconColor: 'text-rose-400',
-          buttonColor: 'bg-rose-600 hover:bg-rose-500 text-white'
+          iconColor: 'text-rose-400'
         };
       case 'unknown':
       default:
         return {
           icon: AlertTriangle,
-          badgeColor: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
-          badgeText: '작명 생성 오류',
-          iconColor: 'text-rose-400',
-          buttonColor: 'bg-slate-700 hover:bg-slate-600 text-white'
+          iconColor: 'text-rose-400'
         };
     }
   };
@@ -114,10 +94,7 @@ export const NamingErrorModal: React.FC<NamingErrorModalProps> = ({
           <div className="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center shrink-0 shadow-inner">
             <IconComponent className={`w-6 h-6 ${theme.iconColor}`} />
           </div>
-          <div className="flex-1 pr-6">
-            <span className={`inline-block px-3 py-0.5 text-[11px] font-semibold rounded-lg border ${theme.badgeColor} mb-1.5`}>
-              {theme.badgeText}
-            </span>
+          <div className="flex-1 pr-6 pl-2">
             <h3 className="text-base sm:text-lg font-bold text-slate-100 tracking-tight leading-snug">
               {error.title}
             </h3>
@@ -125,48 +102,14 @@ export const NamingErrorModal: React.FC<NamingErrorModalProps> = ({
         </div>
 
         {/* 설명 본문 */}
-        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-5 px-0.5">
+        <p className="text-xs sm:text-sm text-slate-300 leading-relaxed mb-5 px-0.5 py-1">
           {error.description}
         </p>
 
-        {/* 문제 해결 가이드 리스트 (상하좌우 여백 확장) */}
-        {error.troubleshooting && error.troubleshooting.length > 0 && (
-          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 sm:p-5 mb-5">
-            <span className="block text-xs font-bold text-slate-300 mb-3 pb-2 border-b border-slate-800/80">
-              권장 조치 가이드
-            </span>
-            <ul className="space-y-2.5">
-              {error.troubleshooting.map((item, idx) => (
-                <li key={idx} className="flex items-start space-x-3 text-xs sm:text-[13px] text-slate-300">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400/90 shrink-0 mt-0.5" />
-                  <span className="leading-relaxed font-normal">{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* 기술적 상세 에러 메시지 (아코디언 토글) */}
-        {error.rawMessage && (
-          <div className="mb-5">
-            <button
-              type="button"
-              onClick={() => setShowDetails(prev => !prev)}
-              className="flex items-center space-x-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors py-1.5 px-2 rounded-lg hover:bg-slate-800/60"
-            >
-              <span>기술 상세 로그 {showDetails ? '접기' : '확인'}</span>
-              {showDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-            {showDetails && (
-              <pre className="mt-2.5 p-4 rounded-xl bg-black/60 border border-slate-800 text-[11px] text-rose-300/90 font-mono whitespace-pre-wrap break-all max-h-40 overflow-y-auto leading-relaxed">
-                {error.rawMessage}
-              </pre>
-            )}
-          </div>
-        )}
+        
 
         {/* 하단 버튼 영역 */}
-        <div className="flex items-center justify-end space-x-3 pt-3.5 border-t border-slate-800/80">
+        <div className="flex items-center justify-end space-x-3 pt-3.5  gap-2">
           {onRetry && (
             <button
               type="button"

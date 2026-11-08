@@ -193,7 +193,7 @@ export function NamingEngineHub({
       {/* ------------------------------------------------------------------ */}
       {/* 메인 입력 캔버스 (자연어 서사 입력) */}
       {/* ------------------------------------------------------------------ */}
-      <div className="p-4 md:p-6 space-y-5 flex-1">
+      <div className="p-4 md:p-6 space-y-5 flex-1 flex-col gap-1 flex">
         {/* 카테고리 선택 & 세부 옵션 */}
         <div className="bg-[#121318]/90 border border-slate-800 rounded-2xl p-4 space-y-4 shadow-md">
           {/* 카테고리 필터 탭 */}
@@ -217,7 +217,7 @@ export function NamingEngineHub({
                     }`}
                   >
                     <Icon className={`w-4 h-4 ${cat.color}`} />
-                    <span>{cat.label}</span>
+                    <span className="pl-2">{cat.label}</span>
                   </button>
                 );
               })}
@@ -287,7 +287,7 @@ export function NamingEngineHub({
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
               <FileText className="w-4.5 h-4.5 text-sky-400" />
-              <h3 className="text-sm font-bold text-slate-100">자연어 서사 묘사문 입력</h3>
+              <h3 className="text-sm font-bold text-slate-100 pl-2">자연어 서사 묘사문 입력</h3>
             </div>
             <span className="text-[11px] text-slate-500 font-mono">
               {keywords.length}자 입력됨
@@ -358,8 +358,8 @@ export function NamingEngineHub({
             >
               {isGenerating ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin text-white" />
-                  <span>
+                  <Loader2 className="w-4 h-4 animate-spin text-white mr-1.5 shrink-0" />
+                  <span className="text-[12px] font-semibold pl-2">
                     {pipelineStep === 'step1' ? '서사 인스펙션 중...' : pipelineStep === 'step2' ? 'AI 합성 연산 중...' : '최종 정제 중...'}
                   </span>
                 </>

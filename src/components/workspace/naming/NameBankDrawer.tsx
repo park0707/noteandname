@@ -164,7 +164,7 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
             </div>
 
             {/* 아이템 목록 */}
-            <div className="flex-1 overflow-y-auto p-3.5 space-y-2.5">
+            <div className="flex-1 overflow-y-auto p-3.5 flex flex-col gap-3.5">
               {filteredItems.length === 0 ? (
                 <div className="text-center py-12 text-xs text-slate-500">
                   보관함에 저장된 이름이 없습니다.
@@ -177,8 +177,8 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
                   >
                     <div className="flex items-start justify-between">
                       <div>
-                        <span className="text-sm font-bold text-slate-100">{item.name}</span>
-                        <span className="ml-2 text-[9px] px-2 py-0.5 rounded-md bg-[#5E6AD2]/20 text-indigo-300 border border-[#5E6AD2]/40 font-semibold">
+                        <span className="text-sm font-bold text-slate-100 pr-1">{item.name}</span>
+                        <span className="ml-2 text-[10px] px-2 py-0.5 rounded-md bg-[#5E6AD2]/20 text-indigo-300 border border-[#5E6AD2]/40 font-semibold">
                           {item.targetCategory}
                         </span>
                       </div>
@@ -196,7 +196,7 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
                       {item.meaning}
                     </p>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[10px]">
+                    <div className="flex items-center justify-between pt-2 border-slate-800/80 text-[10px]">
                       <span className="text-slate-500 font-mono">
                         {new Date(item.createdAt).toLocaleDateString()}
                       </span>
@@ -213,7 +213,7 @@ export const NameBankDrawer: React.FC<NameBankDrawerProps> = React.memo(({
                         }}
                         className="flex items-center space-x-1 px-2.5 py-1 bg-violet-950/40 hover:bg-violet-900/60 text-violet-200 border border-violet-800/40 rounded-lg transition-colors font-semibold"
                       >
-                        <PlusCircle className="w-3 h-3 text-violet-400" />
+                        <PlusCircle className="w-5 h-3 text-violet-400 pr-1" />
                         <span>아카이브 등록</span>
                       </button>
                     </div>
