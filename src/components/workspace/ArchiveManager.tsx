@@ -804,7 +804,7 @@ export default function ArchiveManager({
 
       {/* 2. 상단 이름 검색 창 */}
       <div className="px-6 pt-4 pb-2 shrink-0">
-        <div className={`relative flex items-center rounded-xl border transition-all ${
+        <div className={`relative flex items-center rounded-xl border transition-all pl-3.5 ${
           isDark ? 'bg-[#111216] border-white/[0.08] focus-within:border-[#5E6AD2]' : 'bg-white border-black/[0.08] focus-within:border-[#5E6AD2]'
         }`}>
           <Search className={`w-4 h-4 ml-3.5 shrink-0 ${isDark ? 'text-[#A1A1AA]' : 'text-[#71717A]'}`} />

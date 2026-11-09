@@ -163,6 +163,7 @@ export default function WorldMap({
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+  const [isShiftPressed, setIsShiftPressed] = useState(false);
   const [editMode, setEditMode] = useState<'select' | 'pan' | 'draw_polygon' | 'add_pin' | 'draw_route' | 'draw_border_rect' | 'draw_border_circle' | 'draw_brush'>('select');
 
   // --- 테두리 드래그 임시 상태 ---
@@ -1138,13 +1139,14 @@ export default function WorldMap({
   }, [isReadOnly, pushHistory]);
 
   const getCursorClass = useCallback((): string => {
-    if (isPanning) return 'cursor-grabbing';
+    if (isPanning) return 'cursor-grabbing [&_*]:!cursor-grabbing';
+    if (isShiftPressed) return 'cursor-grab [&_*]:!cursor-grab';
     
     switch (editMode) {
       case 'select':
         return 'cursor-default';
       case 'pan':
-        return 'cursor-grab';
+        return 'cursor-grab [&_*]:!cursor-grab';
       case 'draw_polygon':
       case 'draw_route':
       case 'draw_border_rect':
@@ -1156,7 +1158,34 @@ export default function WorldMap({
       default:
         return 'cursor-default';
     }
-  }, [editMode, isPanning]);
+  }, [editMode, isPanning, isShiftPressed]);
+
+  // --- Shift 키 누름 상태 추적 (Shift + 좌클릭 지도 이동 지원) ---
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        setIsShiftPressed(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift') {
+        setIsShiftPressed(false);
+      }
+    };
+    const handleBlur = () => {
+      setIsShiftPressed(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('blur', handleBlur);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('blur', handleBlur);
+    };
+  }, []);
 
   // Ctrl+Z / Ctrl+Y / Ctrl+G / Delete / Backspace 단축키 연동
   useEffect(() => {
@@ -1654,6 +1683,15 @@ export default function WorldMap({
 
   // --- 지도 요소 마우스 다운 (이동 드래그 시작) ---
   const handleElementMouseDown = (e: React.MouseEvent, el: MapElement) => {
+    // Shift + 좌클릭이거나 손바닥(pan) 모드, 마우스 우클릭/휠클릭인 경우: 요소 드래그가 아닌 지도 패닝(손바닥 이동) 수행
+    if ((e.shiftKey && e.button === 0) || editMode === 'pan' || e.button === 1 || e.button === 2) {
+      e.stopPropagation();
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      return;
+    }
+
     e.stopPropagation();
     e.preventDefault();
     
@@ -1670,7 +1708,7 @@ export default function WorldMap({
 
     let activeSelectedIds = selectedElementIds;
 
-    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+    if (e.ctrlKey || e.metaKey) {
       // Ctrl 복수 선택 모드: 그룹에 속한 요소이면 첫 클릭 시 그룹 전체 자식 멤버들이 함께 복수 선택됨!
       const groupMembers = hasGroup ? collectAllMemberElements([topGroup]).map(m => m.id) : [el.id];
       let nextSelectedIds: string[] = [];
@@ -1791,6 +1829,15 @@ export default function WorldMap({
     el: MapElement,
     dir: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
   ) => {
+    // Shift + 좌클릭이거나 손바닥(pan) 모드, 마우스 우클릭/휠클릭인 경우: 리사이즈가 아닌 지도 패닝 수행
+    if ((e.shiftKey && e.button === 0) || editMode === 'pan' || e.button === 1 || e.button === 2) {
+      e.stopPropagation();
+      e.preventDefault();
+      setIsPanning(true);
+      setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      return;
+    }
+
     e.stopPropagation();
     e.preventDefault();
     
@@ -1854,8 +1901,8 @@ export default function WorldMap({
 
   // --- 패닝 마우스 다운 핸들러 ---
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
-    if (editMode === 'pan' || e.button === 1 || e.button === 2) {
-      // 마우스 우클릭, 휠클릭 혹은 패닝 모드 시 드래그 동작
+    if (editMode === 'pan' || e.button === 1 || e.button === 2 || (e.shiftKey && e.button === 0)) {
+      // 마우스 우클릭, 휠클릭, 패닝 모드, 혹은 Shift + 좌클릭 시 지도 이동(패닝) 동작
       e.preventDefault();
       setIsPanning(true);
       setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
@@ -3134,6 +3181,8 @@ export default function WorldMap({
 
   const handleElementClick = (el: MapElement, e: React.MouseEvent) => {
     e.stopPropagation();
+    // Shift 키가 눌려있거나 손바닥(pan) 모드인 경우 요소 상세창 열기/선택 방지
+    if (e.shiftKey || editMode === 'pan') return;
     if (isElementLocked(el.type)) return;
     if (hasMovedDuringDrag) return;
 
@@ -3142,7 +3191,7 @@ export default function WorldMap({
     let targetId = el.id;
 
     if (editMode === 'select') {
-      if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      if (e.ctrlKey || e.metaKey) {
         // 이미 handleElementMouseDown 시점에 Ctrl 다중 선택 1번 처리가 완결되었으므로, 2중 토글 차단!
         const targetEl = elements.find(x => x.id === el.id) || el;
         loadElementToEdit(targetEl);
@@ -5445,6 +5494,11 @@ export default function WorldMap({
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           e.preventDefault();
+                          if ((e.shiftKey && e.button === 0) || e.button === 1 || e.button === 2) {
+                            setIsPanning(true);
+                            setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+                            return;
+                          }
                           if (isReadOnly) {
                             showAlert('현재 시점 버전 이력을 탐색 중입니다. 편집을 진행하려면 상단 시점 제어 바에서 [편집 잠금 해제]를 클릭하세요.');
                             return;
@@ -5624,7 +5678,7 @@ export default function WorldMap({
                       cursor: editMode === 'select' ? 'move' : 'pointer'
                     }}
                     onMouseDown={(e) => {
-                      if (editMode === 'select') {
+                      if (editMode === 'select' || (e.shiftKey && e.button === 0) || editMode === 'pan' || e.button === 1 || e.button === 2) {
                         handleElementMouseDown(e, el);
                       }
                     }}
@@ -5687,7 +5741,7 @@ export default function WorldMap({
                       cursor: editMode === 'select' ? 'move' : 'pointer'
                     }}
                     onMouseDown={(e) => {
-                      if (editMode === 'select') {
+                      if (editMode === 'select' || (e.shiftKey && e.button === 0) || editMode === 'pan' || e.button === 1 || e.button === 2) {
                         handleElementMouseDown(e, el);
                       }
                     }}
@@ -5755,6 +5809,13 @@ export default function WorldMap({
                         top: `${charPos.y}px`
                       }}
                       onMouseDown={(e) => {
+                        if ((e.shiftKey && e.button === 0) || editMode === 'pan' || e.button === 1 || e.button === 2) {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setIsPanning(true);
+                          setPanStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+                          return;
+                        }
                         if (isReadOnly) {
                           showAlert('현재 시점 버전 이력을 탐색 중입니다. 편집을 진행하려면 상단 시점 제어 바에서 [편집 잠금 해제]를 클릭하세요.');
                           return;

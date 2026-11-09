@@ -14,7 +14,6 @@ import {
   Search,
   Minimize2,
   Maximize2,
-  Link,
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -37,7 +36,6 @@ import { useAlertConfirm } from '../../../context/AlertConfirmContext';
 import { 
   convertHtmlToMarkdown 
 } from './editorUtils';
-import LinkInsertModal from './Modals/LinkInsertModal';
 import PlantForeshadowingModal from './Modals/PlantForeshadowingModal';
 import ResolveForeshadowingModal from './Modals/ResolveForeshadowingModal';
 import ForeshadowingListModal from './Modals/ForeshadowingListModal';
@@ -148,7 +146,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     bgColorPickerPos,
     setBgColorPickerPos,
     saveSelection,
-    restoreSelection,
+    restoreSelection: _restoreSelection,
   } = props;
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -246,55 +244,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showExportDropdown, showStatsDropdown, showFontDropdown, showSnapshotDropdown, showForeshadowingDropdown, setShowFontDropdown, setShowStatsDropdown]);
-
-  // 링크 삽입 모달 상태
-  const [showLinkModal, setShowLinkModal] = useState(false);
-  const [linkText, setLinkText] = useState('');
-  const [linkUrl, setLinkUrl] = useState('');
-  const [linkNewTab, setLinkNewTab] = useState(true);
-
-  const openLinkInsertModal = () => {
-    saveSelection();
-    const selectedText = window.getSelection()?.toString() || '';
-    setLinkText(selectedText);
-    setLinkUrl('');
-    setLinkNewTab(true);
-    setShowLinkModal(true);
-  };
-
-  const executeInsertLink = (e: React.FormEvent) => {
-    e.preventDefault();
-    restoreSelection();
-
-    const rawUrl = linkUrl.trim();
-    if (!rawUrl) {
-      showAlert('URL을 입력해 주세요.');
-      return;
-    }
-
-    let testUrl = rawUrl;
-    if (!/^https?:\/\//i.test(testUrl)) {
-      testUrl = 'https://' + testUrl;
-    }
-
-    const urlPattern = /^(https?:\/\/)?(www\.)?[-a-zA-Z0-9@:%._+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_+.~#?&//=]*)$/;
-    if (!urlPattern.test(testUrl)) {
-      showAlert('올바른 URL 형식이 아닙니다. (예: example.com 또는 https://example.com)');
-      return;
-    }
-
-    let finalUrl = rawUrl;
-    if (!/^https?:\/\//i.test(finalUrl)) {
-      finalUrl = 'https://' + finalUrl;
-    }
-
-    const textToDisplay = linkText.trim() || finalUrl;
-    const targetAttr = linkNewTab ? '_blank' : '_self';
-    const linkHtml = `<a href="${finalUrl}" target="${targetAttr}" rel="noopener noreferrer" style="color: #5E6AD2; text-decoration: underline; font-weight: 600;">${textToDisplay}</a>`;
-
-    execFormat('insertHTML', linkHtml);
-    setShowLinkModal(false);
-  };
 
   const handleExportDocument = (format: 'txt' | 'md' | 'docx') => {
     const editorCanvas = document.querySelector('.novela-editor-content');
@@ -899,15 +848,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
               <div className={`w-[1px] h-3 shrink-0 ${isDark ? 'bg-white/[0.08]' : 'bg-black/[0.08]'}`} />
 
-
-              <button
-                onClick={openLinkInsertModal}
-                className={`p-1.5 rounded hover:bg-white/[0.04] shrink-0 ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-black'}`}
-                title="링크 삽입"
-              >
-                <Link className="w-3.5 h-3.5" />
-              </button>
-
               <div className="relative flex items-center shrink-0" ref={exportDropdownRef}>
                 <button
                   onClick={() => {
@@ -1160,20 +1100,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
 
 
-
-      {/* 링크 삽입 모달 */}
-      <LinkInsertModal
-        isDark={isDark}
-        showLinkModal={showLinkModal}
-        setShowLinkModal={setShowLinkModal}
-        linkText={linkText}
-        setLinkText={setLinkText}
-        linkUrl={linkUrl}
-        setLinkUrl={setLinkUrl}
-        linkNewTab={linkNewTab}
-        setLinkNewTab={setLinkNewTab}
-        executeInsertLink={executeInsertLink}
-      />
 
       {/* 복선 설치 모달 */}
       <PlantForeshadowingModal

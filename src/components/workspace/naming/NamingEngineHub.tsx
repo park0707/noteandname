@@ -10,7 +10,7 @@ import type {
 import { NameResultList } from './NameResultList';
 import { NameBankDrawer } from './NameBankDrawer';
 import { NamingErrorModal } from './NamingErrorModal';
-import { classifyNamingError, TEST_ERROR_PRESETS, type NamingErrorInfo } from './namingErrors';
+import { classifyNamingError, type NamingErrorInfo } from './namingErrors';
 import {
   deleteNameBankItem,
   getSavedNameBank,
@@ -27,9 +27,7 @@ import {
   Shield,
   MapPin,
   Zap,
-  Package,
-  Bug,
-  ChevronDown
+  Package
 } from 'lucide-react';
 
 interface NamingEngineHubProps {
@@ -76,9 +74,8 @@ export function NamingEngineHub({
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [pipelineStep, setPipelineStep] = useState<'idle' | 'step1' | 'step2' | 'step3'>('idle');
 
-  // 에러 모달 및 테스트 메뉴 상태
+  // 에러 모달 상태
   const [currentError, setCurrentError] = useState<NamingErrorInfo | null>(null);
-  const [isErrorMenuOpen, setIsErrorMenuOpen] = useState<boolean>(false);
 
   // 환경변수(.env)에서 API Key 자동 로드
   const apiKey = (import.meta.env ? (import.meta.env.VITE_GEMINI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY2) : '') || localStorage.getItem('novelflow_ai_api_key') || '';
@@ -305,50 +302,8 @@ export function NamingEngineHub({
             />
           </div>
 
-          {/* 작명 생성 실행 및 에러 테스트 버튼 영역 */}
+          {/* 작명 생성 실행 버튼 영역 */}
           <div className="flex flex-wrap items-center justify-end gap-2.5">
-            {/* 에러 테스트 드롭다운 버튼 (종류별 에러 모달 화면 출력) */}
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsErrorMenuOpen(prev => !prev)}
-                className="flex items-center space-x-1.5 px-3 py-2.5 bg-slate-900/90 hover:bg-slate-800 text-rose-300 hover:text-rose-200 text-xs font-semibold rounded-xl border border-rose-900/40 hover:border-rose-700/60 transition-all shadow-sm"
-                title="에러 모달 화면 출력 테스트"
-              >
-                <Bug className="w-3.5 h-3.5 text-rose-400" />
-                <span>에러 메시지 테스트</span>
-                <ChevronDown className="w-3.5 h-3.5 ml-0.5 text-slate-400" />
-              </button>
-
-              {/* 종류별 드롭다운 팝오버 */}
-              {isErrorMenuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-30"
-                    onClick={() => setIsErrorMenuOpen(false)}
-                  />
-                  <div className="absolute right-0 bottom-full mb-2 w-72 bg-[#161720] border border-slate-700/90 rounded-xl shadow-2xl py-1.5 z-40 text-xs animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-3.5 py-2 text-[11px] font-bold text-slate-400 border-b border-slate-800">
-                      화면 중앙에 띄울 에러 종류 선택
-                    </div>
-                    {TEST_ERROR_PRESETS.map((preset) => (
-                      <button
-                        key={preset.type}
-                        type="button"
-                        onClick={() => {
-                          setCurrentError(preset.error);
-                          setIsErrorMenuOpen(false);
-                        }}
-                        className="w-full text-left px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-slate-800/80 flex items-center justify-between transition-colors"
-                      >
-                        <span className="font-medium">{preset.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-
             {/* AI 서사 딥 작명 실행 버튼 */}
             <button
               type="button"
