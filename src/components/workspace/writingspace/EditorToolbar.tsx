@@ -24,7 +24,8 @@ import {
   Outdent,
   Sparkles,
   GitCommit,
-  CheckCircle2
+  CheckCircle2,
+  ListOrdered
 } from 'lucide-react';
 import type { Foreshadowing, Episode } from '../types';
 import { getOrderedDocumentList } from '../utils';
@@ -39,6 +40,7 @@ import {
 import LinkInsertModal from './Modals/LinkInsertModal';
 import PlantForeshadowingModal from './Modals/PlantForeshadowingModal';
 import ResolveForeshadowingModal from './Modals/ResolveForeshadowingModal';
+import ForeshadowingListModal from './Modals/ForeshadowingListModal';
 
 interface EditorToolbarProps {
   isDark: boolean;
@@ -165,6 +167,7 @@ export default function EditorToolbar(props: EditorToolbarProps) {
 
   const [showPlantModal, setShowPlantModal] = useState(false);
   const [showResolveModal, setShowResolveModal] = useState(false);
+  const [showForeshadowingListModal, setShowForeshadowingListModal] = useState(false);
   const secondaryToolbarRef = useRef<HTMLDivElement | null>(null);
   const [showLeftScroll, setShowLeftScroll] = useState(false);
   const [showRightScroll, setShowRightScroll] = useState(false);
@@ -1031,6 +1034,18 @@ export default function EditorToolbar(props: EditorToolbarProps) {
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                       <span>복선 회수</span>
                     </button>
+                    <button
+                      onClick={() => {
+                        setShowForeshadowingDropdown(false);
+                        setShowForeshadowingListModal(true);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-white/[0.04] transition-colors h-8 flex items-center gap-2 leading-normal ${
+                        isDark ? 'text-gray-200' : 'text-gray-800'
+                      }`}
+                    >
+                      <ListOrdered className="w-3.5 h-3.5 text-[#7480E2]" />
+                      <span>복선 목록</span>
+                    </button>
                   </div>
                 )}
               </div>
@@ -1199,6 +1214,29 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             prev.map(f => (f.id === id ? { ...f, isResolved: true } : f))
           );
           showAlert('복선이 회수 처리되었습니다.');
+        }}
+      />
+
+      {/* 복선 목록 관리 모달 */}
+      <ForeshadowingListModal
+        isDark={isDark}
+        isOpen={showForeshadowingListModal}
+        onClose={() => setShowForeshadowingListModal(false)}
+        foreshadowings={foreshadowings || []}
+        currentChapterNumber={currentDocIndex}
+        onUpdateForeshadowing={(updated) => {
+          if (!setForeshadowings) return;
+          setForeshadowings(prev => prev.map(f => (f.id === updated.id ? updated : f)));
+        }}
+        onDeleteForeshadowing={(id) => {
+          if (!setForeshadowings) return;
+          setForeshadowings(prev => prev.filter(f => f.id !== id));
+        }}
+        onToggleResolve={(id) => {
+          if (!setForeshadowings) return;
+          setForeshadowings(prev =>
+            prev.map(f => (f.id === id ? { ...f, isResolved: !f.isResolved } : f))
+          );
         }}
       />
     </div>

@@ -87,7 +87,7 @@ export default function PlantForeshadowingModal({
         }`}
       >
         {/* 모달 헤더 */}
-        <div className="flex items-center justify-between pb-4 border-b border-gray-500/10">
+        <div className="flex items-center justify-between pb-4 ">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-[#5E6AD2]/10 text-[#7480E2]">
               <GitCommit className="w-5 h-5" />
