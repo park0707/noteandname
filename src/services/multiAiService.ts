@@ -4,12 +4,6 @@
 // 2순위: Groq Cloud (LLaMA 3.3 70B) - VITE_GROQ_API_KEY (1일 14,400회 100% 무료 백업)
 // ============================================================================
 
-export interface SpellError {
-  original: string;
-  replacement: string;
-  reason: string;
-}
-
 export interface MultiAiResult<T> {
   data: T;
   providerName: string;
@@ -24,13 +18,6 @@ function getEnv(key: string): string {
     return (import.meta.env[key] as string) || '';
   }
   return '';
-}
-
-export function getAvailableProviders(): { id: string; name: string; isConfigured: boolean }[] {
-  return [
-    { id: 'gemini', name: 'Google AI Studio (Gemini 3.5 Flash Lite)', isConfigured: Boolean(getEnv('VITE_GEMINI_API_KEY') || getEnv('VITE_GEMINI_API_KEY2')) },
-    { id: 'groq', name: 'Groq Cloud (LLaMA 3.3 70B)', isConfigured: Boolean(getEnv('VITE_GROQ_API_KEY')) }
-  ];
 }
 
 // ----------------------------------------------------------------------------
@@ -154,38 +141,6 @@ export async function executeMultiAiChain<T>(
   }
 
   throw new Error(`Google AI Studio 및 Groq API 연결 실패 또는 API 키 미설정. 상세:\n${errorsLogged.join('\n')}`);
-}
-
-// ----------------------------------------------------------------------------
-// 4. 맞춤법 전용 멀티 AI 검사 함수
-// ----------------------------------------------------------------------------
-export async function executeSpellCheckAI(textContent: string): Promise<{ errors: SpellError[]; providerName: string }> {
-  const systemInstruction = `당신은 웹소설 등 한국어 창작 원고의 맞춤법, 띄어쓰기, 문맥적 혼동 표기를 정밀 교정해주는 15년 경력의 전문 한국어 교열 작가입니다. 
-입력 텍스트에서 오탈자, 맞춤법 오류, 띄어쓰기 오기, 어색한 한국어 표현 등을 찾고, 그에 해당하는 정확한 교정 단어와 사유를 제시하세요.
-반드시 아래의 JSON 배열 규격을 준수하여 반환해야 합니다. 오류가 없는 경우 빈 배열 \`[]\`을 반환하세요.
-교정 대상 단어(original)는 반드시 본문 텍스트에 문자 그대로 온전히 존재하는 단어여야 합니다.
-JSON 응답 구조 예시:
-[
-  {"original": "틀린단어", "replacement": "맞는단어", "reason": "교정 이유"}
-]`;
-
-  const prompt = `검사할 원고 본문:\n${textContent}`;
-
-  const res = await executeMultiAiChain<SpellError[]>(
-    prompt,
-    systemInstruction,
-    (rawText: string) => {
-      const parsed = JSON.parse(rawText);
-      const list = Array.isArray(parsed) ? parsed : (parsed.errors || parsed.items || []);
-      return list.filter((err: any) => {
-        if (!err || typeof err !== 'object') return false;
-        if (!err.original || !err.replacement) return false;
-        return textContent.includes(err.original);
-      });
-    }
-  );
-
-  return { errors: res.data, providerName: res.providerName };
 }
 
 

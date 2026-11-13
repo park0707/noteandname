@@ -18,7 +18,6 @@ import DiffViewPane from './writingspace/DiffViewPane';
 import MainEditorCanvas from './writingspace/MainEditorCanvas';
 import TrashModal from './writingspace/Modals/TrashModal';
 import SnapshotHistoryModal from './writingspace/Modals/SnapshotHistoryModal';
-import EditorInspector from './writingspace/EditorInspector';
 import SnapshotInputModal from './writingspace/Modals/SnapshotInputModal';
 import AutoSaveModal from './writingspace/Modals/AutoSaveModal';
 
@@ -128,7 +127,6 @@ export default function WritingSpace(props: WritingSpaceProps) {
   // Local editor configurations & layout states
   const [isFocusMode, setIsFocusMode] = useState(false);
   const [innerSidebarCollapsed, setInnerSidebarCollapsed] = useState(false);
-  const [showInspector, setShowInspector] = useState(false);
 
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [isReplaceMode, setIsReplaceMode] = useState(false);
@@ -925,8 +923,6 @@ export default function WritingSpace(props: WritingSpaceProps) {
               setLineHeight={setLineHeight}
               showFindReplace={showFindReplace}
               setShowFindReplace={setShowFindReplace}
-              showInspector={showInspector}
-              setShowInspector={setShowInspector}
               handleCreateSnapshot={handleCreateSnapshot}
               handleOpenAutoSaveModal={() => setShowAutoSaveModal(true)}
               setShowHistoryModal={setShowHistoryModal}
@@ -1005,16 +1001,6 @@ export default function WritingSpace(props: WritingSpaceProps) {
                 />
               )}
 
-              {/* 맞춤법 검사기 우측 패널 */}
-              {showInspector && (
-                <EditorInspector
-                  isDark={isDark}
-                  themeStyles={themeStyles}
-                  editorRef={editorRef}
-                  onClose={() => setShowInspector(false)}
-                  handleContentInput={handleContentInput}
-                />
-              )}
             </div>
           </>
         ) : (

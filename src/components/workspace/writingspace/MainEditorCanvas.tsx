@@ -112,6 +112,7 @@ export default function MainEditorCanvas(props: MainEditorCanvasProps) {
           <div
             ref={editorRef}
             contentEditable
+            spellCheck={true}
             data-placeholder="내용을 입력하세요..."
             onInput={handleContentInput}
             onBlur={saveSelection}

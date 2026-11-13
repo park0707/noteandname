@@ -21,7 +21,6 @@ import {
   Download,
   Indent,
   Outdent,
-  Sparkles,
   GitCommit,
   CheckCircle2,
   ListOrdered
@@ -66,8 +65,6 @@ interface EditorToolbarProps {
   setShowFindReplace: (show: boolean) => void;
   handleCreateSnapshot: () => void;
   handleOpenAutoSaveModal: () => void;
-  showInspector: boolean;
-  setShowInspector: (show: boolean) => void;
   setShowHistoryModal: (show: boolean) => void;
   historySnapshotsCount: number;
   editorSaveStatus: 'saved' | 'saving';
@@ -127,8 +124,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
     setShowFindReplace,
     handleCreateSnapshot,
     handleOpenAutoSaveModal,
-    showInspector,
-    setShowInspector,
     setShowHistoryModal,
     historySnapshotsCount,
     editorSaveStatus,
@@ -724,20 +719,6 @@ export default function EditorToolbar(props: EditorToolbarProps) {
             }`}
           >
             <Search className="w-3.5 h-3.5" />
-          </button>
-
-          <button
-            onClick={() => setShowInspector(!showInspector)}
-            title="맞춤법 검사기"
-            className={`p-1.5 rounded-lg border transition-all duration-150 ${
-              showInspector
-                ? 'bg-[#5E6AD2] text-white border-[#5E6AD2]'
-                : isDark
-                  ? 'border-white/[0.08] text-gray-400 hover:bg-white/[0.04]'
-                  : 'border-black/[0.08] text-gray-600 hover:bg-black/[0.04]'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" />
           </button>
 
           <button
