@@ -8,7 +8,6 @@ import type { Project, Episode, Node, Foreshadowing, ArchiveItem } from './types
 import ProjectDashboard from './ProjectDashboard';
 import NamingEngineHub from './naming/NamingEngineHub';
 import RelationsMap from './RelationsMap';
-import ForeshadowingTimeline from './ForeshadowingTimeline';
 import CharacterHistory from './CharacterHistory';
 import WorldMap from './WorldMap';
 import WritingSpace from './WritingSpace';
@@ -192,8 +191,6 @@ function PanelRenderer(props: PanelRendererProps) {
         return 'AI 작명 엔진';
       case 'relations':
         return '인물 관계도';
-      case 'timeline':
-        return '복선 타임라인';
       case 'history':
         return '캐릭터 히스토리';
 
@@ -449,13 +446,6 @@ function PanelRenderer(props: PanelRendererProps) {
             setRelationNodes={setRelationNodes}
             archiveItems={archiveItems}
             setArchiveItems={setArchiveItems}
-          />
-        )}
-        {panel.activeFeature === 'timeline' && (
-          <ForeshadowingTimeline
-            isDark={isDark}
-            foreshadowings={foreshadowings}
-            setForeshadowings={setForeshadowings}
           />
         )}
         {panel.activeFeature === 'history' && (

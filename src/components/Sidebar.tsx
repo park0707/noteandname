@@ -6,7 +6,7 @@ import {
   LayoutDashboard,
   Sparkles,
   Network,
-  GitCommit,
+
   BookOpen,
   Info,
   PanelLeftClose,
@@ -52,7 +52,7 @@ export default function Sidebar({
     { id: 'archive', icon: Archive, label: '아카이브', badge: selectedProject ? undefined : '선택 필요' },
     { id: 'naming', icon: Sparkles, label: 'AI 작명 엔진', badge: selectedProject ? undefined : '선택 필요' },
     { id: 'relations', icon: Network, label: '인물 관계도', badge: selectedProject ? undefined : '선택 필요' },
-    { id: 'timeline', icon: GitCommit, label: '복선 타임라인', badge: selectedProject ? undefined : '선택 필요' },
+
     { id: 'history', icon: BookOpen, label: '캐릭터 히스토리', badge: selectedProject ? undefined : '선택 필요' },
     ...(selectedProject ? [{ id: 'worldmap', icon: Compass, label: '세계관 지도' }] : []),
   ];
